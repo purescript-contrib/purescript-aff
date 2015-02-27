@@ -12,6 +12,12 @@ main = launchAff $
      liftEff $ trace response.body
 ```
 
+# Using
+
+```
+bower install purescript-aff
+```
+
 # Documentation
 
 [MODULES.md](MODULES.md)
