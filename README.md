@@ -2,6 +2,8 @@
 
 An asynchronous effect monad for PureScript.
 
+The moral equivalent of `ErrorT (ContT Unit (Eff e)) a`, for effects `e` and value `a`. Just faster, easier to use, and self-contained.
+
 # Example
 
 ```purescript
