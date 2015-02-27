@@ -1,0 +1,30 @@
+
+{
+  "name": "purescript-aff",
+  "homepage": "https://github.com/slamdata/purescript-aff",
+  "description": "Asynchronous effect monad",
+  "keywords": [
+    "purescript"
+  ],
+  "license": "MIT",
+  "ignore": [
+    "**/.*",
+    "bower_components",
+    "node_modules",
+    "output",
+    "tests",
+    "tmp",
+    "bower.json",
+    "Gruntfile.js",
+    "package.json"
+  ],
+  "dependencies": {
+    "purescript-tuples":    "~0.3.0",
+    "purescript-either":    "~0.1.4",
+    "purescript-monoid":    "~0.2.0",
+    "purescript-exceptions": "~0.2.2",
+    "purescript-control":   "~0.2.2",
+    "purescript-maybe":     "~0.2.1",
+    "purescript-monad-eff": "~0.1.0"
+  }
+}
