@@ -43,6 +43,22 @@ makeAff :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> Eff e Unit
 Creates an asynchronous effect from a function that accepts error and 
 success callbacks.
 
+#### `attempt`
+
+``` purescript
+attempt :: forall e a. Aff e a -> Aff e (Either Error a)
+```
+
+Promotes any error to the value level of the asynchronous monad.
+
+#### `catch`
+
+``` purescript
+catch :: forall e a. Aff (err :: Exception | e) a -> Aff e a
+```
+
+Removes exceptions by forcing them through the error callback.
+
 #### `semigroupAff`
 
 ``` purescript
