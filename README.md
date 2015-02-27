@@ -22,9 +22,9 @@ bower install purescript-aff
 
 ## Escaping Callback Hell
 
-Hopefully, you're using libraries that already use the `Aff` type. 
+Hopefully, you're using libraries that already use the `Aff` type, so you don't even have to think about callbacks!
 
-In the unfortunate event you're building your own library, or you have to interact with some native Javascript that expects callbacks, then *purescript-aff* provides a `makeAff` function you can use:
+If you're building your own library, or you have to interact with some native code that expects callbacks, then *purescript-aff* provides a `makeAff` function you can use:
 
 ```purescript
 makeAff :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> Eff e Unit) -> Aff e a
@@ -48,19 +48,45 @@ ajaxGet' req = makeAff (\error success -> ajaxGet success req)
 This eliminates "callback hell" and allows us to write code simply using `do` notation:
 
 ```
-do response <- ajaxGet req
+do response <- ajaxGet' req
    liftEff $ trace response.body
 ```
 
 ## Converting from Eff
 
-All synchronous computations (`Eff`) can be easily converted to asynchronous computations with `liftEff` defined in `Control.Monad.Eff.Class` (see [here](https://github.com/paf31/purescript-monad-eff)).
+All synchronous computations (`Eff`) can be converted to asynchronous computations (`Aff`) with `liftEff` defined in `Control.Monad.Eff.Class` (see [here](https://github.com/paf31/purescript-monad-eff)).
 
 ```purescript
 import Control.Monad.Eff.Class
 
 liftEff $ trace "Hello world!"
 ```
+
+## Exceptions
+
+The `Aff` monad has error handling baked-in, so ordinarily you don't have to worry about it.
+
+If you want to "attempt" a computation but recover from failure, you can use the `attempt` function:
+
+```purescript
+attempt :: forall e a. Aff e a -> Aff e (Either Error a)
+```
+
+This returns an `Either Error a` you can use to recover gracefully from failure.
+
+With synchronous computations, sometimes the effect of throwing exceptions is embedded in the type. For example:
+
+```purescript
+saveFile :: forall e. String -> Bytes -> Eff (err :: Exception | e) Unit
+```
+
+If such a signature "leaks" into an asynchronous computation, you can remove the exception from the effect row by using the `catch` function:
+
+```purescript
+let asyncComp' = catch asyncComp
+```
+
+Once you `catch` the exception, any synchronous exception thrown by the code will now be propagated through the error channel of the asynchronous computation, and can be dealt with normally using `attempt`.
 
 # Documentation
 
