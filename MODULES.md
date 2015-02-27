@@ -8,6 +8,15 @@
 data Aff e a
 ```
 
+An asynchronous computation with effects `e`, which either errors or 
+produces a value of type `a`.
+
+This is the moral equivalent of `ErrorT (ContT Unit (Eff e)) a`, but 
+faster, easier to use, and self-contained.
+
+The type implements `MonadEff` so it's easy to lift synchronous `Eff` 
+computations into this type. As a result, there's basically no reason to
+use `Eff` in a program that has some asynchronous computations.
 
 #### `PureAff`
 
