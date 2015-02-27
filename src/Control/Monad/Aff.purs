@@ -1,6 +1,8 @@
 module Control.Monad.Aff 
   ( Aff(),
     PureAff(..),
+    attempt,
+    catch,
     launchAff,
     makeAff,
     runAff
