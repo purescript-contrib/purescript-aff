@@ -2,7 +2,9 @@
 
 An asynchronous effect monad for PureScript.
 
-The moral equivalent of `ErrorT (ContT Unit (Eff e)) a`, for effects `e` and value `a`. Just faster, easier to use, and self-contained.
+The moral equivalent of `ErrorT (ContT Unit (Eff (async :: Async e1 | e2)) a`, for synchronous effects `e1`, asynchronous effects `e2`, and value `a`.
+
+`Aff` lets you say goodbyte to monad transformers and callback hell!
 
 # Example
 
@@ -24,10 +26,10 @@ bower install purescript-aff
 
 Hopefully, you're using libraries that already use the `Aff` type, so you don't even have to think about callbacks!
 
-If you're building your own library, or you have to interact with some native code that expects callbacks, then *purescript-aff* provides a `makeAff` function you can use:
+If you're building your own library, or you have to interact with some native code that expects callbacks, then *purescript-aff* provides a `makeAff'` function you can use:
 
 ```purescript
-makeAff :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> Eff e Unit) -> Aff e a
+makeAff' :: forall e1 e2 a. ((Error -> Eff e1 Unit) -> (a -> Eff e1 Unit) -> Eff e2 Unit) -> Aff e1 e2 a
 ```
 
 This function expects you to provide a handler, which should call a user-supplied error callback or success callback with the result of the asynchronous computation.
@@ -35,14 +37,14 @@ This function expects you to provide a handler, which should call a user-supplie
 For example, let's say we have an AJAX request function:
 
 ```purescript
-ajaxGet :: forall e. (Response -> Eff (ajax :: Ajax | e) Unit) -> Request -> Eff (ajax :: Ajax | e) Unit
+ajaxGet :: forall e1 e2. (Response -> Eff e1 Unit) -> Request -> Eff (ajax :: Ajax | e2) Unit
 ```
 
 We can wrap this into an asynchronous computation like so:
 
 ```purescript
-ajaxGet' :: forall e. Request -> Aff (ajax :: Ajax | e) Response
-ajaxGet' req = makeAff (\error success -> ajaxGet success req)
+ajaxGet' :: forall e1 e2. Request -> Aff e1 (ajax :: Ajax | e2) Response
+ajaxGet' req = makeAff' (\error success -> ajaxGet success req)
 ```
 
 This eliminates "callback hell" and allows us to write code simply using `do` notation:
@@ -69,24 +71,18 @@ The `Aff` monad has error handling baked-in, so ordinarily you don't have to wor
 If you want to "attempt" a computation but recover from failure, you can use the `attempt` function:
 
 ```purescript
-attempt :: forall e a. Aff e a -> Aff e (Either Error a)
+attempt :: forall e1 e2 a. Aff e1 e2 a -> Aff e1 e2 (Either Error a)
 ```
 
 This returns an `Either Error a` you can use to recover gracefully from failure.
 
-With synchronous computations, sometimes the effect of throwing exceptions is embedded in the type. For example:
+The "opposite" of `attempt` is `throw`, which allows you to "throw" an exception:
 
 ```purescript
-saveFile :: forall e. String -> Bytes -> Eff (err :: Exception | e) Unit
+do resp <- Ajax.get "http://foo.com"
+   if resp.statusCode != 200 then throw myErr 
+   else pure resp.body
 ```
-
-If such a signature "leaks" into an asynchronous computation, you can remove the exception from the effect row by using the `catch` function:
-
-```purescript
-let asyncComp' = catch asyncComp
-```
-
-Once you `catch` the exception, any synchronous exception thrown by the code will now be propagated through the error channel of the asynchronous computation, and can be dealt with normally using `attempt`.
 
 # Documentation
 
