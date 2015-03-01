@@ -86,14 +86,6 @@ liftEff' :: forall e1 e2 a. Eff (err :: Exception | e2) a -> Aff e1 e2 (Either E
 
 Lifts a synchronous computation and makes explicit any failure from exceptions.
 
-#### `throw`
-
-``` purescript
-throw :: forall e1 e2 a. Error -> Aff e1 e2 a
-```
-
-Throws the specified exception through the error callback.
-
 #### `semigroupAff`
 
 ``` purescript
@@ -148,3 +140,13 @@ instance monadAff :: Monad (Aff e1 e2)
 ``` purescript
 instance monadEffAff :: MonadEff e2 (Aff e1 e2)
 ```
+
+
+#### `monadErrorAff`
+
+``` purescript
+instance monadErrorAff :: MonadError Error (Aff e1 e2)
+```
+
+Allows users to catch and throw errors on the error channel of the 
+asynchronous computation. See documentation in `purescript-transformers`.

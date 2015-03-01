@@ -2,7 +2,7 @@
 
 An asynchronous effect monad for PureScript.
 
-The moral equivalent of `ErrorT (ContT Unit (Eff (async :: Async e1 | e2)) a`, for synchronous effects `e1`, asynchronous effects `e2`, and value `a`.
+The moral equivalent of `ErrorT (ContT Unit (Eff (async :: Async e1 | e2)) a`, for synchronous effects `e2`, asynchronous effects `e1`, and value `a`.
 
 `Aff` lets you say goodbyte to monad transformers and callback hell!
 
@@ -41,7 +41,7 @@ For maximum type safety, `Aff` separates the effects of the synchronous part fro
 
 Asynchronous effects are represented with an `async :: Async e1` effect label, where `e1` is the row of effects for actions to occur at some point in the future.
 
-The library contains instances for `Semigroup`, `Monoid`, `Apply`, `Applicative`, `Bind`, `Monad`, and `MonadEff`. These instances allow you to compose `Aff`-ectful code as easily as `Eff`, as well as interop with existing `Eff` code.
+The library contains instances for `Semigroup`, `Monoid`, `Apply`, `Applicative`, `Bind`, `Monad`, `MonadEff`. and `MonadError`. These instances allow you to compose `Aff`-ectful code as easily as `Eff`, as well as interop with existing `Eff` code.
 
 ## Escaping Callback Hell
 
@@ -109,15 +109,18 @@ attempt :: forall e1 e2 a. Aff e1 e2 a -> Aff e1 e2 (Either Error a)
 
 This returns an `Either Error a` you can use to recover gracefully from failure.
 
-The "opposite" of `attempt` is `throw`, which allows you to "throw" an exception:
+`Aff` has a `MonadError` instance, which comes with two functions: `catchError`, and `throwError`.
+
+These are defined in [purescript-transformers](http://github.com/purescript/purescript-transformers).
+Here's an example of how you can use them:
 
 ```purescript
-do resp <- Ajax.get "http://foo.com"
-   if resp.statusCode != 200 then throw myErr 
+do resp <- (Ajax.get "http://foo.com") `catchError` (\e -> pure defaultResponse)
+   if resp.statusCode != 200 then throwError myErr 
    else pure resp.body
 ```
 
-Thrown exceptions are propagated on the error channel, and can be recovered from using `attempt`.
+Thrown exceptions are propagated on the error channel, and can be recovered from using `attempt` or `catchError`.
 
 # Documentation
 

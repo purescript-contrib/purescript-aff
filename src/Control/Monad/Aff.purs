@@ -8,17 +8,17 @@ module Control.Monad.Aff
   , liftEff'
   , makeAff
   , runAff
-  , throw
   )
   where 
 
-  import Data.Either(Either(..))
+  import Data.Either(Either(..), either)
   import Data.Monoid(Monoid, mempty)
   import Control.Apply
   import Control.Monad.Eff
   import Control.Monad.Eff.Exception(Error(), Exception(), catchException)
   import Control.Monad.Eff.Unsafe(unsafeInterleaveEff)
   import Control.Monad.Eff.Class
+  import Control.Monad.Error.Class(MonadError)
 
   -- | An effect constructor which accepts a row of effects. `Async e` 
   -- | represents the effect of asynchronous computations which perform effects 
@@ -64,10 +64,6 @@ module Control.Monad.Aff
   liftEff' :: forall e1 e2 a. Eff (err :: Exception | e2) a -> Aff e1 e2 (Either Error a)
   liftEff' eff = Aff (\_ f -> unsafeInterleaveEff (unsafeInterleaveEff (catchException (pure <$> Left) (Right <$> eff)) >>= f))
 
-  -- | Throws the specified exception through the error callback.
-  throw :: forall e1 e2 a. Error -> Aff e1 e2 a
-  throw e = Aff (\ex _ -> unsafeInterleaveEff (ex e))
-
   instance semigroupAff :: (Semigroup a) => Semigroup (Aff e1 e2 a) where
     (<>) a b = (<>) <$> a <*> b
 
@@ -90,3 +86,10 @@ module Control.Monad.Aff
 
   instance monadEffAff :: MonadEff e2 (Aff e1 e2) where
     liftEff fa = Aff (\_ h -> unsafeInterleaveEff (unsafeInterleaveEff fa >>= h))
+
+  -- | Allows users to catch and throw errors on the error channel of the 
+  -- | asynchronous computation. See documentation in `purescript-transformers`.
+  instance monadErrorAff :: MonadError Error (Aff e1 e2) where
+    throwError e = Aff (\ex _ -> unsafeInterleaveEff (ex e))
+
+    catchError aff ex = attempt aff >>= either ex pure
