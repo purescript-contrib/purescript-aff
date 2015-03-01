@@ -117,7 +117,7 @@ do resp <- Ajax.get "http://foo.com"
    else pure resp.body
 ```
 
-"Thrown" exceptions are handled using the error callback.
+Thrown exceptions are propagated on the error channel, and can be recovered from using `attempt`.
 
 # Documentation
 
