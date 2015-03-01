@@ -97,6 +97,14 @@ liftEff $ trace "Hello world!"
 
 This lets you write your whole program in `Aff`, and still call out to synchronous `Eff` code.
 
+If your `Eff` code throws exceptions (`err :: Exception`), you can remove the exceptions using `liftEff'`
+to bring the exception to the value level as an `Either Error a`:
+
+```purescript
+do e <- liftEff' myExcFunc
+   liftEff $ either (trace "caught exception") (trace "no exception") e
+```
+
 ## Exceptions
 
 The `Aff` monad has error handling baked in, so ordinarily you don't have to worry about it.
