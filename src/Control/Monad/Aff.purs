@@ -4,11 +4,9 @@ module Control.Monad.Aff
   , EffA()
   , PureAff(..)
   , attempt
-  , catch
-  , catch'
   , launchAff
+  , liftEff'
   , makeAff
-  , makeAff'
   , runAff
   , throw
   )
@@ -58,25 +56,13 @@ module Control.Monad.Aff
   makeAff :: forall e1 e2 a. ((Error -> Eff e1 Unit) -> (a -> Eff e1 Unit) -> EffA e1 e2 Unit) -> Aff e1 e2 a
   makeAff = Aff
 
-  makeAff' :: forall e1 e2 a. ((Error -> Eff e1 Unit) -> (a -> Eff e1 Unit) -> Eff e2 Unit) -> Aff e1 e2 a
-  makeAff' h = Aff (\ex f -> unsafeInterleaveEff (h ex f))
-
   -- | Promotes any error to the value level of the asynchronous monad.
   attempt :: forall e1 e2 a. Aff e1 e2 a -> Aff e1 e2 (Either Error a)
   attempt (Aff fa) = Aff (\_ f -> fa (Left >>> f) (Right >>> f))
 
-  -- | Removes synchronous exceptions by forcing them through the error callback.
-  -- | In order for this to work, the effects of the async computation must match
-  -- | the effects of the error callback. If this isn't the case, you can explicitly
-  -- | deal with the exception using `catch'`.
-  catch :: forall e a. Aff e (err :: Exception | e) a -> Aff e e a
-  catch (Aff fa) = Aff (\ex f -> catchException (unsafeInterleaveEff <$> ex) (fa ex f))
-
-  -- | Removes synchronous exceptions by passing them to the specified handler.
-  -- | The handler is allowed the same class of effects as the synchronous part
-  -- | of the asynchronous computation.
-  catch' :: forall e1 e2 a. (Error -> Eff e2 Unit) -> Aff e1 (err :: Exception | e2) a -> Aff e1 e2 a
-  catch' ex0 (Aff fa) = Aff (\ex f -> catchException (unsafeInterleaveEff <$> ex0) (fa ex f))
+  -- | Lifts a synchronous computation and makes explicit any failure from exceptions.
+  liftEff' :: forall e1 e2 a. Eff (err :: Exception | e2) a -> Aff e1 e2 (Either Error a)
+  liftEff' eff = Aff (\_ f -> unsafeInterleaveEff (unsafeInterleaveEff (catchException (pure <$> Left) (Right <$> eff)) >>= f))
 
   -- | Throws the specified exception through the error callback.
   throw :: forall e1 e2 a. Error -> Aff e1 e2 a

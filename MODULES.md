@@ -2,12 +2,24 @@
 
 ## Module Control.Monad.Aff
 
+#### `Async`
+
+``` purescript
+data Async :: # ! -> !
+```
+
+An effect constructor which accepts a row of effects. `Async e` 
+represents the effect of asynchronous computations which perform effects 
+`e` at some indeterminate point in the future.
+
 #### `EffA`
 
 ``` purescript
 type EffA e1 e2 a = Eff (async :: Async e1 | e2) a
 ```
 
+The `Eff` type for a computation which has asynchronous effects `e1` and
+synchronous effects `e2`.
 
 #### `Aff`
 
@@ -15,11 +27,10 @@ type EffA e1 e2 a = Eff (async :: Async e1 | e2) a
 data Aff e1 e2 a
 ```
 
-An asynchronous computation with effects `e`, which either errors or 
-produces a value of type `a`.
+A computation with asynchronous effects `e1` and synchronous effects 
+`e2`. The computation either errors or produces a value of type `a`.
 
-This is the moral equivalent of `ErrorT (ContT Unit (Eff e)) a`, but 
-faster, easier to use, and self-contained.
+This is moral equivalent of `ErrorT (ContT Unit (EffA e1 e2)) a`.
 
 The type implements `MonadEff` so it's easy to lift synchronous `Eff` 
 computations into this type. As a result, there's basically no reason to
@@ -67,15 +78,21 @@ attempt :: forall e1 e2 a. Aff e1 e2 a -> Aff e1 e2 (Either Error a)
 
 Promotes any error to the value level of the asynchronous monad.
 
-#### `catch`
+#### `liftEff'`
 
 ``` purescript
-catch :: forall e a. Aff e (err :: Exception | e) a -> Aff e e a
+liftEff' :: forall e1 e2 a. Eff (err :: Exception | e2) a -> Aff e1 e2 (Either Error a)
 ```
 
-Removes synchronous exceptions by forcing them through the error callback.
-In order for this to work, the effects of the async computation must match
-the effects of the error callback.
+Lifts a synchronous computation and makes explicit any failure from exceptions.
+
+#### `throw`
+
+``` purescript
+throw :: forall e1 e2 a. Error -> Aff e1 e2 a
+```
+
+Throws the specified exception through the error callback.
 
 #### `semigroupAff`
 
