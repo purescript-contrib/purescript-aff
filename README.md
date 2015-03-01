@@ -80,7 +80,7 @@ ajaxGet' req = makeAff (\error success -> ajaxGet success req)
 
 This eliminates callback hell and allows us to write code simply using `do` notation:
 
-```
+```purescript
 do response <- ajaxGet' req
    liftEff $ trace response.body
 ```
