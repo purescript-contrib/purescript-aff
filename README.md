@@ -37,11 +37,11 @@ This looks like ordinary, synchronous, imperative code, but actually operates as
 
 `Aff` represents a computation with a synchronous component (for example, initiating an AJAX request), as well as an asynchronous component (retrieving an error or success response).
 
-For maximum type safety, `Aff` separates the effects of the synchronous part from the asynchronous part. That is, an `Aff` computation may have one set of effects for its synchronous component, and another set for its asynchronous part. 
+For maximum type safety, `Aff` separates the effects of the synchronous part from the asynchronous part. That is, an `Aff` computation may have one set of effects for its synchronous part, and another set for its asynchronous part. 
 
-Asynchronous effects are represented with an `async :: Async e1` effect label, where `e1` is the row of effects for actions to occur at some point in the future.
+Asynchronous effects are represented with an `async :: Async e1` effect label, where `e1` is the row of effects for actions that will occur at some indefinite point in the future.
 
-The library contains instances for `Semigroup`, `Monoid`, `Apply`, `Applicative`, `Bind`, `Monad`, `MonadEff`. and `MonadError`. These instances allow you to compose `Aff`-ectful code as easily as `Eff`, as well as interop with existing `Eff` code.
+The library contains instances for `Semigroup`, `Monoid`, `Apply`, `Applicative`, `Bind`, `Monad`, `MonadEff`, and `MonadError`. These instances allow you to compose `Aff`-ectful code as easily as `Eff`, as well as interop with existing `Eff` code.
 
 ## Escaping Callback Hell
 
@@ -102,7 +102,7 @@ to bring the exception to the value level as an `Either Error a`:
 
 ```purescript
 do e <- liftEff' myExcFunc
-   liftEff $ either (trace "caught exception") (trace "no exception") e
+   liftEff $ either (const $ trace "Oh noes!") (const $ trace "Yays!") e
 ```
 
 ## Exceptions
@@ -116,6 +116,11 @@ attempt :: forall e1 e2 a. Aff e1 e2 a -> Aff e1 e2 (Either Error a)
 ```
 
 This returns an `Either Error a` you can use to recover gracefully from failure.
+
+```purescript
+do e <- attempt $ Ajax.get "http://foo.com"
+   liftEff $ either (const $ trace "Oh noes!") (const $ trace "Yays!") e
+```
 
 `Aff` has a `MonadError` instance, which comes with two functions: `catchError`, and `throwError`.
 
