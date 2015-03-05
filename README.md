@@ -2,9 +2,9 @@
 
 An asynchronous effect monad for PureScript.
 
-The moral equivalent of `ErrorT (ContT Unit (Eff (async :: Async e1 | e2)) a`, for synchronous effects `e2`, asynchronous effects `e1`, and value `a`.
+The moral equivalent of `ErrorT (ContT Unit (Eff (async :: Async | e)) a`, for effects `e`.
 
-`Aff` lets you say goodbyte to monad transformers and callback hell!
+`Aff` lets you say goodbye to monad transformers and callback hell!
 
 # Example
 
@@ -35,13 +35,7 @@ deleteBlankLines path =
 
 This looks like ordinary, synchronous, imperative code, but actually operates asynchronously without any callbacks (error handling is baked in so you only deal with it when you want to).
 
-`Aff` represents a computation with a synchronous component (for example, initiating an AJAX request), as well as an asynchronous component (retrieving an error or success response).
-
-For maximum type safety, `Aff` separates the effects of the synchronous part from the asynchronous part. That is, an `Aff` computation may have one set of effects for its synchronous part, and another set for its asynchronous part. 
-
-Asynchronous effects are represented with an `async :: Async e1` effect label, where `e1` is the row of effects for actions that will occur at some indefinite point in the future.
-
-The library contains instances for `Semigroup`, `Monoid`, `Apply`, `Applicative`, `Bind`, `Monad`, `MonadEff`, and `MonadError`. These instances allow you to compose `Aff`-ectful code as easily as `Eff`, as well as interop with existing `Eff` code.
+The library contains instances for `Semigroup`, `Monoid`, `Apply`, `Applicative`, `Bind`, `Monad`, `Alt`, `Plus`, `MonadPlus`, `MonadEff`, and `MonadError`. These instances allow you to compose `Aff`-ectful code as easily as `Eff`, as well as interop with existing `Eff` code.
 
 ## Escaping Callback Hell
 
@@ -50,7 +44,7 @@ Hopefully, you're using libraries that already use the `Aff` type, so you don't 
 If you're building your own library, or you have to interact with some native code that expects callbacks, then *purescript-aff* provides a `makeAff` function you can use:
 
 ```purescript
-makeAff :: forall e1 e2 a. ((Error -> Eff e1 Unit) -> (a -> Eff e1 Unit) -> EffA e1 e2 Unit) -> Aff e1 e2 a
+makeAff :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> EffA e Unit) -> Aff e a
 ```
 
 This function expects you to provide a handler, which should call a user-supplied error callback or success callback with the result of the asynchronous computation.
@@ -68,13 +62,13 @@ function ajaxGet(callback) { // accepts a callback
     }
   }
 }
-""" :: forall e1 e2. (Response -> Eff e1 Unit) -> Request -> EffA e1 (ajax :: Ajax | e2) Unit
+""" :: forall e. (Response -> Eff e Unit) -> Request -> EffA e Unit
 ```
 
 We can wrap this into an asynchronous computation like so:
 
 ```purescript
-ajaxGet' :: forall e1 e2. Request -> Aff e1 (ajax :: Ajax | e2) Response
+ajaxGet' :: forall e. Request -> Aff e Response
 ajaxGet' req = makeAff (\error success -> ajaxGet success req)
 ```
 
@@ -105,22 +99,33 @@ do e <- liftEff' myExcFunc
    liftEff $ either (const $ trace "Oh noes!") (const $ trace "Yays!") e
 ```
 
-## Exceptions
+## Failure
 
 The `Aff` monad has error handling baked in, so ordinarily you don't have to worry about it.
 
 If you want to attempt a computation but recover from failure, you can use the `attempt` function:
 
 ```purescript
-attempt :: forall e1 e2 a. Aff e1 e2 a -> Aff e1 e2 (Either Error a)
+attempt :: forall e a. Aff e a -> Aff e (Either Error a)
 ```
 
-This returns an `Either Error a` you can use to recover gracefully from failure.
+This returns an `Either Error a` that you can use to recover from failure.
 
 ```purescript
 do e <- attempt $ Ajax.get "http://foo.com"
    liftEff $ either (const $ trace "Oh noes!") (const $ trace "Yays!") e
 ```
+
+### Alt
+
+Because `Aff` has an `Alt` instance, you may also use the operator `<|>` to provide an alternative computation in the event of failure:
+
+```purescript
+do result <- Ajax.get "http://foo.com" <|> Ajax.get "http://bar.com"
+   return result
+```
+
+### MonadError
 
 `Aff` has a `MonadError` instance, which comes with two functions: `catchError`, and `throwError`.
 
