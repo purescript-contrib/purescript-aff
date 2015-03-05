@@ -3,6 +3,7 @@
   "dependencies": {
     "grunt": "~0.4.5",
     "grunt-purescript": "~0.6.0",
-    "grunt-contrib-clean": "~0.6.0"
+    "grunt-contrib-clean": "~0.6.0",
+    "grunt-jsvalidate": "~0.2.2"
   }
 }

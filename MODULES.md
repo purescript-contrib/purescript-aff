@@ -174,3 +174,71 @@ instance alternativeAff :: Alternative (Aff e)
 ``` purescript
 instance monadPlusAff :: MonadPlus (Aff e)
 ```
+
+
+
+## Module Control.Monad.Aff.Unsafe
+
+#### `unsafeInterleaveAff`
+
+``` purescript
+unsafeInterleaveAff :: forall e1 e2 a. Aff e1 a -> Aff e2 a
+```
+
+
+
+## Module Control.Monad.Aff.Var
+
+#### `VarF`
+
+``` purescript
+data VarF :: !
+```
+
+
+#### `Var`
+
+``` purescript
+data Var :: * -> *
+```
+
+
+#### `AffVar`
+
+``` purescript
+type AffVar e a = Aff (var :: VarF | e) a
+```
+
+
+#### `makeVar`
+
+``` purescript
+makeVar :: forall e a. AffVar e (Var a)
+```
+
+Makes a new asynchronous variable.
+
+#### `takeVar`
+
+``` purescript
+takeVar :: forall e a. Var a -> AffVar e a
+```
+
+Takes the next value from the asynchronous variable.
+
+#### `putVar`
+
+``` purescript
+putVar :: forall e a. Var a -> a -> AffVar e Unit
+```
+
+Puts a new value into the asynchronous variable. If the variable has
+been killed, this will result in an error.
+
+#### `killVar`
+
+``` purescript
+killVar :: forall e a. Var a -> Error -> AffVar e Unit
+```
+
+Kills an asynchronous variable.
