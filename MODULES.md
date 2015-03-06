@@ -190,6 +190,24 @@ instance monadPlusAff :: MonadPlus (Aff e)
 
 
 
+## Module Control.Monad.Aff.Class
+
+#### `MonadAff`
+
+``` purescript
+class MonadAff e m where
+  liftAff :: forall a. Aff e a -> m a
+```
+
+
+#### `monadAffAff`
+
+``` purescript
+instance monadAffAff :: MonadAff e (Aff e)
+```
+
+
+
 ## Module Control.Monad.Aff.Unsafe
 
 #### `unsafeInterleaveAff`
