@@ -67,6 +67,15 @@ makeAff :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> EffA e Uni
 Creates an asynchronous effect from a function that accepts error and 
 success callbacks.
 
+#### `forkAff`
+
+``` purescript
+forkAff :: forall e a. Aff e a -> Aff e Unit
+```
+
+Forks the specified asynchronous computation so subsequent monadic binds 
+will not block on the result of the computation.
+
 #### `attempt`
 
 ``` purescript

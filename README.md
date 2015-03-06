@@ -79,9 +79,9 @@ do response <- ajaxGet' req
    liftEff $ trace response.body
 ```
 
-## Converting from Eff
+## Eff
 
-All purely synchronous computations (`Eff`) can be converted to `Aff` computations with `liftEff` defined in `Control.Monad.Eff.Class` (see [here](https://github.com/paf31/purescript-monad-eff)).
+All purely synchronous computations (`Eff`) can be lifted to asynchronous computations with `liftEff` defined in `Control.Monad.Eff.Class` (see [here](https://github.com/paf31/purescript-monad-eff)).
 
 ```purescript
 import Control.Monad.Eff.Class
@@ -89,10 +89,9 @@ import Control.Monad.Eff.Class
 liftEff $ trace "Hello world!"
 ```
 
-This lets you write your whole program in `Aff`, and still call out to synchronous `Eff` code.
+This lets you write your whole program in `Aff`, and still call out to synchronous code.
 
-If your `Eff` code throws exceptions (`err :: Exception`), you can remove the exceptions using `liftEff'`
-to bring the exception to the value level as an `Either Error a`:
+If your `Eff` code throws exceptions (`err :: Exception`), you can remove the exceptions using `liftEff'`, which brings exceptions to the value level as an `Either Error a`:
 
 ```purescript
 do e <- liftEff' myExcFunc
@@ -139,6 +138,18 @@ do resp <- (Ajax.get "http://foo.com") `catchError` (\e -> pure defaultResponse)
 ```
 
 Thrown exceptions are propagated on the error channel, and can be recovered from using `attempt` or `catchError`.
+
+## Variables
+
+The `Control.Monad.Aff.Var` module contains asynchronous variables. These can 
+be used as low-level building blocks for asynchronous programs.
+
+```purescript
+do v <- makeVar
+   forkAff (myRunner v)
+   a <- takeVar
+   return a
+```
 
 # Documentation
 
