@@ -3,6 +3,7 @@ module Control.Monad.Aff
   , Async()
   , EffA()
   , PureAff(..)
+  , apathize
   , attempt
   , forkAff
   , later
@@ -76,12 +77,16 @@ module Control.Monad.Aff
         return function(success) {
           return function() {
             try {
-              aff(function(){})(function(){})();
+              var v = function(){return function(){};};
 
-              success({})();
+              aff(v)(v)();
             } catch (e) {
               error(e)();
+
+              return;
             }
+
+            success({})();
           }
         }
       }
@@ -91,6 +96,10 @@ module Control.Monad.Aff
   -- | Promotes any error to the value level of the asynchronous monad.
   attempt :: forall e a. Aff e a -> Aff e (Either Error a)
   attempt (Aff fa) = Aff (\_ f -> fa (Left >>> f) (Right >>> f))
+
+  -- | Ignores any errors.
+  apathize :: forall e a. Aff e a -> Aff e Unit
+  apathize a = const unit <$> attempt a
 
   -- | Lifts a synchronous computation and makes explicit any failure from exceptions.
   liftEff' :: forall e a. Eff (err :: Exception | e) a -> Aff e (Either Error a)

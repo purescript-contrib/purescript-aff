@@ -4,6 +4,7 @@ module Examples where
   import Data.Either(either)
 
   import Control.Monad.Aff
+  import Control.Monad.Aff.Var
   import Control.Monad.Eff.Class(liftEff)
   import Control.Monad.Eff.Exception(error)
   import Control.Monad.Error.Class(throwError)
@@ -28,16 +29,39 @@ module Examples where
     }
   """ :: forall e. Number -> Aff (time :: Time | e) Unit
 
+  type Test = forall e. Aff (trace :: Trace | e) Unit
+  type TestVar = forall e. Aff (trace :: Trace, var :: VarFx | e) Unit
+
+  test_sequencing :: forall e. Number -> Aff (trace :: Trace, time :: Time | e) Unit
   test_sequencing 0 = liftEff $ trace "Done"
   test_sequencing n = do
     timeout 1000
     liftEff $ trace (show n ++ " seconds left")
     test_sequencing (n - 1)
 
-  test_attempt :: forall e. Aff (trace :: Trace | e) Unit
+  test_attempt :: Test
   test_attempt = do
     e <- attempt (throwError (error "Oh noes!"))
-    liftEff $ either (const $ trace "Exception caught") (const $ trace "Exception NOT caught!!!") e
+    liftEff $ either (const $ trace "Success: Exception caught") (const $ trace "Failure: Exception NOT caught!!!") e
+
+  test_apathize :: Test
+  test_apathize = do
+    apathize $ throwError (error "Oh noes!")
+    liftEff $ trace "Success: Didn't care about return value"
+
+  test_putTakeVar :: TestVar
+  test_putTakeVar = do
+    v <- makeVar
+    forkAff (later $ putVar v 1.0)
+    a <- takeVar v 
+    liftEff $ trace ("Success: Value " ++ show a)
+
+  test_killVar :: TestVar
+  test_killVar = do
+    v <- makeVar
+    killVar v (error "DOA")
+    e <- attempt $ takeVar v
+    liftEff $ either (const $ trace "Success: Killed var dead") (const $ trace "Failure: Oh noes, Var survived!") e
 
   main = launchAff $ do
     liftEff $ trace "Testing sequencing"
@@ -47,6 +71,13 @@ module Examples where
     test_attempt
 
     liftEff $ trace "Testing later"
-    later $ liftEff $ trace "It happend later"
+    later $ liftEff $ trace "Success: It happened later"
 
-    
+    liftEff $ trace "Testing apathize"
+    test_apathize
+
+    liftEff $ trace "Testing Var - putVar, takeVar"
+    test_putTakeVar
+
+    liftEff $ trace "Testing killVar"
+    test_killVar

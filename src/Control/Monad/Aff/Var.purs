@@ -2,7 +2,7 @@
 module Control.Monad.Aff.Var
   ( AffVar()
   , Var()
-  , VarF()
+  , VarFx()
   , killVar
   , makeVar
   , putVar
@@ -12,11 +12,11 @@ module Control.Monad.Aff.Var
   import Control.Monad.Aff
   import Control.Monad.Eff.Exception(Error())
 
-  foreign import data VarF :: !
+  foreign import data VarFx :: !
 
   foreign import data Var :: * -> *
 
-  type AffVar e a = Aff (var :: VarF | e) a
+  type AffVar e a = Aff (var :: VarFx | e) a
 
   -- | Makes a new asynchronous variable.
   foreign import makeVar """
@@ -27,7 +27,7 @@ module Control.Monad.Aff.Var
             consumers: [],
             producers: [],
             error: undefined 
-          });
+          })();
         }
       }
     }
@@ -65,19 +65,21 @@ module Control.Monad.Aff.Var
               if (avar.error !== undefined) {
                 error(avar.error)();
               } else if (avar.consumers.length == 0) {
-                avar.producer.push(function(error, success) {
+                avar.producers.push(function(error, success) {
                   success(a)();
                 });
               } else {
-                var consumer = avar.shift();
+                var consumer = avar.consumers.shift();
 
                 try {
                   consumer.success(a)();
-
-                  success({})();
                 } catch (e) {
-                  error(e)();                  
+                  error(e)();
+
+                  return;                  
                 }
+
+                success({})();
               }
             }
           }
@@ -101,7 +103,7 @@ module Control.Monad.Aff.Var
                 avar.error = e;
 
                 while (avar.consumers.length > 0) {
-                  var consumer = avar.shift();
+                  var consumer = avar.consumers.shift();
 
                   try {
                     consumer.error(e)();

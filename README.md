@@ -100,7 +100,7 @@ do e <- liftEff' myExcFunc
    liftEff $ either (const $ trace "Oh noes!") (const $ trace "Yays!") e
 ```
 
-## Failure
+## Dealing with Failure
 
 The `Aff` monad has error handling baked in, so ordinarily you don't have to worry about it.
 
@@ -150,7 +150,7 @@ block the current thread of execution:
 forkAff myAff
 ```
 
-Because Javascript is single-threaded, forking does not actually cause the computation to be run in a separate thread, it merely means the subsequent chain of computations will be executed without first waiting for the forked computation to complete.
+Because Javascript is single-threaded, forking does not actually cause the computation to be run in a separate thread. Forking just allows the subsequent actions to execute without waiting for the forked computation to complete.
 
 ## Variables
 
@@ -159,9 +159,9 @@ be used as low-level building blocks for asynchronous programs.
 
 ```purescript
 do v <- makeVar
-   forkAff (myRunner v)
-   a <- takeVar
-   return a
+   forkAff (later $ putVar v 1.0)
+   a <- takeVar v 
+   liftEff $ trace ("Succeeded with " ++ show a)
 ```
 
 # Documentation
