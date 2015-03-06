@@ -150,7 +150,9 @@ block the current thread of execution:
 forkAff myAff
 ```
 
-Because Javascript is single-threaded, forking does not actually cause the computation to be run in a separate thread. Forking just allows the subsequent actions to execute without waiting for the forked computation to complete.
+Because Javascript is single-threaded, forking does not actually cause the 
+computation to be run in a separate thread. Forking just allows the subsequent 
+actions to execute without waiting for the forked computation to complete.
 
 ## Variables
 

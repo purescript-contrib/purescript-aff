@@ -5,6 +5,9 @@ module Examples where
 
   import Control.Monad.Aff
   import Control.Monad.Aff.Var
+  import Control.Monad.Aff.Par
+  import Control.Apply((*>))
+  import Control.Alt(Alt, (<|>))
   import Control.Monad.Eff.Class(liftEff)
   import Control.Monad.Eff.Exception(error)
   import Control.Monad.Error.Class(throwError)
@@ -31,6 +34,7 @@ module Examples where
 
   type Test = forall e. Aff (trace :: Trace | e) Unit
   type TestVar = forall e. Aff (trace :: Trace, var :: VarFx | e) Unit
+  type TestVarTime = forall e. Aff (trace :: Trace, var :: VarFx, time :: Time | e) Unit
 
   test_sequencing :: forall e. Number -> Aff (trace :: Trace, time :: Time | e) Unit
   test_sequencing 0 = liftEff $ trace "Done"
@@ -63,6 +67,13 @@ module Examples where
     e <- attempt $ takeVar v
     liftEff $ either (const $ trace "Success: Killed var dead") (const $ trace "Failure: Oh noes, Var survived!") e
 
+  test_parRace :: TestVarTime
+  test_parRace = do
+    s <- runPar $ (Par (timeout  100 *> pure "Success: Early bird got the worm") <|> 
+                   Par (timeout 1000 *> pure "Failure: Late bird got the worm"))
+    liftEff $ trace s
+
+
   main = launchAff $ do
     liftEff $ trace "Testing sequencing"
     test_sequencing 3
@@ -81,3 +92,6 @@ module Examples where
 
     liftEff $ trace "Testing killVar"
     test_killVar
+
+    liftEff $ trace "Testing Par (<|>)"
+    test_parRace

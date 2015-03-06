@@ -5,6 +5,8 @@ module Control.Monad.Aff.Var
   , VarFx()
   , killVar
   , makeVar
+  , makeVar'
+  , modifyVar
   , putVar
   , takeVar
   ) where
@@ -32,6 +34,13 @@ module Control.Monad.Aff.Var
       }
     }
   """ :: forall e a. AffVar e (Var a)
+
+  -- | Makes a variable and sets it to some value.
+  makeVar' :: forall e a. a -> AffVar e (Var a)
+  makeVar' a = do
+    v <- makeVar 
+    putVar v a
+    return $ v
 
   -- | Takes the next value from the asynchronous variable.
   foreign import takeVar """
@@ -87,6 +96,10 @@ module Control.Monad.Aff.Var
       }
     }
   """ :: forall e a. Var a -> a -> AffVar e Unit
+
+  -- | Modifies an asynchronous variable.
+  modifyVar :: forall e a. (a -> a) -> Var a -> AffVar e Unit
+  modifyVar f v = takeVar v >>= (f >>> putVar v)
 
   -- | Kills an asynchronous variable.
   foreign import killVar """

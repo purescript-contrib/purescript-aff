@@ -71,27 +71,8 @@ module Control.Monad.Aff
 
   -- | Forks the specified asynchronous computation so subsequent monadic binds 
   -- | will not block on the result of the computation.
-  foreign import forkAff """
-    function forkAff(aff) {
-      return function(error) {
-        return function(success) {
-          return function() {
-            try {
-              var v = function(){return function(){};};
-
-              aff(v)(v)();
-            } catch (e) {
-              error(e)();
-
-              return;
-            }
-
-            success({})();
-          }
-        }
-      }
-    }
-  """ :: forall e a. Aff e a -> Aff e Unit
+  forkAff :: forall e a. Aff e a -> Aff e Unit
+  forkAff aff = Aff (\_ f -> launchAff aff *> unsafeInterleaveEff (f unit))
 
   -- | Promotes any error to the value level of the asynchronous monad.
   attempt :: forall e a. Aff e a -> Aff e (Either Error a)

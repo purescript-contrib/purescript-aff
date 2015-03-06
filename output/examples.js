@@ -29,6 +29,20 @@ PS.Prelude = (function () {
     }
     ;
     
+    function refEq(r1) {
+      return function(r2) {
+        return r1 === r2;
+      };
+    }
+    ;
+    
+    function refIneq(r1) {
+      return function(r2) {
+        return r1 !== r2;
+      };
+    }
+    ;
+    
     function concatString(s1) {
       return function(s2) {
         return s1 + s2;
@@ -40,6 +54,10 @@ PS.Prelude = (function () {
     };
     var Semigroupoid = function ($less$less$less) {
         this["<<<"] = $less$less$less;
+    };
+    var Category = function (__superclass_Prelude$dotSemigroupoid_0, id) {
+        this["__superclass_Prelude.Semigroupoid_0"] = __superclass_Prelude$dotSemigroupoid_0;
+        this.id = id;
     };
     var Show = function (show) {
         this.show = show;
@@ -81,11 +99,18 @@ PS.Prelude = (function () {
         this["-"] = $minus;
         this["__superclass_Prelude.Semiring_0"] = __superclass_Prelude$dotSemiring_0;
     };
+    var Eq = function ($div$eq, $eq$eq) {
+        this["/="] = $div$eq;
+        this["=="] = $eq$eq;
+    };
     var Semigroup = function ($less$greater) {
         this["<>"] = $less$greater;
     };
     var $greater$greater$eq = function (dict) {
         return dict[">>="];
+    };
+    var $eq$eq = function (dict) {
+        return dict["=="];
     };
     var $less$greater = function (dict) {
         return dict["<>"];
@@ -115,6 +140,13 @@ PS.Prelude = (function () {
     };
     var $plus$plus = function (__dict_Semigroup_2) {
         return $less$greater(__dict_Semigroup_2);
+    };
+    
+    /**
+     *  | Addition and multiplication
+     */
+    var $plus = function (dict) {
+        return dict["+"];
     };
     var $dollar = function (f) {
         return function (x) {
@@ -151,15 +183,24 @@ PS.Prelude = (function () {
             };
         };
     };
+    var id = function (dict) {
+        return dict.id;
+    };
+    var eqNumber = new Eq(refIneq, refEq);
     
     /**
      *  | Returns its first argument and ignores its second.
      */
-    var $$const = function (_30) {
-        return function (_31) {
-            return _30;
+    var $$const = function (_37) {
+        return function (_38) {
+            return _37;
         };
     };
+    var categoryArr = new Category(function () {
+        return semigroupoidArr;
+    }, function (x) {
+        return x;
+    });
     var ap = function (__dict_Monad_16) {
         return function (f) {
             return function (a) {
@@ -174,6 +215,7 @@ PS.Prelude = (function () {
     return {
         Unit: Unit, 
         Semigroup: Semigroup, 
+        Eq: Eq, 
         Ring: Ring, 
         Semiring: Semiring, 
         Monad: Monad, 
@@ -182,11 +224,16 @@ PS.Prelude = (function () {
         Apply: Apply, 
         Functor: Functor, 
         Show: Show, 
+        Category: Category, 
         Semigroupoid: Semigroupoid, 
         unit: unit, 
         "++": $plus$plus, 
         "<>": $less$greater, 
+        refIneq: refIneq, 
+        refEq: refEq, 
+        "==": $eq$eq, 
         "-": $minus, 
+        "+": $plus, 
         ap: ap, 
         "return": $$return, 
         ">>=": $greater$greater$eq, 
@@ -196,13 +243,16 @@ PS.Prelude = (function () {
         "<$>": $less$dollar$greater, 
         show: show, 
         "$": $dollar, 
+        id: id, 
         ">>>": $greater$greater$greater, 
         "<<<": $less$less$less, 
         "const": $$const, 
         semigroupoidArr: semigroupoidArr, 
+        categoryArr: categoryArr, 
         showNumber: showNumber, 
         semiringNumber: semiringNumber, 
         ringNumber: ringNumber, 
+        eqNumber: eqNumber, 
         semigroupString: semigroupString
     };
 })();
@@ -297,6 +347,37 @@ PS.Debug_Trace = (function () {
     };
 })();
 var PS = PS || {};
+PS.Control_Apply = (function () {
+    "use strict";
+    var Prelude = PS.Prelude;
+    var $times$greater = function (__dict_Apply_46) {
+        return function (a) {
+            return function (b) {
+                return Prelude["<*>"](__dict_Apply_46)(Prelude["<$>"](__dict_Apply_46["__superclass_Prelude.Functor_0"]())(Prelude["const"](Prelude.id(Prelude.categoryArr)))(a))(b);
+            };
+        };
+    };
+    return {
+        "*>": $times$greater
+    };
+})();
+var PS = PS || {};
+PS.Control_Alt = (function () {
+    "use strict";
+    var Prelude = PS.Prelude;
+    var Alt = function ($less$bar$greater, __superclass_Prelude$dotFunctor_0) {
+        this["<|>"] = $less$bar$greater;
+        this["__superclass_Prelude.Functor_0"] = __superclass_Prelude$dotFunctor_0;
+    };
+    var $less$bar$greater = function (dict) {
+        return dict["<|>"];
+    };
+    return {
+        Alt: Alt, 
+        "<|>": $less$bar$greater
+    };
+})();
+var PS = PS || {};
 PS.Data_Either = (function () {
     "use strict";
     var Prelude = PS.Prelude;
@@ -319,14 +400,14 @@ PS.Data_Either = (function () {
         };
         return Right;
     })();
-    var either = function (_72) {
-        return function (_73) {
-            return function (_74) {
-                if (_74 instanceof Left) {
-                    return _72(_74.value0);
+    var either = function (_79) {
+        return function (_80) {
+            return function (_81) {
+                if (_81 instanceof Left) {
+                    return _79(_81.value0);
                 };
-                if (_74 instanceof Right) {
-                    return _73(_74.value0);
+                if (_81 instanceof Right) {
+                    return _80(_81.value0);
                 };
                 throw new Error("Failed pattern match");
             };
@@ -418,12 +499,12 @@ var PS = PS || {};
 PS.Control_Monad_Aff = (function () {
     "use strict";
     var Prelude = PS.Prelude;
+    var Control_Apply = PS.Control_Apply;
     var Control_Monad_Eff_Unsafe = PS.Control_Monad_Eff_Unsafe;
     var Control_Monad_Eff_Exception = PS.Control_Monad_Eff_Exception;
     var Data_Monoid = PS.Data_Monoid;
     var Data_Either = PS.Data_Either;
     var Control_Monad_Error_Class = PS.Control_Monad_Error_Class;
-    var Control_Apply = PS.Control_Apply;
     var Control_Alt = PS.Control_Alt;
     var Control_Plus = PS.Control_Plus;
     var Control_Alternative = PS.Control_Alternative;
@@ -436,27 +517,6 @@ PS.Control_Monad_Aff = (function () {
         return function(success) {
           return function() {
             setTimeout(aff(error)(success), 0);
-          }
-        }
-      }
-    }
-  ;
-    
-    function forkAff(aff) {
-      return function(error) {
-        return function(success) {
-          return function() {
-            try {
-              var v = function(){return function(){};};
-
-              aff(v)(v)();
-            } catch (e) {
-              error(e)();
-
-              return;
-            }
-
-            success({})();
           }
         }
       }
@@ -477,10 +537,10 @@ PS.Control_Monad_Aff = (function () {
      *  | Runs the asynchronous computation. You must supply an error callback and a 
      *  | success callback.
      */
-    var runAff = function (_285) {
-        return function (_286) {
-            return function (_287) {
-                return _287(_285)(_286);
+    var runAff = function (_293) {
+        return function (_294) {
+            return function (_295) {
+                return _295(_293)(_294);
             };
         };
     };
@@ -489,15 +549,15 @@ PS.Control_Monad_Aff = (function () {
      *  | Converts the asynchronous computation into a synchronous one. All values 
      *  | and errors are ignored.
      */
-    var launchAff = function (_284) {
-        return _284(Prelude["const"](Prelude.pure(Control_Monad_Eff.applicativeEff)(Prelude.unit)))(Prelude["const"](Prelude.pure(Control_Monad_Eff.applicativeEff)(Prelude.unit)));
+    var launchAff = function (_292) {
+        return _292(Prelude["const"](Prelude.pure(Control_Monad_Eff.applicativeEff)(Prelude.unit)))(Prelude["const"](Prelude.pure(Control_Monad_Eff.applicativeEff)(Prelude.unit)));
     };
-    var functorAff = new Prelude.Functor(function (_289) {
-        return function (_290) {
+    var functorAff = new Prelude.Functor(function (_297) {
+        return function (_298) {
             return function (ex) {
                 return function (h) {
-                    return _290(ex)(function (a) {
-                        return h(_289(a));
+                    return _298(ex)(function (a) {
+                        return h(_297(a));
                     });
                 };
             };
@@ -505,21 +565,33 @@ PS.Control_Monad_Aff = (function () {
     });
     
     /**
-     *  | Promotes any error to the value level of the asynchronous monad.
+     *  | Forks the specified asynchronous computation so subsequent monadic binds 
+     *  | will not block on the result of the computation.
      */
-    var attempt = function (_288) {
-        return function (_279) {
+    var forkAff = function (aff) {
+        return function (_286) {
             return function (f) {
-                return _288(Prelude[">>>"](Prelude.semigroupoidArr)(Data_Either.Left.create)(f))(Prelude[">>>"](Prelude.semigroupoidArr)(Data_Either.Right.create)(f));
+                return Control_Apply["*>"](Control_Monad_Eff.applyEff)(launchAff(aff))(Control_Monad_Eff_Unsafe.unsafeInterleaveEff(f(Prelude.unit)));
             };
         };
     };
-    var applyAff = new Prelude.Apply(function (_291) {
-        return function (_292) {
+    
+    /**
+     *  | Promotes any error to the value level of the asynchronous monad.
+     */
+    var attempt = function (_296) {
+        return function (_287) {
+            return function (f) {
+                return _296(Prelude[">>>"](Prelude.semigroupoidArr)(Data_Either.Left.create)(f))(Prelude[">>>"](Prelude.semigroupoidArr)(Data_Either.Right.create)(f));
+            };
+        };
+    };
+    var applyAff = new Prelude.Apply(function (_299) {
+        return function (_300) {
             return function (ex) {
                 return function (h) {
-                    return _291(ex)(function (f) {
-                        return Control_Monad_Eff_Unsafe.unsafeInterleaveEff(_292(ex)(function (a) {
+                    return _299(ex)(function (f) {
+                        return Control_Monad_Eff_Unsafe.unsafeInterleaveEff(_300(ex)(function (a) {
                             return h(f(a));
                         }));
                     });
@@ -529,14 +601,14 @@ PS.Control_Monad_Aff = (function () {
     }, function () {
         return functorAff;
     });
-    var bindAff = new Prelude.Bind(function (_293) {
-        return function (_294) {
+    var bindAff = new Prelude.Bind(function (_301) {
+        return function (_302) {
             return function (ex) {
                 return function (h) {
-                    return _293(ex)(function (a) {
+                    return _301(ex)(function (a) {
                         return Control_Monad_Eff_Unsafe.unsafeInterleaveEff(runAff(ex)(function (b) {
                             return h(b);
-                        })(_294(a)));
+                        })(_302(a)));
                     });
                 };
             };
@@ -547,7 +619,7 @@ PS.Control_Monad_Aff = (function () {
     var applicativeAff = new Prelude.Applicative(function () {
         return applyAff;
     }, function (v) {
-        return function (_281) {
+        return function (_289) {
             return function (h) {
                 return Control_Monad_Eff_Unsafe.unsafeInterleaveEff(h(v));
             };
@@ -561,7 +633,7 @@ PS.Control_Monad_Aff = (function () {
     var monadEffAff = new Control_Monad_Eff_Class.MonadEff(function () {
         return monadAff;
     }, function (fa) {
-        return function (_282) {
+        return function (_290) {
             return function (h) {
                 return Control_Monad_Eff_Unsafe.unsafeInterleaveEff(Prelude[">>="](Control_Monad_Eff.bindEff)(Control_Monad_Eff_Unsafe.unsafeInterleaveEff(fa))(h));
             };
@@ -578,7 +650,7 @@ PS.Control_Monad_Aff = (function () {
         };
     }, function (e) {
         return function (ex) {
-            return function (_283) {
+            return function (_291) {
                 return Control_Monad_Eff_Unsafe.unsafeInterleaveEff(ex(e));
             };
         };
@@ -707,11 +779,93 @@ PS.Control_Monad_Aff_Var = (function () {
       }
     }
   ;
+    
+    /**
+     *  | Makes a variable and sets it to some value.
+     */
+    var makeVar$prime = function (a) {
+        return Prelude[">>="](Control_Monad_Aff.bindAff)(makeVar)(function (_21) {
+            return Prelude[">>="](Control_Monad_Aff.bindAff)(putVar(_21)(a))(function () {
+                return Prelude["return"](Control_Monad_Aff.monadAff)(_21);
+            });
+        });
+    };
     return {
         takeVar: takeVar, 
         putVar: putVar, 
+        "makeVar'": makeVar$prime, 
         makeVar: makeVar, 
         killVar: killVar
+    };
+})();
+var PS = PS || {};
+PS.Control_Monad_Aff_Par = (function () {
+    "use strict";
+    var Control_Alt = PS.Control_Alt;
+    var Prelude = PS.Prelude;
+    var Data_Monoid = PS.Data_Monoid;
+    var Control_Monad_Aff_Var = PS.Control_Monad_Aff_Var;
+    var Control_Monad_Aff = PS.Control_Monad_Aff;
+    var Data_Either = PS.Data_Either;
+    var Control_Plus = PS.Control_Plus;
+    var Control_Apply = PS.Control_Apply;
+    var Control_Alternative = PS.Control_Alternative;
+    var Control_Monad_Error_Class = PS.Control_Monad_Error_Class;
+    var Par = function (x) {
+        return x;
+    };
+    
+    /**
+     *  | Extracts the `Aff` from the `Par`.
+     */
+    var runPar = function (_303) {
+        return _303;
+    };
+    var functorPar = new Prelude.Functor(function (_304) {
+        return function (_305) {
+            return Prelude["<$>"](Control_Monad_Aff.functorAff)(_304)(_305);
+        };
+    });
+    var altPar = new Control_Alt.Alt(function (_308) {
+        return function (_309) {
+            var maybeKill = function (va) {
+                return function (ve) {
+                    return function (err) {
+                        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_Var.takeVar(ve))(function (_24) {
+                            return Prelude[">>="](Control_Monad_Aff.bindAff)((function () {
+                                var _512 = _24 === 1;
+                                if (_512) {
+                                    return Control_Monad_Aff_Var.killVar(va)(err);
+                                };
+                                if (!_512) {
+                                    return Prelude["return"](Control_Monad_Aff.monadAff)(Prelude.unit);
+                                };
+                                throw new Error("Failed pattern match");
+                            })())(function () {
+                                return Control_Monad_Aff_Var.putVar(ve)(_24 + 1);
+                            });
+                        });
+                    };
+                };
+            };
+            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_Var.makeVar)(function (_26) {
+                return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_Var["makeVar'"](0))(function (_25) {
+                    return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.forkAff(Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(_308))(Data_Either.either(maybeKill(_26)(_25))(Control_Monad_Aff_Var.putVar(_26)))))(function () {
+                        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.forkAff(Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(_309))(Data_Either.either(maybeKill(_26)(_25))(Control_Monad_Aff_Var.putVar(_26)))))(function () {
+                            return Control_Monad_Aff_Var.takeVar(_26);
+                        });
+                    });
+                });
+            });
+        };
+    }, function () {
+        return functorPar;
+    });
+    return {
+        Par: Par, 
+        runPar: runPar, 
+        functorPar: functorPar, 
+        altPar: altPar
     };
 })();
 var PS = PS || {};
@@ -725,6 +879,9 @@ PS.Examples = (function () {
     var Control_Monad_Eff_Exception = PS.Control_Monad_Eff_Exception;
     var Data_Either = PS.Data_Either;
     var Control_Monad_Aff_Var = PS.Control_Monad_Aff_Var;
+    var Control_Monad_Aff_Par = PS.Control_Monad_Aff_Par;
+    var Control_Alt = PS.Control_Alt;
+    var Control_Apply = PS.Control_Apply;
     
     function timeout(time) {
       return function(error) {
@@ -742,32 +899,35 @@ PS.Examples = (function () {
       }
     }
   ;
-    var test_sequencing = function (_295) {
-        if (_295 === 0) {
+    var test_sequencing = function (_479) {
+        if (_479 === 0) {
             return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Done"));
         };
         return Prelude[">>="](Control_Monad_Aff.bindAff)(timeout(1000))(function () {
-            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace(Prelude.show(Prelude.showNumber)(_295) + " seconds left")))(function () {
-                return test_sequencing(_295 - 1);
+            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace(Prelude.show(Prelude.showNumber)(_479) + " seconds left")))(function () {
+                return test_sequencing(_479 - 1);
             });
         });
     };
-    var test_putTakeVar = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_Var.makeVar)(function (_23) {
-        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.forkAff(Control_Monad_Aff.later(Control_Monad_Aff_Var.putVar(_23)(1.0))))(function () {
-            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_Var.takeVar(_23))(function (_22) {
-                return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Success: Value " + Prelude.show(Prelude.showNumber)(_22)));
+    var test_putTakeVar = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_Var.makeVar)(function (_33) {
+        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.forkAff(Control_Monad_Aff.later(Control_Monad_Aff_Var.putVar(_33)(1.0))))(function () {
+            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_Var.takeVar(_33))(function (_32) {
+                return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Success: Value " + Prelude.show(Prelude.showNumber)(_32)));
             });
         });
     });
-    var test_killVar = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_Var.makeVar)(function (_25) {
-        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_Var.killVar(_25)(Control_Monad_Eff_Exception.error("DOA")))(function () {
-            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(Control_Monad_Aff_Var.takeVar(_25)))(function (_24) {
-                return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Data_Either.either(Prelude["const"](Debug_Trace.trace("Success: Killed var dead")))(Prelude["const"](Debug_Trace.trace("Failure: Oh noes, Var survived!")))(_24));
+    var test_parRace = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_Par.runPar(Control_Alt["<|>"](Control_Monad_Aff_Par.altPar)(Control_Apply["*>"](Control_Monad_Aff.applyAff)(timeout(100))(Prelude.pure(Control_Monad_Aff.applicativeAff)("Success: Early bird got the worm")))(Control_Apply["*>"](Control_Monad_Aff.applyAff)(timeout(1000))(Prelude.pure(Control_Monad_Aff.applicativeAff)("Failure: Late bird got the worm")))))(function (_36) {
+        return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace(_36));
+    });
+    var test_killVar = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_Var.makeVar)(function (_35) {
+        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_Var.killVar(_35)(Control_Monad_Eff_Exception.error("DOA")))(function () {
+            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(Control_Monad_Aff_Var.takeVar(_35)))(function (_34) {
+                return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Data_Either.either(Prelude["const"](Debug_Trace.trace("Success: Killed var dead")))(Prelude["const"](Debug_Trace.trace("Failure: Oh noes, Var survived!")))(_34));
             });
         });
     });
-    var test_attempt = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(Control_Monad_Error_Class.throwError(Control_Monad_Aff.monadErrorAff)(Control_Monad_Eff_Exception.error("Oh noes!"))))(function (_21) {
-        return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Data_Either.either(Prelude["const"](Debug_Trace.trace("Success: Exception caught")))(Prelude["const"](Debug_Trace.trace("Failure: Exception NOT caught!!!")))(_21));
+    var test_attempt = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(Control_Monad_Error_Class.throwError(Control_Monad_Aff.monadErrorAff)(Control_Monad_Eff_Exception.error("Oh noes!"))))(function (_31) {
+        return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Data_Either.either(Prelude["const"](Debug_Trace.trace("Success: Exception caught")))(Prelude["const"](Debug_Trace.trace("Failure: Exception NOT caught!!!")))(_31));
     });
     var test_apathize = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.apathize(Control_Monad_Error_Class.throwError(Control_Monad_Aff.monadErrorAff)(Control_Monad_Eff_Exception.error("Oh noes!"))))(function () {
         return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Success: Didn't care about return value"));
@@ -777,13 +937,17 @@ PS.Examples = (function () {
             return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing attempt")))(function () {
                 return Prelude[">>="](Control_Monad_Aff.bindAff)(test_attempt)(function () {
                     return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing later")))(function () {
-                        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.later(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("It happend later"))))(function () {
+                        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.later(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Success: It happened later"))))(function () {
                             return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing apathize")))(function () {
                                 return Prelude[">>="](Control_Monad_Aff.bindAff)(test_apathize)(function () {
                                     return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing Var - putVar, takeVar")))(function () {
                                         return Prelude[">>="](Control_Monad_Aff.bindAff)(test_putTakeVar)(function () {
                                             return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing killVar")))(function () {
-                                                return test_killVar;
+                                                return Prelude[">>="](Control_Monad_Aff.bindAff)(test_killVar)(function () {
+                                                    return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing Par (<|>)")))(function () {
+                                                        return test_parRace;
+                                                    });
+                                                });
                                             });
                                         });
                                     });
@@ -797,6 +961,7 @@ PS.Examples = (function () {
     }));
     return {
         main: main, 
+        test_parRace: test_parRace, 
         test_killVar: test_killVar, 
         test_putTakeVar: test_putTakeVar, 
         test_apathize: test_apathize, 
