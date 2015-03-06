@@ -40,7 +40,7 @@ module Control.Monad.Aff.Var
   makeVar' a = do
     v <- makeVar 
     putVar v a
-    return $ v
+    return v
 
   -- | Takes the next value from the asynchronous variable.
   foreign import takeVar """
@@ -71,6 +71,9 @@ module Control.Monad.Aff.Var
         return function(error) {
           return function(success) {
             return function() {
+              console.log("putting " + a + " into var: ");
+              console.log(avar);
+              
               if (avar.error !== undefined) {
                 error(avar.error)();
               } else if (avar.consumers.length == 0) {
