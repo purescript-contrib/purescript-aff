@@ -29,10 +29,6 @@ produces a value of type `a`.
 
 This is moral equivalent of `ErrorT (ContT Unit (EffA e)) a`.
 
-The type implements `MonadEff` so it's easy to lift synchronous `Eff` 
-computations into this type. As a result, there's basically no reason to
-use `Eff` in a program that has some asynchronous computations.
-
 #### `PureAff`
 
 ``` purescript
@@ -46,8 +42,8 @@ type PureAff a = forall e. Aff e a
 launchAff :: forall e a. Aff e a -> EffA e Unit
 ```
 
-Converts the asynchronous effect into a synchronous one. All values and
-errors are ignored.
+Converts the asynchronous computation into a synchronous one. All values 
+and errors are ignored.
 
 #### `runAff`
 
@@ -55,7 +51,7 @@ errors are ignored.
 runAff :: forall e a. (Error -> Eff e Unit) -> (a -> Eff e Unit) -> Aff e a -> EffA e Unit
 ```
 
-Runs the asynchronous effect. You must supply an error callback and a 
+Runs the asynchronous computation. You must supply an error callback and a 
 success callback.
 
 #### `makeAff`
@@ -66,6 +62,14 @@ makeAff :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> EffA e Uni
 
 Creates an asynchronous effect from a function that accepts error and 
 success callbacks.
+
+#### `later`
+
+``` purescript
+later :: forall e a. Aff e a -> Aff e a
+```
+
+Runs the asynchronous computation later.
 
 #### `forkAff`
 

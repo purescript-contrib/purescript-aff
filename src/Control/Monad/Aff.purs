@@ -5,6 +5,7 @@ module Control.Monad.Aff
   , PureAff(..)
   , attempt
   , forkAff
+  , later
   , launchAff
   , liftEff'
   , makeAff
@@ -35,20 +36,16 @@ module Control.Monad.Aff
   -- | produces a value of type `a`.
   -- |
   -- | This is moral equivalent of `ErrorT (ContT Unit (EffA e)) a`.
-  -- |
-  -- | The type implements `MonadEff` so it's easy to lift synchronous `Eff` 
-  -- | computations into this type. As a result, there's basically no reason to
-  -- | use `Eff` in a program that has some asynchronous computations.
   data Aff e a = Aff ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> EffA e Unit)
 
   type PureAff a = forall e. Aff e a
 
-  -- | Converts the asynchronous effect into a synchronous one. All values and
-  -- | errors are ignored.
+  -- | Converts the asynchronous computation into a synchronous one. All values 
+  -- | and errors are ignored.
   launchAff :: forall e a. Aff e a -> EffA e Unit
   launchAff (Aff fa) = fa (const (pure unit)) (const (pure unit))
 
-  -- | Runs the asynchronous effect. You must supply an error callback and a 
+  -- | Runs the asynchronous computation. You must supply an error callback and a 
   -- | success callback.
   runAff :: forall e a. (Error -> Eff e Unit) -> (a -> Eff e Unit) -> Aff e a -> EffA e Unit
   runAff ex f (Aff v) = v ex f
@@ -57,6 +54,19 @@ module Control.Monad.Aff
   -- | success callbacks.
   makeAff :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> EffA e Unit) -> Aff e a
   makeAff = Aff
+
+  -- | Runs the asynchronous computation later.
+  foreign import later """
+    function later(aff) {
+      return function(error) {
+        return function(success) {
+          return function() {
+            setTimeout(aff(error)(success), 0);
+          }
+        }
+      }
+    }
+  """ :: forall e a. Aff e a -> Aff e a
 
   -- | Forks the specified asynchronous computation so subsequent monadic binds 
   -- | will not block on the result of the computation.
