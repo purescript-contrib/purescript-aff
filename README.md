@@ -139,6 +139,17 @@ do resp <- (Ajax.get "http://foo.com") `catchError` (\e -> pure defaultResponse)
 
 Thrown exceptions are propagated on the error channel, and can be recovered from using `attempt` or `catchError`.
 
+## Forking
+
+Using the `forkAff`, you can "fork" an asynchronous computation, which means that its activities will not 
+block the current thread of execution:
+
+```purescript
+forkAff myAff
+```
+
+Because Javascript is single-threaded, forking does not actually cause the computation to be run in a separate thread, it merely means the subsequent chain of computations will be executed without first waiting for the forked computation to complete.
+
 ## Variables
 
 The `Control.Monad.Aff.Var` module contains asynchronous variables. These can 

@@ -36,7 +36,7 @@ module Control.Monad.Aff
   -- | produces a value of type `a`.
   -- |
   -- | This is moral equivalent of `ErrorT (ContT Unit (EffA e)) a`.
-  data Aff e a = Aff ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> EffA e Unit)
+  newtype Aff e a = Aff ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> EffA e Unit)
 
   type PureAff a = forall e. Aff e a
 

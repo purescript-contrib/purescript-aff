@@ -2,9 +2,19 @@ module.exports = function(grunt) {
   "use strict";
 
   grunt.initConfig({ 
-  
+    psc: {
+      options: {
+            main: "Examples",
+            modules: ["Examples"]
+        },
+        example: {
+            src: ["<%=libFiles%>", "examples/Prelude.purs"],
+            dest: "output/examples.js"
+      }
+    },
     libFiles: [
       "src/**/*.purs",
+      "examples/**/*.purs",
       "bower_components/purescript-*/src/**/*.purs",
     ],
     
@@ -37,5 +47,6 @@ module.exports = function(grunt) {
   grunt.loadNpmTasks('grunt-jsvalidate');
   
   grunt.registerTask("make", ["pscMake", "jsvalidate", "dotPsci", "pscDocs"]);
+  grunt.registerTask("test", ["jsvalidate", "psc"]);
   grunt.registerTask("default", ["make"]);
 };
