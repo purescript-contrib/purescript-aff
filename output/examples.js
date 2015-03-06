@@ -38,6 +38,9 @@ PS.Prelude = (function () {
     var Unit = function (x) {
         return x;
     };
+    var Semigroupoid = function ($less$less$less) {
+        this["<<<"] = $less$less$less;
+    };
     var Show = function (show) {
         this.show = show;
     };
@@ -87,6 +90,16 @@ PS.Prelude = (function () {
     var $less$greater = function (dict) {
         return dict["<>"];
     };
+    var $less$less$less = function (dict) {
+        return dict["<<<"];
+    };
+    var $greater$greater$greater = function (__dict_Semigroupoid_0) {
+        return function (f) {
+            return function (g) {
+                return $less$less$less(__dict_Semigroupoid_0)(g)(f);
+            };
+        };
+    };
     var $less$times$greater = function (dict) {
         return dict["<*>"];
     };
@@ -111,6 +124,13 @@ PS.Prelude = (function () {
         return dict.show;
     };
     var semiringNumber = new Semiring(numMul, numAdd, 1, 0);
+    var semigroupoidArr = new Semigroupoid(function (f) {
+        return function (g) {
+            return function (x) {
+                return f(g(x));
+            };
+        };
+    });
     var semigroupString = new Semigroup(concatString);
     var ringNumber = new Ring(numSub, function () {
         return semiringNumber;
@@ -132,9 +152,9 @@ PS.Prelude = (function () {
     /**
      *  | Returns its first argument and ignores its second.
      */
-    var $$const = function (_25) {
-        return function (_26) {
-            return _25;
+    var $$const = function (_26) {
+        return function (_27) {
+            return _26;
         };
     };
     var ap = function (__dict_Monad_16) {
@@ -159,6 +179,7 @@ PS.Prelude = (function () {
         Apply: Apply, 
         Functor: Functor, 
         Show: Show, 
+        Semigroupoid: Semigroupoid, 
         unit: unit, 
         "++": $plus$plus, 
         "<>": $less$greater, 
@@ -171,7 +192,10 @@ PS.Prelude = (function () {
         "<*>": $less$times$greater, 
         show: show, 
         "$": $dollar, 
+        ">>>": $greater$greater$greater, 
+        "<<<": $less$less$less, 
         "const": $$const, 
+        semigroupoidArr: semigroupoidArr, 
         showNumber: showNumber, 
         semiringNumber: semiringNumber, 
         ringNumber: ringNumber, 
@@ -224,6 +248,20 @@ PS.Control_Monad_Eff = (function () {
     };
 })();
 var PS = PS || {};
+PS.Control_Monad_Eff_Exception = (function () {
+    "use strict";
+    var Prelude = PS.Prelude;
+    var Control_Monad_Eff = PS.Control_Monad_Eff;
+    
+  function error(msg) {
+    return new Error(msg);
+  }
+  ;
+    return {
+        error: error
+    };
+})();
+var PS = PS || {};
 PS.Control_Monad_Eff_Unsafe = (function () {
     "use strict";
     var Prelude = PS.Prelude;
@@ -252,6 +290,48 @@ PS.Debug_Trace = (function () {
     ;
     return {
         trace: trace
+    };
+})();
+var PS = PS || {};
+PS.Data_Either = (function () {
+    "use strict";
+    var Prelude = PS.Prelude;
+    var Control_Alt = PS.Control_Alt;
+    var Left = (function () {
+        function Left(value0) {
+            this.value0 = value0;
+        };
+        Left.create = function (value0) {
+            return new Left(value0);
+        };
+        return Left;
+    })();
+    var Right = (function () {
+        function Right(value0) {
+            this.value0 = value0;
+        };
+        Right.create = function (value0) {
+            return new Right(value0);
+        };
+        return Right;
+    })();
+    var either = function (_68) {
+        return function (_69) {
+            return function (_70) {
+                if (_70 instanceof Left) {
+                    return _68(_70.value0);
+                };
+                if (_70 instanceof Right) {
+                    return _69(_70.value0);
+                };
+                throw new Error("Failed pattern match");
+            };
+        };
+    };
+    return {
+        Left: Left, 
+        Right: Right, 
+        either: either
     };
 })();
 var PS = PS || {};
@@ -306,6 +386,31 @@ PS.Control_Monad_Eff_Class = (function () {
     };
 })();
 var PS = PS || {};
+PS.Control_Monad_Error_Class = (function () {
+    "use strict";
+    var Prelude = PS.Prelude;
+    var Control_Monad_Error_Trans = PS.Control_Monad_Error_Trans;
+    var Control_Monad_Trans = PS.Control_Monad_Trans;
+    var Control_Monad_Maybe_Trans = PS.Control_Monad_Maybe_Trans;
+    var Control_Monad_Reader_Trans = PS.Control_Monad_Reader_Trans;
+    var Control_Monad_Writer_Trans = PS.Control_Monad_Writer_Trans;
+    var Control_Monad_State_Trans = PS.Control_Monad_State_Trans;
+    var Control_Monad_Error = PS.Control_Monad_Error;
+    var Data_Either = PS.Data_Either;
+    var Data_Monoid = PS.Data_Monoid;
+    var MonadError = function (catchError, throwError) {
+        this.catchError = catchError;
+        this.throwError = throwError;
+    };
+    var throwError = function (dict) {
+        return dict.throwError;
+    };
+    return {
+        MonadError: MonadError, 
+        throwError: throwError
+    };
+})();
+var PS = PS || {};
 PS.Control_Monad_Aff = (function () {
     "use strict";
     var Prelude = PS.Prelude;
@@ -322,6 +427,17 @@ PS.Control_Monad_Aff = (function () {
     var Control_Monad_Eff = PS.Control_Monad_Eff;
     var Control_Monad_Eff_Class = PS.Control_Monad_Eff_Class;
     
+    function later(aff) {
+      return function(error) {
+        return function(success) {
+          return function() {
+            setTimeout(aff(error)(success), 0);
+          }
+        }
+      }
+    }
+  ;
+    
     /**
      *  | A computation with effects `e`. The computation either errors or 
      *  | produces a value of type `a`.
@@ -336,10 +452,10 @@ PS.Control_Monad_Aff = (function () {
      *  | Runs the asynchronous computation. You must supply an error callback and a 
      *  | success callback.
      */
-    var runAff = function (_280) {
-        return function (_281) {
-            return function (_282) {
-                return _282(_280)(_281);
+    var runAff = function (_281) {
+        return function (_282) {
+            return function (_283) {
+                return _283(_281)(_282);
             };
         };
     };
@@ -348,26 +464,37 @@ PS.Control_Monad_Aff = (function () {
      *  | Converts the asynchronous computation into a synchronous one. All values 
      *  | and errors are ignored.
      */
-    var launchAff = function (_279) {
-        return _279(Prelude["const"](Prelude.pure(Control_Monad_Eff.applicativeEff)(Prelude.unit)))(Prelude["const"](Prelude.pure(Control_Monad_Eff.applicativeEff)(Prelude.unit)));
+    var launchAff = function (_280) {
+        return _280(Prelude["const"](Prelude.pure(Control_Monad_Eff.applicativeEff)(Prelude.unit)))(Prelude["const"](Prelude.pure(Control_Monad_Eff.applicativeEff)(Prelude.unit)));
     };
-    var functorAff = new Prelude.Functor(function (_284) {
-        return function (_285) {
+    var functorAff = new Prelude.Functor(function (_285) {
+        return function (_286) {
             return function (ex) {
                 return function (h) {
-                    return _285(ex)(function (a) {
-                        return h(_284(a));
+                    return _286(ex)(function (a) {
+                        return h(_285(a));
                     });
                 };
             };
         };
     });
-    var applyAff = new Prelude.Apply(function (_286) {
-        return function (_287) {
+    
+    /**
+     *  | Promotes any error to the value level of the asynchronous monad.
+     */
+    var attempt = function (_284) {
+        return function (_275) {
+            return function (f) {
+                return _284(Prelude[">>>"](Prelude.semigroupoidArr)(Data_Either.Left.create)(f))(Prelude[">>>"](Prelude.semigroupoidArr)(Data_Either.Right.create)(f));
+            };
+        };
+    };
+    var applyAff = new Prelude.Apply(function (_287) {
+        return function (_288) {
             return function (ex) {
                 return function (h) {
-                    return _286(ex)(function (f) {
-                        return Control_Monad_Eff_Unsafe.unsafeInterleaveEff(_287(ex)(function (a) {
+                    return _287(ex)(function (f) {
+                        return Control_Monad_Eff_Unsafe.unsafeInterleaveEff(_288(ex)(function (a) {
                             return h(f(a));
                         }));
                     });
@@ -377,14 +504,14 @@ PS.Control_Monad_Aff = (function () {
     }, function () {
         return functorAff;
     });
-    var bindAff = new Prelude.Bind(function (_288) {
-        return function (_289) {
+    var bindAff = new Prelude.Bind(function (_289) {
+        return function (_290) {
             return function (ex) {
                 return function (h) {
-                    return _288(ex)(function (a) {
+                    return _289(ex)(function (a) {
                         return Control_Monad_Eff_Unsafe.unsafeInterleaveEff(runAff(ex)(function (b) {
                             return h(b);
-                        })(_289(a)));
+                        })(_290(a)));
                     });
                 };
             };
@@ -395,7 +522,7 @@ PS.Control_Monad_Aff = (function () {
     var applicativeAff = new Prelude.Applicative(function () {
         return applyAff;
     }, function (v) {
-        return function (_276) {
+        return function (_277) {
             return function (h) {
                 return Control_Monad_Eff_Unsafe.unsafeInterleaveEff(h(v));
             };
@@ -409,21 +536,40 @@ PS.Control_Monad_Aff = (function () {
     var monadEffAff = new Control_Monad_Eff_Class.MonadEff(function () {
         return monadAff;
     }, function (fa) {
-        return function (_277) {
+        return function (_278) {
             return function (h) {
                 return Control_Monad_Eff_Unsafe.unsafeInterleaveEff(Prelude[">>="](Control_Monad_Eff.bindEff)(Control_Monad_Eff_Unsafe.unsafeInterleaveEff(fa))(h));
+            };
+        };
+    });
+    
+    /**
+     *  | Allows users to catch and throw errors on the error channel of the 
+     *  | asynchronous computation. See documentation in `purescript-transformers`.
+     */
+    var monadErrorAff = new Control_Monad_Error_Class.MonadError(function (aff) {
+        return function (ex) {
+            return Prelude[">>="](bindAff)(attempt(aff))(Data_Either.either(ex)(Prelude.pure(applicativeAff)));
+        };
+    }, function (e) {
+        return function (ex) {
+            return function (_279) {
+                return Control_Monad_Eff_Unsafe.unsafeInterleaveEff(ex(e));
             };
         };
     });
     return {
         runAff: runAff, 
         launchAff: launchAff, 
+        later: later, 
+        attempt: attempt, 
         functorAff: functorAff, 
         applyAff: applyAff, 
         applicativeAff: applicativeAff, 
         bindAff: bindAff, 
         monadAff: monadAff, 
-        monadEffAff: monadEffAff
+        monadEffAff: monadEffAff, 
+        monadErrorAff: monadErrorAff
     };
 })();
 var PS = PS || {};
@@ -433,6 +579,9 @@ PS.Examples = (function () {
     var Control_Monad_Eff_Class = PS.Control_Monad_Eff_Class;
     var Debug_Trace = PS.Debug_Trace;
     var Control_Monad_Aff = PS.Control_Monad_Aff;
+    var Control_Monad_Error_Class = PS.Control_Monad_Error_Class;
+    var Control_Monad_Eff_Exception = PS.Control_Monad_Eff_Exception;
+    var Data_Either = PS.Data_Either;
     
     function timeout(time) {
       return function(error) {
@@ -450,21 +599,33 @@ PS.Examples = (function () {
       }
     }
   ;
-    var test_sequencing = function (_290) {
-        if (_290 === 0) {
+    var test_sequencing = function (_291) {
+        if (_291 === 0) {
             return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Done"));
         };
         return Prelude[">>="](Control_Monad_Aff.bindAff)(timeout(1000))(function () {
-            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace(Prelude.show(Prelude.showNumber)(_290) + " seconds left")))(function () {
-                return test_sequencing(_290 - 1);
+            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace(Prelude.show(Prelude.showNumber)(_291) + " seconds left")))(function () {
+                return test_sequencing(_291 - 1);
             });
         });
     };
+    var test_attempt = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(Control_Monad_Error_Class.throwError(Control_Monad_Aff.monadErrorAff)(Control_Monad_Eff_Exception.error("Oh noes!"))))(function (_21) {
+        return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Data_Either.either(Prelude["const"](Debug_Trace.trace("Exception caught")))(Prelude["const"](Debug_Trace.trace("Exception NOT caught!!!")))(_21));
+    });
     var main = Control_Monad_Aff.launchAff(Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing sequencing")))(function () {
-        return test_sequencing(10);
+        return Prelude[">>="](Control_Monad_Aff.bindAff)(test_sequencing(3))(function () {
+            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing attempt")))(function () {
+                return Prelude[">>="](Control_Monad_Aff.bindAff)(test_attempt)(function () {
+                    return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing later")))(function () {
+                        return Control_Monad_Aff.later(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("It happend later")));
+                    });
+                });
+            });
+        });
     }));
     return {
         main: main, 
+        test_attempt: test_attempt, 
         test_sequencing: test_sequencing, 
         timeout: timeout
     };
