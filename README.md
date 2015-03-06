@@ -14,6 +14,8 @@ main = launchAff $
      liftEff $ trace response.body
 ```
 
+See the [examples directory](/examples/src/Examples.purs) for more examples.
+
 # Getting Started
 
 ## Installation
