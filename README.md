@@ -104,6 +104,14 @@ do e <- liftEff' myExcFunc
 
 The `Aff` monad has error handling baked in, so ordinarily you don't have to worry about it.
 
+When you need to deal with failure, you have several options.
+
+ 1. **Attempt**
+ 2. **Alt**
+ 3. **MonadError**
+
+### 1. Attempt
+
 If you want to attempt a computation but recover from failure, you can use the `attempt` function:
 
 ```purescript
@@ -117,7 +125,7 @@ do e <- attempt $ Ajax.get "http://foo.com"
    liftEff $ either (const $ trace "Oh noes!") (const $ trace "Yays!") e
 ```
 
-### Alt
+### 2. Alt
 
 Because `Aff` has an `Alt` instance, you may also use the operator `<|>` to provide an alternative computation in the event of failure:
 
@@ -126,7 +134,7 @@ do result <- Ajax.get "http://foo.com" <|> Ajax.get "http://bar.com"
    return result
 ```
 
-### MonadError
+### 3. MonadError
 
 `Aff` has a `MonadError` instance, which comes with two functions: `catchError`, and `throwError`.
 
@@ -143,8 +151,8 @@ Thrown exceptions are propagated on the error channel, and can be recovered from
 
 ## Forking
 
-Using the `forkAff`, you can "fork" an asynchronous computation, which means that its activities will not 
-block the current thread of execution:
+Using the `forkAff`, you can "fork" an asynchronous computation, which means 
+that its activities will not block the current thread of execution:
 
 ```purescript
 forkAff myAff
@@ -166,6 +174,20 @@ do v <- makeVar
    liftEff $ trace ("Succeeded with " ++ show a)
 ```
 
-# Documentation
+## Parallel Execution
+
+If you only need the power of `Applicative`, then instead of using the monadic `Aff`, you can use the `Par` newtype wrapper defined in `Control.Monad.Aff.Par`.
+
+This provides parallel instances of `Apply` and `Alt`.
+
+In the following example, two Ajax requests are initiated simultaneously (rather than in sequence, as they would be for `Aff`):
+
+```purescript
+runPar (f <$> Par (Ajax.get "http://foo.com") <*> Par (Ajax.get "http://foo.com"))
+```
+
+The `(<|>)` operator of the `Alt` instance of `Par` allows you to race two asynchronous computations, and use whichever value comes back first (or the first error, if both err).
+
+# API Docs
 
 [MODULES.md](MODULES.md)
