@@ -188,6 +188,8 @@ runPar (f <$> Par (Ajax.get "http://foo.com") <*> Par (Ajax.get "http://foo.com"
 
 The `(<|>)` operator of the `Alt` instance of `Par` allows you to race two asynchronous computations, and use whichever value comes back first (or the first error, if both err).
 
+Finally, the `runPar` function allows you to unwrap the `Aff` and return to normal monaidic (sequential) composition.
+
 # API Docs
 
 [MODULES.md](MODULES.md)
