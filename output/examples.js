@@ -943,7 +943,7 @@ PS.Examples = (function () {
         return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Data_Either.either(Prelude["const"](Debug_Trace.trace("Success: Exception caught")))(Prelude["const"](Debug_Trace.trace("Failure: Exception NOT caught!!!")))(_31));
     });
     var test_apathize = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.apathize(Control_Monad_Error_Class.throwError(Control_Monad_Aff.monadErrorAff)(Control_Monad_Eff_Exception.error("Oh noes!"))))(function () {
-        return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Success: Didn't care about return value"));
+        return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Success: Exceptions don't stop the apathetic"));
     });
     var main = Control_Monad_Aff.launchAff(Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing sequencing")))(function () {
         return Prelude[">>="](Control_Monad_Aff.bindAff)(test_sequencing(3))(function () {

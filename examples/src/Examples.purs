@@ -58,7 +58,7 @@ module Examples where
   test_apathize :: Test
   test_apathize = do
     apathize $ throwError (error "Oh noes!")
-    liftEff $ trace "Success: Didn't care about return value"
+    liftEff $ trace "Success: Exceptions don't stop the apathetic"
 
   test_putTakeVar :: TestVar
   test_putTakeVar = do
