@@ -110,7 +110,7 @@ When you need to deal with failure, you have several options.
  2. **Alt**
  3. **MonadError**
 
-### 1. Attempt
+#### 1. Attempt
 
 If you want to attempt a computation but recover from failure, you can use the `attempt` function:
 
@@ -125,7 +125,7 @@ do e <- attempt $ Ajax.get "http://foo.com"
    liftEff $ either (const $ trace "Oh noes!") (const $ trace "Yays!") e
 ```
 
-### 2. Alt
+#### 2. Alt
 
 Because `Aff` has an `Alt` instance, you may also use the operator `<|>` to provide an alternative computation in the event of failure:
 
@@ -134,7 +134,7 @@ do result <- Ajax.get "http://foo.com" <|> Ajax.get "http://bar.com"
    return result
 ```
 
-### 3. MonadError
+#### 3. MonadError
 
 `Aff` has a `MonadError` instance, which comes with two functions: `catchError`, and `throwError`.
 
