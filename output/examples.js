@@ -724,10 +724,12 @@ PS.Control_Monad_Aff_Var = (function () {
             return function() {
               if (avar.error !== undefined) {
                 error(avar.error)();
-              } else if (avar.consumers.length == 0) {
+              } else if (avar.consumers.length === 0) {
                 avar.producers.push(function(error, success) {
                   success(a)();
                 });
+
+                success({})();
               } else {
                 var consumer = avar.consumers.shift();
 
@@ -801,7 +803,6 @@ PS.Control_Monad_Aff_Var = (function () {
 var PS = PS || {};
 PS.Control_Monad_Aff_Par = (function () {
     "use strict";
-    var Control_Alt = PS.Control_Alt;
     var Prelude = PS.Prelude;
     var Data_Monoid = PS.Data_Monoid;
     var Control_Monad_Aff_Var = PS.Control_Monad_Aff_Var;
@@ -809,6 +810,7 @@ PS.Control_Monad_Aff_Par = (function () {
     var Data_Either = PS.Data_Either;
     var Control_Plus = PS.Control_Plus;
     var Control_Apply = PS.Control_Apply;
+    var Control_Alt = PS.Control_Alt;
     var Control_Alternative = PS.Control_Alternative;
     var Control_Monad_Error_Class = PS.Control_Monad_Error_Class;
     var Par = function (x) {
@@ -826,6 +828,10 @@ PS.Control_Monad_Aff_Par = (function () {
             return Prelude["<$>"](Control_Monad_Aff.functorAff)(_304)(_305);
         };
     });
+    
+    /**
+     *  | Returns the first value, or the first error if both error.
+     */
     var altPar = new Control_Alt.Alt(function (_308) {
         return function (_309) {
             var maybeKill = function (va) {
@@ -916,6 +922,13 @@ PS.Examples = (function () {
             });
         });
     });
+    var test_pure = Prelude[">>="](Control_Monad_Aff.bindAff)(Prelude.pure(Control_Monad_Aff.applicativeAff)(Prelude.unit))(function () {
+        return Prelude[">>="](Control_Monad_Aff.bindAff)(Prelude.pure(Control_Monad_Aff.applicativeAff)(Prelude.unit))(function () {
+            return Prelude[">>="](Control_Monad_Aff.bindAff)(Prelude.pure(Control_Monad_Aff.applicativeAff)(Prelude.unit))(function () {
+                return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Success: Got all the way past 4 pures"));
+            });
+        });
+    });
     var test_parRace = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_Par.runPar(Control_Alt["<|>"](Control_Monad_Aff_Par.altPar)(Control_Apply["*>"](Control_Monad_Aff.applyAff)(timeout(100))(Prelude.pure(Control_Monad_Aff.applicativeAff)("Success: Early bird got the worm")))(Control_Apply["*>"](Control_Monad_Aff.applyAff)(timeout(1000))(Prelude.pure(Control_Monad_Aff.applicativeAff)("Failure: Late bird got the worm")))))(function (_36) {
         return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace(_36));
     });
@@ -934,18 +947,22 @@ PS.Examples = (function () {
     });
     var main = Control_Monad_Aff.launchAff(Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing sequencing")))(function () {
         return Prelude[">>="](Control_Monad_Aff.bindAff)(test_sequencing(3))(function () {
-            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing attempt")))(function () {
-                return Prelude[">>="](Control_Monad_Aff.bindAff)(test_attempt)(function () {
-                    return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing later")))(function () {
-                        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.later(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Success: It happened later"))))(function () {
-                            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing apathize")))(function () {
-                                return Prelude[">>="](Control_Monad_Aff.bindAff)(test_apathize)(function () {
-                                    return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing Var - putVar, takeVar")))(function () {
-                                        return Prelude[">>="](Control_Monad_Aff.bindAff)(test_putTakeVar)(function () {
-                                            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing killVar")))(function () {
-                                                return Prelude[">>="](Control_Monad_Aff.bindAff)(test_killVar)(function () {
-                                                    return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing Par (<|>)")))(function () {
-                                                        return test_parRace;
+            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing pure")))(function () {
+                return Prelude[">>="](Control_Monad_Aff.bindAff)(test_pure)(function () {
+                    return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing attempt")))(function () {
+                        return Prelude[">>="](Control_Monad_Aff.bindAff)(test_attempt)(function () {
+                            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing later")))(function () {
+                                return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.later(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Success: It happened later"))))(function () {
+                                    return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing apathize")))(function () {
+                                        return Prelude[">>="](Control_Monad_Aff.bindAff)(test_apathize)(function () {
+                                            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing Var - putVar, takeVar")))(function () {
+                                                return Prelude[">>="](Control_Monad_Aff.bindAff)(test_putTakeVar)(function () {
+                                                    return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing killVar")))(function () {
+                                                        return Prelude[">>="](Control_Monad_Aff.bindAff)(test_killVar)(function () {
+                                                            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing Par (<|>)")))(function () {
+                                                                return test_parRace;
+                                                            });
+                                                        });
                                                     });
                                                 });
                                             });
@@ -966,6 +983,7 @@ PS.Examples = (function () {
         test_putTakeVar: test_putTakeVar, 
         test_apathize: test_apathize, 
         test_attempt: test_attempt, 
+        test_pure: test_pure, 
         test_sequencing: test_sequencing, 
         timeout: timeout
     };

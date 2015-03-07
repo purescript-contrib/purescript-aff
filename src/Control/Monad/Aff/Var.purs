@@ -71,15 +71,14 @@ module Control.Monad.Aff.Var
         return function(error) {
           return function(success) {
             return function() {
-              console.log("putting " + a + " into var: ");
-              console.log(avar);
-              
               if (avar.error !== undefined) {
                 error(avar.error)();
-              } else if (avar.consumers.length == 0) {
+              } else if (avar.consumers.length === 0) {
                 avar.producers.push(function(error, success) {
                   success(a)();
                 });
+
+                success({})();
               } else {
                 var consumer = avar.consumers.shift();
 

@@ -23,11 +23,6 @@ module Control.Monad.Aff.Par
   runPar :: forall e a. Par e a -> AffVar e a
   runPar (Par aff) = aff
 
-  -- | Races two parallel computations for the one that finishes first.
-  -- | A synonym for (<|>).
-  race :: forall e a. Par e a -> Par e a -> Par e a
-  race p1 p2 = p1 <|> p2
-
   instance semigroupPar :: (Semigroup a) => Semigroup (Par e a) where
     (<>) a b = (<>) <$> a <*> b
 
@@ -48,6 +43,7 @@ module Control.Monad.Aff.Par
   instance applicativePar :: Applicative (Par e) where
     pure v = Par (pure v)
 
+  -- | Returns the first value, or the first error if both error.
   instance altPar :: Alt (Par e) where
     (<|>) (Par a1) (Par a2) = 
       let maybeKill va ve err = 

@@ -43,6 +43,13 @@ module Examples where
     liftEff $ trace (show n ++ " seconds left")
     test_sequencing (n - 1)
 
+  test_pure :: Test
+  test_pure = do
+    pure unit 
+    pure unit
+    pure unit
+    liftEff $ trace "Success: Got all the way past 4 pures"
+
   test_attempt :: Test
   test_attempt = do
     e <- attempt (throwError (error "Oh noes!"))
@@ -73,10 +80,12 @@ module Examples where
                    Par (timeout 1000 *> pure "Failure: Late bird got the worm"))
     liftEff $ trace s
 
-
   main = launchAff $ do
     liftEff $ trace "Testing sequencing"
     test_sequencing 3
+
+    liftEff $ trace "Testing pure"
+    test_pure
 
     liftEff $ trace "Testing attempt"
     test_attempt
