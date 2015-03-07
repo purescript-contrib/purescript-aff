@@ -21,7 +21,7 @@ The `Eff` type for a computation which has asynchronous effects.
 #### `Aff`
 
 ``` purescript
-data Aff e a
+newtype Aff e a
 ```
 
 A computation with effects `e`. The computation either errors or 
@@ -87,6 +87,14 @@ attempt :: forall e a. Aff e a -> Aff e (Either Error a)
 ```
 
 Promotes any error to the value level of the asynchronous monad.
+
+#### `apathize`
+
+``` purescript
+apathize :: forall e a. Aff e a -> Aff e Unit
+```
+
+Ignores any errors.
 
 #### `liftEff'`
 
@@ -208,7 +216,90 @@ instance monadAffAff :: MonadAff e (Aff e)
 
 
 
+## Module Control.Monad.Aff.Par
+
+#### `Par`
+
+``` purescript
+newtype Par e a
+  = Par (AffVar e a)
+```
+
+
+#### `runPar`
+
+``` purescript
+runPar :: forall e a. Par e a -> AffVar e a
+```
+
+Extracts the `Aff` from the `Par`.
+
+#### `semigroupPar`
+
+``` purescript
+instance semigroupPar :: (Semigroup a) => Semigroup (Par e a)
+```
+
+
+#### `monoidPar`
+
+``` purescript
+instance monoidPar :: (Monoid a) => Monoid (Par e a)
+```
+
+
+#### `functorPar`
+
+``` purescript
+instance functorPar :: Functor (Par e)
+```
+
+
+#### `applyPar`
+
+``` purescript
+instance applyPar :: Apply (Par e)
+```
+
+
+#### `applicativePar`
+
+``` purescript
+instance applicativePar :: Applicative (Par e)
+```
+
+
+#### `altPar`
+
+``` purescript
+instance altPar :: Alt (Par e)
+```
+
+Returns the first value, or the first error if both error.
+
+#### `plusPar`
+
+``` purescript
+instance plusPar :: Plus (Par e)
+```
+
+
+#### `alternativePar`
+
+``` purescript
+instance alternativePar :: Alternative (Par e)
+```
+
+
+
 ## Module Control.Monad.Aff.Unsafe
+
+#### `unsafeTrace`
+
+``` purescript
+unsafeTrace :: forall e a. a -> Aff e Unit
+```
+
 
 #### `unsafeInterleaveAff`
 
@@ -220,10 +311,10 @@ unsafeInterleaveAff :: forall e1 e2 a. Aff e1 a -> Aff e2 a
 
 ## Module Control.Monad.Aff.Var
 
-#### `VarF`
+#### `VarFx`
 
 ``` purescript
-data VarF :: !
+data VarFx :: !
 ```
 
 
@@ -237,7 +328,7 @@ data Var :: * -> *
 #### `AffVar`
 
 ``` purescript
-type AffVar e a = Aff (var :: VarF | e) a
+type AffVar e a = Aff (var :: VarFx | e) a
 ```
 
 
@@ -248,6 +339,14 @@ makeVar :: forall e a. AffVar e (Var a)
 ```
 
 Makes a new asynchronous variable.
+
+#### `makeVar'`
+
+``` purescript
+makeVar' :: forall e a. a -> AffVar e (Var a)
+```
+
+Makes a variable and sets it to some value.
 
 #### `takeVar`
 
@@ -265,6 +364,14 @@ putVar :: forall e a. Var a -> a -> AffVar e Unit
 
 Puts a new value into the asynchronous variable. If the variable has
 been killed, this will result in an error.
+
+#### `modifyVar`
+
+``` purescript
+modifyVar :: forall e a. (a -> a) -> Var a -> AffVar e Unit
+```
+
+Modifies an asynchronous variable.
 
 #### `killVar`
 
