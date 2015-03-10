@@ -174,8 +174,9 @@ do v <- makeQueue
    liftEff $ trace ("Succeeded with " ++ show a)
 ```
 
-You can use these as queues which suspend (if necessary) on take operations, or 
-as asynchronous variables (similar to Haskell's `MVar` construct).
+You can use these constructs as one-sided blocking queues, which suspend (if 
+necessary) on `take operations, or as asynchronous variables (similar to 
+Haskell's `MVar` construct).
 
 ## Parallel Execution
 
