@@ -6,7 +6,7 @@ module Control.Monad.Aff.Par
   ) where
 
   import Control.Monad.Aff
-  import Control.Monad.Aff.Var
+  import Control.Monad.Aff.Queue
 
   import Data.Either(Either(..), either)
   import Data.Monoid(Monoid, mempty)
@@ -17,10 +17,10 @@ module Control.Monad.Aff.Par
   import Control.Alternative(Alternative)
   import Control.Monad.Error.Class(throwError, catchError)
   
-  newtype Par e a = Par (AffVar e a)
+  newtype Par e a = Par (AffQueue e a)
 
   -- | Extracts the `Aff` from the `Par`.
-  runPar :: forall e a. Par e a -> AffVar e a
+  runPar :: forall e a. Par e a -> AffQueue e a
   runPar (Par aff) = aff
 
   instance semigroupPar :: (Semigroup a) => Semigroup (Par e a) where
@@ -34,11 +34,11 @@ module Control.Monad.Aff.Par
 
   instance applyPar :: Apply (Par e) where
     (<*>) (Par ff) (Par fa) = Par do
-      vf <- makeVar 
-      va <- makeVar
-      forkAff (ff >>= putVar vf)
-      forkAff (fa >>= putVar va)
-      takeVar vf <*> takeVar va
+      vf <- makeQueue 
+      va <- makeQueue
+      forkAff (ff >>= putQueue vf)
+      forkAff (fa >>= putQueue va)
+      takeQueue vf <*> takeQueue va
 
   instance applicativePar :: Applicative (Par e) where
     pure v = Par (pure v)
@@ -47,15 +47,15 @@ module Control.Monad.Aff.Par
   instance altPar :: Alt (Par e) where
     (<|>) (Par a1) (Par a2) = 
       let maybeKill va ve err = 
-        do e <- takeVar ve
-           if e == 1 then killVar va err else return unit
-           putVar ve (e + 1)
+        do e <- takeQueue ve
+           if e == 1 then killQueue va err else return unit
+           putQueue ve (e + 1)
       in Par do
-        va <- makeVar     -- the `a` value
-        ve <- makeVar' 0  -- the error count (starts at 0)
-        forkAff $ attempt a1 >>= either (maybeKill va ve) (putVar va)
-        forkAff $ attempt a2 >>= either (maybeKill va ve) (putVar va)
-        takeVar va
+        va <- makeQueue     -- the `a` value
+        ve <- makeQueue' 0  -- the error count (starts at 0)
+        forkAff $ attempt a1 >>= either (maybeKill va ve) (putQueue va)
+        forkAff $ attempt a2 >>= either (maybeKill va ve) (putQueue va)
+        takeQueue va
 
   instance plusPar :: Plus (Par e) where
     empty = Par empty

@@ -69,7 +69,7 @@ success callbacks.
 later :: forall e a. Aff e a -> Aff e a
 ```
 
-Runs the asynchronous computation later.
+Runs the asynchronous computation later (off the current execution context).
 
 #### `forkAff`
 
@@ -222,14 +222,14 @@ instance monadAffAff :: MonadAff e (Aff e)
 
 ``` purescript
 newtype Par e a
-  = Par (AffVar e a)
+  = Par (AffQueue e a)
 ```
 
 
 #### `runPar`
 
 ``` purescript
-runPar :: forall e a. Par e a -> AffVar e a
+runPar :: forall e a. Par e a -> AffQueue e a
 ```
 
 Extracts the `Aff` from the `Par`.
@@ -292,6 +292,79 @@ instance alternativePar :: Alternative (Par e)
 
 
 
+## Module Control.Monad.Aff.Queue
+
+#### `QueueFx`
+
+``` purescript
+data QueueFx :: !
+```
+
+
+#### `Queue`
+
+``` purescript
+data Queue :: * -> *
+```
+
+
+#### `AffQueue`
+
+``` purescript
+type AffQueue e a = Aff (queue :: QueueFx | e) a
+```
+
+
+#### `makeQueue`
+
+``` purescript
+makeQueue :: forall e a. AffQueue e (Queue a)
+```
+
+Makes a new asynchronous queue.
+
+#### `makeQueue'`
+
+``` purescript
+makeQueue' :: forall e a. a -> AffQueue e (Queue a)
+```
+
+Makes a queue and sets it to some value.
+
+#### `takeQueue`
+
+``` purescript
+takeQueue :: forall e a. Queue a -> AffQueue e a
+```
+
+Takes the next value from the asynchronous queue.
+
+#### `putQueue`
+
+``` purescript
+putQueue :: forall e a. Queue a -> a -> AffQueue e Unit
+```
+
+Puts a new value into the asynchronous queue. If the queue has
+been killed, this will result in an error.
+
+#### `modifyQueue`
+
+``` purescript
+modifyQueue :: forall e a. (a -> a) -> Queue a -> AffQueue e Unit
+```
+
+Modifies the value at the head of the queue (will suspend until one is available).
+
+#### `killQueue`
+
+``` purescript
+killQueue :: forall e a. Queue a -> Error -> AffQueue e Unit
+```
+
+Kills an asynchronous queue.
+
+
 ## Module Control.Monad.Aff.Unsafe
 
 #### `unsafeTrace`
@@ -306,77 +379,3 @@ unsafeTrace :: forall e a. a -> Aff e Unit
 ``` purescript
 unsafeInterleaveAff :: forall e1 e2 a. Aff e1 a -> Aff e2 a
 ```
-
-
-
-## Module Control.Monad.Aff.Var
-
-#### `VarFx`
-
-``` purescript
-data VarFx :: !
-```
-
-
-#### `Var`
-
-``` purescript
-data Var :: * -> *
-```
-
-
-#### `AffVar`
-
-``` purescript
-type AffVar e a = Aff (var :: VarFx | e) a
-```
-
-
-#### `makeVar`
-
-``` purescript
-makeVar :: forall e a. AffVar e (Var a)
-```
-
-Makes a new asynchronous variable.
-
-#### `makeVar'`
-
-``` purescript
-makeVar' :: forall e a. a -> AffVar e (Var a)
-```
-
-Makes a variable and sets it to some value.
-
-#### `takeVar`
-
-``` purescript
-takeVar :: forall e a. Var a -> AffVar e a
-```
-
-Takes the next value from the asynchronous variable.
-
-#### `putVar`
-
-``` purescript
-putVar :: forall e a. Var a -> a -> AffVar e Unit
-```
-
-Puts a new value into the asynchronous variable. If the variable has
-been killed, this will result in an error.
-
-#### `modifyVar`
-
-``` purescript
-modifyVar :: forall e a. (a -> a) -> Var a -> AffVar e Unit
-```
-
-Modifies an asynchronous variable.
-
-#### `killVar`
-
-``` purescript
-killVar :: forall e a. Var a -> Error -> AffVar e Unit
-```
-
-Kills an asynchronous variable.

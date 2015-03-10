@@ -4,7 +4,7 @@ module Examples where
   import Data.Either(either)
 
   import Control.Monad.Aff
-  import Control.Monad.Aff.Var
+  import Control.Monad.Aff.Queue
   import Control.Monad.Aff.Par
   import Control.Apply((*>))
   import Control.Alt(Alt, (<|>))
@@ -33,14 +33,14 @@ module Examples where
   """ :: forall e. Number -> Aff (time :: Time | e) Unit
 
   type Test = forall e. Aff (trace :: Trace | e) Unit
-  type TestVar = forall e. Aff (trace :: Trace, var :: VarFx | e) Unit
-  type TestVarTime = forall e. Aff (trace :: Trace, var :: VarFx, time :: Time | e) Unit
+  type TestQueue = forall e. Aff (trace :: Trace, queue :: QueueFx | e) Unit
+  type TestQueueTime = forall e. Aff (trace :: Trace, queue :: QueueFx, time :: Time | e) Unit
 
   test_sequencing :: forall e. Number -> Aff (trace :: Trace, time :: Time | e) Unit
   test_sequencing 0 = liftEff $ trace "Done"
   test_sequencing n = do
-    timeout 1000
-    liftEff $ trace (show n ++ " seconds left")
+    timeout 100
+    liftEff $ trace (show (n / 10) ++ " seconds left")
     test_sequencing (n - 1)
 
   test_pure :: Test
@@ -60,25 +60,37 @@ module Examples where
     apathize $ throwError (error "Oh noes!")
     liftEff $ trace "Success: Exceptions don't stop the apathetic"
 
-  test_putTakeVar :: TestVar
-  test_putTakeVar = do
-    v <- makeVar
-    forkAff (later $ putVar v 1.0)
-    a <- takeVar v 
+  test_putTakeQueue :: TestQueue
+  test_putTakeQueue = do
+    v <- makeQueue
+    forkAff (later $ putQueue v 1.0)
+    a <- takeQueue v 
     liftEff $ trace ("Success: Value " ++ show a)
 
-  test_killVar :: TestVar
-  test_killVar = do
-    v <- makeVar
-    killVar v (error "DOA")
-    e <- attempt $ takeVar v
-    liftEff $ either (const $ trace "Success: Killed var dead") (const $ trace "Failure: Oh noes, Var survived!") e
+  test_killQueue :: TestQueue
+  test_killQueue = do
+    v <- makeQueue
+    killQueue v (error "DOA")
+    e <- attempt $ takeQueue v
+    liftEff $ either (const $ trace "Success: Killed queue dead") (const $ trace "Failure: Oh noes, queue survived!") e
 
-  test_parRace :: TestVarTime
+  test_parRace :: TestQueueTime
   test_parRace = do
-    s <- runPar $ (Par (timeout  100 *> pure "Success: Early bird got the worm") <|> 
-                   Par (timeout 1000 *> pure "Failure: Late bird got the worm"))
+    s <- runPar (Par (timeout 100 *> pure "Success: Early bird got the worm") <|> 
+                 Par (timeout 200 *> pure "Failure: Late bird got the worm"))
     liftEff $ trace s
+
+  test_parRaceKill1 :: TestQueueTime
+  test_parRaceKill1 = do
+    s <- runPar (Par (timeout 100 *> throwError (error ("Oh noes!"))) <|> 
+                 Par (timeout 200 *> pure "Success: Early error was ignored in favor of late success"))
+    liftEff $ trace s
+
+  test_parRaceKill2 :: TestQueueTime
+  test_parRaceKill2 = do
+    e <- attempt $ runPar (Par (timeout 100 *> throwError (error ("Oh noes!"))) <|> 
+                           Par (timeout 200 *> throwError (error ("Oh noes!"))))
+    liftEff $ either (const $ trace "Success: Killing both kills it dead") (const $ trace "Failure: It's alive!!!") e
 
   main = launchAff $ do
     liftEff $ trace "Testing sequencing"
@@ -96,11 +108,17 @@ module Examples where
     liftEff $ trace "Testing apathize"
     test_apathize
 
-    liftEff $ trace "Testing Var - putVar, takeVar"
-    test_putTakeVar
+    liftEff $ trace "Testing Queue - putQueue, takeQueue"
+    test_putTakeQueue
 
-    liftEff $ trace "Testing killVar"
-    test_killVar
+    liftEff $ trace "Testing killQueue"
+    test_killQueue
 
     liftEff $ trace "Testing Par (<|>)"
     test_parRace
+
+    liftEff $ trace "Testing Par (<|>) - kill one"
+    test_parRaceKill1
+
+    liftEff $ trace "Testing Par (<|>) - kill two"
+    test_parRaceKill2

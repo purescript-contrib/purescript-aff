@@ -162,17 +162,20 @@ Because Javascript is single-threaded, forking does not actually cause the
 computation to be run in a separate thread. Forking just allows the subsequent 
 actions to execute without waiting for the forked computation to complete.
 
-## Variables
+## Queues
 
-The `Control.Monad.Aff.Var` module contains asynchronous variables. These can 
+The `Control.Monad.Aff.Queue` module contains asynchronous queues. These can 
 be used as low-level building blocks for asynchronous programs.
 
 ```purescript
-do v <- makeVar
-   forkAff (later $ putVar v 1.0)
-   a <- takeVar v 
+do v <- makeQueue
+   forkAff (later $ putQueue v 1.0)
+   a <- takeQueue v 
    liftEff $ trace ("Succeeded with " ++ show a)
 ```
+
+You can use these as queues which suspend (if necessary) on take operations, or 
+as asynchronous variables (similar to Haskell's `MVar` construct).
 
 ## Parallel Execution
 

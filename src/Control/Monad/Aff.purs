@@ -56,7 +56,7 @@ module Control.Monad.Aff
   makeAff :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> EffA e Unit) -> Aff e a
   makeAff = Aff
 
-  -- | Runs the asynchronous computation later.
+  -- | Runs the asynchronous computation later (off the current execution context).
   foreign import later """
     function later(aff) {
       return function(error) {
