@@ -12,35 +12,13 @@ module Examples where
   import Control.Monad.Eff.Exception(error)
   import Control.Monad.Error.Class(throwError)
   
-  foreign import data Time :: !
-
-  foreign import timeout """
-    function timeout(time) {
-      return function(error) {
-        return function(success) {
-          return function() {
-            setTimeout(function() {
-              try {
-                success({})();
-              } catch (e) {
-                error(e)();
-              }
-            }, time);
-          }
-        }
-      }
-    }
-  """ :: forall e. Number -> Aff (time :: Time | e) Unit
-
   type Test = forall e. Aff (trace :: Trace | e) Unit
   type TestQueue = forall e. Aff (trace :: Trace, queue :: QueueFx | e) Unit
-  type TestQueueTime = forall e. Aff (trace :: Trace, queue :: QueueFx, time :: Time | e) Unit
 
-  test_sequencing :: forall e. Number -> Aff (trace :: Trace, time :: Time | e) Unit
+  test_sequencing :: Number -> Test
   test_sequencing 0 = liftEff $ trace "Done"
   test_sequencing n = do
-    timeout 100
-    liftEff $ trace (show (n / 10) ++ " seconds left")
+    later' 100 (liftEff $ trace (show (n / 10) ++ " seconds left"))
     test_sequencing (n - 1)
 
   test_pure :: Test
@@ -74,22 +52,22 @@ module Examples where
     e <- attempt $ takeQueue v
     liftEff $ either (const $ trace "Success: Killed queue dead") (const $ trace "Failure: Oh noes, queue survived!") e
 
-  test_parRace :: TestQueueTime
+  test_parRace :: TestQueue
   test_parRace = do
-    s <- runPar (Par (timeout 100 *> pure "Success: Early bird got the worm") <|> 
-                 Par (timeout 200 *> pure "Failure: Late bird got the worm"))
+    s <- runPar (Par (later' 100 $ pure "Success: Early bird got the worm") <|> 
+                 Par (later' 200 $ pure "Failure: Late bird got the worm"))
     liftEff $ trace s
 
-  test_parRaceKill1 :: TestQueueTime
+  test_parRaceKill1 :: TestQueue
   test_parRaceKill1 = do
-    s <- runPar (Par (timeout 100 *> throwError (error ("Oh noes!"))) <|> 
-                 Par (timeout 200 *> pure "Success: Early error was ignored in favor of late success"))
+    s <- runPar (Par (later' 100 $ throwError (error ("Oh noes!"))) <|> 
+                 Par (later' 200 $ pure "Success: Early error was ignored in favor of late success"))
     liftEff $ trace s
 
-  test_parRaceKill2 :: TestQueueTime
+  test_parRaceKill2 :: TestQueue
   test_parRaceKill2 = do
-    e <- attempt $ runPar (Par (timeout 100 *> throwError (error ("Oh noes!"))) <|> 
-                           Par (timeout 200 *> throwError (error ("Oh noes!"))))
+    e <- attempt $ runPar (Par (later' 100 $ throwError (error ("Oh noes!"))) <|> 
+                           Par (later' 200 $ throwError (error ("Oh noes!"))))
     liftEff $ either (const $ trace "Success: Killing both kills it dead") (const $ trace "Failure: It's alive!!!") e
 
   main = launchAff $ do
@@ -122,3 +100,5 @@ module Examples where
 
     liftEff $ trace "Testing Par (<|>) - kill two"
     test_parRaceKill2
+
+    liftEff $ trace "Done testing"

@@ -2,32 +2,16 @@
 
 ## Module Control.Monad.Aff
 
-#### `Async`
-
-``` purescript
-data Async :: !
-```
-
-The effect of being asynchronous.
-
-#### `EffA`
-
-``` purescript
-type EffA e a = Eff (async :: Async | e) a
-```
-
-The `Eff` type for a computation which has asynchronous effects.
-
 #### `Aff`
 
 ``` purescript
-newtype Aff e a
+data Aff :: # ! -> * -> *
 ```
 
 A computation with effects `e`. The computation either errors or 
 produces a value of type `a`.
 
-This is moral equivalent of `ErrorT (ContT Unit (EffA e)) a`.
+This is moral equivalent of `ErrorT (ContT Unit (Eff e)) a`.
 
 #### `PureAff`
 
@@ -35,11 +19,12 @@ This is moral equivalent of `ErrorT (ContT Unit (EffA e)) a`.
 type PureAff a = forall e. Aff e a
 ```
 
+A pure asynchronous computation, having no effects.
 
 #### `launchAff`
 
 ``` purescript
-launchAff :: forall e a. Aff e a -> EffA e Unit
+launchAff :: forall e a. Aff e a -> Eff e Unit
 ```
 
 Converts the asynchronous computation into a synchronous one. All values 
@@ -48,7 +33,7 @@ and errors are ignored.
 #### `runAff`
 
 ``` purescript
-runAff :: forall e a. (Error -> Eff e Unit) -> (a -> Eff e Unit) -> Aff e a -> EffA e Unit
+runAff :: forall e a. (Error -> Eff e Unit) -> (a -> Eff e Unit) -> Aff e a -> Eff e Unit
 ```
 
 Runs the asynchronous computation. You must supply an error callback and a 
@@ -57,7 +42,7 @@ success callback.
 #### `makeAff`
 
 ``` purescript
-makeAff :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> EffA e Unit) -> Aff e a
+makeAff :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> Eff e Unit) -> Aff e a
 ```
 
 Creates an asynchronous effect from a function that accepts error and 
@@ -67,6 +52,14 @@ success callbacks.
 
 ``` purescript
 later :: forall e a. Aff e a -> Aff e a
+```
+
+Runs the asynchronous computation off the current execution context.
+
+#### `later'`
+
+``` purescript
+later' :: forall e a. Number -> Aff e a -> Aff e a
 ```
 
 Runs the asynchronous computation later (off the current execution context).

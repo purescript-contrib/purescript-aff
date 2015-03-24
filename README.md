@@ -35,18 +35,18 @@ deleteBlankLines path =
       saveFile path contents'
 ```
 
-This looks like ordinary, synchronous, imperative code, but actually operates asynchronously without any callbacks (error handling is baked in so you only deal with it when you want to).
+This looks like ordinary, synchronous, imperative code, but actually operates asynchronously without any callbacks. Error handling is baked in so you only deal with it when you want to.
 
-The library contains instances for `Semigroup`, `Monoid`, `Apply`, `Applicative`, `Bind`, `Monad`, `Alt`, `Plus`, `MonadPlus`, `MonadEff`, and `MonadError`. These instances allow you to compose `Aff`-ectful code as easily as `Eff`, as well as interop with existing `Eff` code.
+The library contains instances for `Semigroup`, `Monoid`, `Apply`, `Applicative`, `Bind`, `Monad`, `Alt`, `Plus`, `MonadPlus`, `MonadEff`, and `MonadError`. These instances allow you to compose asynchronous code as easily as `Eff`, as well as interop with existing `Eff` code.
 
 ## Escaping Callback Hell
 
 Hopefully, you're using libraries that already use the `Aff` type, so you don't even have to think about callbacks!
 
-If you're building your own library, or you have to interact with some native code that expects callbacks, then *purescript-aff* provides a `makeAff` function you can use:
+If you're building your own library, or you have to interact with some native code that expects callbacks, then *purescript-aff* provides a `makeAff` function:
 
 ```purescript
-makeAff :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> EffA e Unit) -> Aff e a
+makeAff :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> Eff e Unit) -> Aff e a
 ```
 
 This function expects you to provide a handler, which should call a user-supplied error callback or success callback with the result of the asynchronous computation.
@@ -64,7 +64,7 @@ function ajaxGet(callback) { // accepts a callback
     }
   }
 }
-""" :: forall e. (Response -> Eff e Unit) -> Request -> EffA e Unit
+""" :: forall e. (Response -> Eff e Unit) -> Request -> Eff e Unit
 ```
 
 We can wrap this into an asynchronous computation like so:
@@ -142,7 +142,7 @@ These are defined in [purescript-transformers](http://github.com/purescript/pure
 Here's an example of how you can use them:
 
 ```purescript
-do resp <- (Ajax.get "http://foo.com") `catchError` (\e -> pure defaultResponse)
+do resp <- (Ajax.get "http://foo.com") `catchError` (const $ pure defaultResponse)
    if resp.statusCode != 200 then throwError myErr 
    else pure resp.body
 ```
@@ -162,6 +162,15 @@ Because Javascript is single-threaded, forking does not actually cause the
 computation to be run in a separate thread. Forking just allows the subsequent 
 actions to execute without waiting for the forked computation to complete.
 
+If the asynchronous computation supports it, you can "kill" a forked computation
+using the returned canceler:
+
+```purescript
+canceler <- forkAff myAff
+canceled <- canceler
+_        <- liftEff $ if canceled then (trace "Canceled") else (trace "Not Canceled")
+```
+
 ## Queues
 
 The `Control.Monad.Aff.Queue` module contains asynchronous queues. These can 
@@ -175,7 +184,7 @@ do v <- makeQueue
 ```
 
 You can use these constructs as one-sided blocking queues, which suspend (if 
-necessary) on `take operations, or as asynchronous variables (similar to 
+necessary) on `take` operations, or as asynchronous variables (similar to 
 Haskell's `MVar` construct).
 
 ## Parallel Execution

@@ -1,20 +1,22 @@
 module Control.Monad.Aff 
   ( Aff()
-  , Async()
-  , EffA()
+  , Canceler()
   , PureAff(..)
   , apathize
   , attempt
   , forkAff
   , later
+  , later'
   , launchAff
   , liftEff'
   , makeAff
+  , nonCanceler
   , runAff
   )
   where 
 
   import Data.Either(Either(..), either)
+  import Data.Function(Fn2(), Fn3(), runFn2, runFn3)
   import Data.Monoid(Monoid, mempty)
   import Control.Apply
   import Control.Alt(Alt)
@@ -27,56 +29,75 @@ module Control.Monad.Aff
   import Control.Monad.Eff.Class
   import Control.Monad.Error.Class(MonadError, throwError)
 
-  -- | The effect of being asynchronous.
-  foreign import data Async :: !
-
-  -- | The `Eff` type for a computation which has asynchronous effects.
-  type EffA e a = Eff (async :: Async | e) a
-
   -- | A computation with effects `e`. The computation either errors or 
   -- | produces a value of type `a`.
   -- |
-  -- | This is moral equivalent of `ErrorT (ContT Unit (EffA e)) a`.
-  newtype Aff e a = Aff ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> EffA e Unit)
+  -- | This is moral equivalent of `ErrorT (ContT Unit (Eff e)) a`.
+  foreign import data Aff :: # ! -> * -> *
 
+  -- | A pure asynchronous computation, having no effects.
   type PureAff a = forall e. Aff e a
+
+  type Canceler e = Error -> Aff e Boolean
 
   -- | Converts the asynchronous computation into a synchronous one. All values 
   -- | and errors are ignored.
-  launchAff :: forall e a. Aff e a -> EffA e Unit
-  launchAff (Aff fa) = fa (const (pure unit)) (const (pure unit))
+  launchAff :: forall e a. Aff e a -> Eff e Unit
+  launchAff = runAff (const (pure unit)) (const (pure unit))
 
   -- | Runs the asynchronous computation. You must supply an error callback and a 
   -- | success callback.
-  runAff :: forall e a. (Error -> Eff e Unit) -> (a -> Eff e Unit) -> Aff e a -> EffA e Unit
-  runAff ex f (Aff v) = v ex f
+  runAff :: forall e a. (Error -> Eff e Unit) -> (a -> Eff e Unit) -> Aff e a -> Eff e Unit
+  runAff ex f aff = runFn3 _runAff ex f aff
 
   -- | Creates an asynchronous effect from a function that accepts error and 
   -- | success callbacks.
-  makeAff :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> EffA e Unit) -> Aff e a
-  makeAff = Aff
+  makeAff :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> Eff e Unit) -> Aff e a
+  makeAff h = runFn2 _makeAff nonCanceler h
+
+  -- | Runs the asynchronous computation off the current execution context.
+  later :: forall e a. Aff e a -> Aff e a
+  later = later' 0
 
   -- | Runs the asynchronous computation later (off the current execution context).
-  foreign import later """
-    function later(aff) {
-      return function(error) {
-        return function(success) {
-          return function() {
-            setTimeout(aff(error)(success), 0);
+  later' :: forall e a. Number -> Aff e a -> Aff e a
+  later' n aff = runFn2 _setTimeout n aff
+
+  foreign import _setTimeout """
+    function _setTimeout(millis, aff) {
+      return function(success, error) {
+        var canceler;
+        var cancel = false;
+
+        var timeout = setTimeout(function() {
+          if (!cancel) {
+            canceler = aff(success, error);
           }
-        }
-      }
+        }, millis);
+
+        return function(e) {
+          return function(success, error) {
+            if (canceler !== undefined) {
+              canceler(e)(success, error);
+            } else {
+              cancel = true;
+              clearTimeout(timeout);
+              error(e);
+            }
+          };
+        };
+      };
     }
-  """ :: forall e a. Aff e a -> Aff e a
+  """ :: forall e a. Fn2 Number (Aff e a) (Aff e a)
 
   -- | Forks the specified asynchronous computation so subsequent monadic binds 
   -- | will not block on the result of the computation.
-  forkAff :: forall e a. Aff e a -> Aff e Unit
-  forkAff aff = Aff (\_ f -> launchAff aff *> unsafeInterleaveEff (f unit))
+  forkAff :: forall e a. Aff e a -> Aff e (Canceler e)
+  forkAff aff = runFn2 _forkAff nonCanceler aff
 
   -- | Promotes any error to the value level of the asynchronous monad.
   attempt :: forall e a. Aff e a -> Aff e (Either Error a)
-  attempt (Aff fa) = Aff (\_ f -> fa (Left >>> f) (Right >>> f))
+  attempt aff = runFn3 _attempt Left Right aff
 
   -- | Ignores any errors.
   apathize :: forall e a. Aff e a -> Aff e Unit
@@ -84,7 +105,11 @@ module Control.Monad.Aff
 
   -- | Lifts a synchronous computation and makes explicit any failure from exceptions.
   liftEff' :: forall e a. Eff (err :: Exception | e) a -> Aff e (Either Error a)
-  liftEff' eff = Aff (\_ f -> unsafeInterleaveEff (unsafeInterleaveEff (catchException (pure <$> Left) (Right <$> eff)) >>= f))
+  liftEff' eff = attempt (_unsafeInterleaveAff (runFn2 _liftEff nonCanceler eff))
+
+  -- | A constant function that always returns a pure false value.
+  nonCanceler :: forall e. Canceler e
+  nonCanceler = const (pure false)
 
   instance semigroupAff :: (Semigroup a) => Semigroup (Aff e a) where
     (<>) a b = (<>) <$> a <*> b
@@ -93,26 +118,26 @@ module Control.Monad.Aff
     mempty = pure mempty
 
   instance functorAff :: Functor (Aff e) where
-    (<$>) f (Aff fa) = Aff (\ex h -> fa ex (\a -> h (f a)))
+    (<$>) f fa = runFn2 _fmap f fa
 
   instance applyAff :: Apply (Aff e) where
-    (<*>) (Aff ff) (Aff fa) = Aff (\ex h -> ff ex (\f -> unsafeInterleaveEff (fa ex (\a -> h (f a)))))
+    (<*>) ff fa = runFn2 _bind ff (\f -> f <$> fa)
 
   instance applicativeAff :: Applicative (Aff e) where
-    pure v = Aff (\_ h -> unsafeInterleaveEff (h v))
+    pure v = runFn2 _pure nonCanceler v
 
   instance bindAff :: Bind (Aff e) where
-    (>>=) (Aff fa) f = Aff (\ex h -> fa ex (\a -> unsafeInterleaveEff (runAff ex (\b -> h b) (f a))))
+    (>>=) fa f = runFn2 _bind fa f
 
   instance monadAff :: Monad (Aff e)
 
   instance monadEffAff :: MonadEff e (Aff e) where
-    liftEff fa = Aff (\_ h -> unsafeInterleaveEff (unsafeInterleaveEff fa >>= h))
+    liftEff eff = runFn2 _liftEff nonCanceler eff
 
   -- | Allows users to catch and throw errors on the error channel of the 
   -- | asynchronous computation. See documentation in `purescript-transformers`.
   instance monadErrorAff :: MonadError Error (Aff e) where
-    throwError e = Aff (\ex _ -> unsafeInterleaveEff (ex e))
+    throwError e = runFn2 _throwError nonCanceler e
 
     catchError aff ex = attempt aff >>= either ex pure
 
@@ -125,3 +150,153 @@ module Control.Monad.Aff
   instance alternativeAff :: Alternative (Aff e)
 
   instance monadPlusAff :: MonadPlus (Aff e)
+
+  foreign import _unsafeInterleaveAff """
+    function _unsafeInterleaveAff(aff) {
+      return aff;
+    }
+  """ :: forall e1 e2 a. Aff e1 a -> Aff e2 a
+
+  foreign import _forkAff """
+    function _forkAff(canceler, aff) {
+      return function(success, error) {
+        var canceler = aff(function(){}, function(){});
+
+        try {
+          success(canceler);
+        } catch (e) {
+          error(e);
+        }
+
+        return canceler;
+      };
+    }
+  """ :: forall e a. Fn2 (Canceler e) (Aff e a) (Aff e (Canceler e))
+
+  foreign import _makeAff """
+    function _makeAff(canceler, cb) {
+      return function(success, error) {
+        cb(function(e) {
+          return function() {
+            error(e);
+          };
+        })(function(v) {
+          return function() {
+            try {
+              success(v);
+            } catch (e) {
+              error(e);
+            }
+          };
+        })();
+
+        return canceler;
+      }
+    }
+    """ :: forall e a. Fn2 (Canceler e) ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> Eff e Unit) (Aff e a)
+
+  foreign import _pure """
+    function _pure(canceler, v) {
+      return function(success, error) {
+        try {
+          success(v);
+        } catch (e) {
+          error(e);
+        }
+        
+        return canceler;
+      }
+    }""" :: forall e a. Fn2 (Canceler e) a (Aff e a)
+
+  foreign import _throwError """
+    function _throwError(canceler, e) {
+      return function(success, error) {
+        error(e);
+        
+        return canceler;
+      }
+    }""" :: forall e a. Fn2 (Canceler e) Error (Aff e a)
+
+  foreign import _fmap """
+    function _fmap(f, aff) {
+      return function(success, error) {
+        return aff(function(v) {
+          try {
+            success(f(v));
+          } catch (e) {
+            error(e);
+          }
+        }, error);
+      };
+    }""" :: forall e a b. Fn2 (a -> b) (Aff e a) (Aff e b)
+
+  foreign import _bind """
+    function _bind(aff, f) {
+      return function(success, error) {
+        var canceler;
+        
+        canceler = aff(function(v) {
+          try {        
+            canceler = f(v)(success, error);
+          } catch (e) {
+            error(e);
+          }
+        }, error);
+        
+        return function(e) {
+          return function(success, error) {
+            return canceler(e)(success, error);
+          }
+        };
+      };
+    }""" :: forall e a b. Fn2 (Aff e a) (a -> Aff e b) (Aff e b)
+
+  foreign import _attempt """
+    function _attempt(Left, Right, aff) {
+      return function(success, error) {
+        return aff(function(v) {
+          try {
+            success(Right(v));
+          } catch (e) {
+            error(e);
+          }
+        }, function(e) {
+          try {
+            success(Left(e));
+          } catch (e) {
+            error(e);
+          }
+        });
+      };
+    }"""  :: forall e a. Fn3 (forall x y. x -> Either x y) (forall x y. y -> Either x y) (Aff e a) (Aff e (Either Error a))
+
+  foreign import _runAff """
+    function _runAff(errorT, successT, aff) {
+      return function() {
+        return aff(function(v) {
+          try {
+            successT(v)();
+          } catch (e) {
+            errorT(e)();
+          }
+        }, function(e) {
+          errorT(e)();
+        });
+      };
+    }""" :: forall e a. Fn3 (Error -> Eff e Unit) (a -> Eff e Unit) (Aff e a) (Eff e Unit)
+
+  foreign import _liftEff """
+    function _liftEff(canceler, e) {
+      return function(success, error) {
+        try {
+          success(e());
+        } catch (e) {
+          error(e);
+        }
+        
+        return canceler;
+      };
+    }""" :: forall e a. Fn2 (Canceler e) (Eff e a) (Aff e a)
+
+
+
