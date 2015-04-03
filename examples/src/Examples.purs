@@ -4,7 +4,7 @@ module Examples where
   import Data.Either(either)
 
   import Control.Monad.Aff
-  import Control.Monad.Aff.Queue
+  import Control.Monad.Aff.AVar
   import Control.Monad.Aff.Par
   import Control.Apply((*>))
   import Control.Alt(Alt, (<|>))
@@ -13,7 +13,7 @@ module Examples where
   import Control.Monad.Error.Class(throwError)
   
   type Test = forall e. Aff (trace :: Trace | e) Unit
-  type TestQueue = forall e. Aff (trace :: Trace, queue :: QueueFx | e) Unit
+  type TestAVar = forall e. Aff (trace :: Trace, avar :: AVAR | e) Unit
 
   test_sequencing :: Number -> Test
   test_sequencing 0 = liftEff $ trace "Done"
@@ -38,33 +38,33 @@ module Examples where
     apathize $ throwError (error "Oh noes!")
     liftEff $ trace "Success: Exceptions don't stop the apathetic"
 
-  test_putTakeQueue :: TestQueue
+  test_putTakeQueue :: TestAVar
   test_putTakeQueue = do
-    v <- makeQueue
-    forkAff (later $ putQueue v 1.0)
-    a <- takeQueue v 
+    v <- makeVar
+    forkAff (later $ putVar v 1.0)
+    a <- takeVar v 
     liftEff $ trace ("Success: Value " ++ show a)
 
-  test_killQueue :: TestQueue
+  test_killQueue :: TestAVar
   test_killQueue = do
-    v <- makeQueue
-    killQueue v (error "DOA")
-    e <- attempt $ takeQueue v
+    v <- makeVar
+    killVar v (error "DOA")
+    e <- attempt $ takeVar v
     liftEff $ either (const $ trace "Success: Killed queue dead") (const $ trace "Failure: Oh noes, queue survived!") e
 
-  test_parRace :: TestQueue
+  test_parRace :: TestAVar
   test_parRace = do
     s <- runPar (Par (later' 100 $ pure "Success: Early bird got the worm") <|> 
                  Par (later' 200 $ pure "Failure: Late bird got the worm"))
     liftEff $ trace s
 
-  test_parRaceKill1 :: TestQueue
+  test_parRaceKill1 :: TestAVar
   test_parRaceKill1 = do
     s <- runPar (Par (later' 100 $ throwError (error ("Oh noes!"))) <|> 
                  Par (later' 200 $ pure "Success: Early error was ignored in favor of late success"))
     liftEff $ trace s
 
-  test_parRaceKill2 :: TestQueue
+  test_parRaceKill2 :: TestAVar
   test_parRaceKill2 = do
     e <- attempt $ runPar (Par (later' 100 $ throwError (error ("Oh noes!"))) <|> 
                            Par (later' 200 $ throwError (error ("Oh noes!"))))
@@ -86,10 +86,10 @@ module Examples where
     liftEff $ trace "Testing apathize"
     test_apathize
 
-    liftEff $ trace "Testing Queue - putQueue, takeQueue"
+    liftEff $ trace "Testing Queue - putVar, takeVar"
     test_putTakeQueue
 
-    liftEff $ trace "Testing killQueue"
+    liftEff $ trace "Testing killVar"
     test_killQueue
 
     liftEff $ trace "Testing Par (<|>)"

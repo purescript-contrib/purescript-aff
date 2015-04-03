@@ -509,7 +509,7 @@ PS.Control_Monad_Aff = (function () {
     var Control_Monad_Eff_Unsafe = PS.Control_Monad_Eff_Unsafe;
     var Control_Monad_Eff_Class = PS.Control_Monad_Eff_Class;
     
-    function _setTimeout(millis, aff) {
+    function _setTimeout(nonCanceler, millis, aff) {
       return function(success, error) {
         var canceler;
         var cancel = false;
@@ -523,11 +523,12 @@ PS.Control_Monad_Aff = (function () {
         return function(e) {
           return function(success, error) {
             if (canceler !== undefined) {
-              canceler(e)(success, error);
+              return canceler(e)(success, error);
             } else {
               cancel = true;
               clearTimeout(timeout);
               error(e);
+              return nonCanceler;
             }
           };
         };
@@ -663,20 +664,6 @@ PS.Control_Monad_Aff = (function () {
      *  | and errors are ignored.
      */
     var launchAff = runAff(Prelude["const"](Prelude.pure(Control_Monad_Eff.applicativeEff)(Prelude.unit)))(Prelude["const"](Prelude.pure(Control_Monad_Eff.applicativeEff)(Prelude.unit)));
-    
-    /**
-     *  | Runs the asynchronous computation later (off the current execution context).
-     */
-    var later$prime = function (n) {
-        return function (aff) {
-            return _setTimeout(n, aff);
-        };
-    };
-    
-    /**
-     *  | Runs the asynchronous computation off the current execution context.
-     */
-    var later = later$prime(0);
     var functorAff = new Prelude.Functor(function (f) {
         return function (fa) {
             return _fmap(f, fa);
@@ -724,6 +711,20 @@ PS.Control_Monad_Aff = (function () {
     var forkAff = function (aff) {
         return _forkAff(nonCanceler, aff);
     };
+    
+    /**
+     *  | Runs the asynchronous computation later (off the current execution context).
+     */
+    var later$prime = function (n) {
+        return function (aff) {
+            return _setTimeout(nonCanceler, n, aff);
+        };
+    };
+    
+    /**
+     *  | Runs the asynchronous computation off the current execution context.
+     */
+    var later = later$prime(0);
     var monadEffAff = new Control_Monad_Eff_Class.MonadEff(function () {
         return monadAff;
     }, function (eff) {
@@ -767,14 +768,14 @@ PS.Control_Monad_Aff = (function () {
     };
 })();
 var PS = PS || {};
-PS.Control_Monad_Aff_Queue = (function () {
+PS.Control_Monad_Aff_AVar = (function () {
     "use strict";
     var Control_Monad_Aff = PS.Control_Monad_Aff;
     var Prelude = PS.Prelude;
     var Data_Function = PS.Data_Function;
     var Control_Monad_Eff_Exception = PS.Control_Monad_Eff_Exception;
     
-    function _makeQueue(canceler) {
+    function _makeVar(canceler) {
       return function(success, error) {
         try {
           success({
@@ -791,16 +792,16 @@ PS.Control_Monad_Aff_Queue = (function () {
     }
   ;
     
-    function _takeQueue(canceler, queue) {
+    function _takeVar(canceler, avar) {
       return function(success, error) {
-        if (queue.error !== undefined) {
-          error(queue.error);
-        } else if (queue.producers.length > 0) {
-          var producer = queue.producers.shift();
+        if (avar.error !== undefined) {
+          error(avar.error);
+        } else if (avar.producers.length > 0) {
+          var producer = avar.producers.shift();
 
           producer(success, error);
         } else {
-          queue.consumers.push({success: success, error: error});
+          avar.consumers.push({success: success, error: error});
         }
 
         return canceler;
@@ -808,12 +809,12 @@ PS.Control_Monad_Aff_Queue = (function () {
     }
   ;
     
-    function _putQueue(canceler, queue, a) {
+    function _putVar(canceler, avar, a) {
       return function(success, error) {
-        if (queue.error !== undefined) {
-          error(queue.error);
-        } else if (queue.consumers.length === 0) {
-          queue.producers.push(function(success, error) {
+        if (avar.error !== undefined) {
+          error(avar.error);
+        } else if (avar.consumers.length === 0) {
+          avar.producers.push(function(success, error) {
             try {
               success(a);
             } catch (e) {
@@ -823,7 +824,7 @@ PS.Control_Monad_Aff_Queue = (function () {
 
           success({});
         } else {
-          var consumer = queue.consumers.shift();
+          var consumer = avar.consumers.shift();
 
           try {
             consumer.success(a);
@@ -841,17 +842,17 @@ PS.Control_Monad_Aff_Queue = (function () {
     }
   ;
     
-    function _killQueue(canceler, queue, e) {
+    function _killVar(canceler, avar, e) {
       return function(success, error) {
-        if (queue.error !== undefined) {
-          error(queue.error);
+        if (avar.error !== undefined) {
+          error(avar.error);
         } else {
           var errors = [];
 
-          queue.error = e;
+          avar.error = e;
 
-          while (queue.consumers.length > 0) {
-            var consumer = queue.consumers.shift();
+          while (avar.consumers.length > 0) {
+            var consumer = avar.consumers.shift();
 
             try {
               consumer.error(e);
@@ -870,52 +871,52 @@ PS.Control_Monad_Aff_Queue = (function () {
   ;
     
     /**
-     *  | Takes the next value from the asynchronous queue.
+     *  | Takes the next value from the asynchronous avar.
      */
-    var takeQueue = function (q) {
-        return _takeQueue(Control_Monad_Aff.nonCanceler, q);
+    var takeVar = function (q) {
+        return _takeVar(Control_Monad_Aff.nonCanceler, q);
     };
     
     /**
-     *  | Puts a new value into the asynchronous queue. If the queue has
+     *  | Puts a new value into the asynchronous avar. If the avar has
      *  | been killed, this will result in an error.
      */
-    var putQueue = function (q) {
+    var putVar = function (q) {
         return function (a) {
-            return _putQueue(Control_Monad_Aff.nonCanceler, q, a);
+            return _putVar(Control_Monad_Aff.nonCanceler, q, a);
         };
     };
     
     /**
-     *  | Makes a new asynchronous queue.
+     *  | Makes a new asynchronous avar.
      */
-    var makeQueue = _makeQueue(Control_Monad_Aff.nonCanceler);
+    var makeVar = _makeVar(Control_Monad_Aff.nonCanceler);
     
     /**
-     *  | Makes a queue and sets it to some value.
+     *  | Makes a avar and sets it to some value.
      */
-    var makeQueue$prime = function (a) {
-        return Prelude[">>="](Control_Monad_Aff.bindAff)(makeQueue)(function (_21) {
-            return Prelude[">>="](Control_Monad_Aff.bindAff)(putQueue(_21)(a))(function () {
+    var makeVar$prime = function (a) {
+        return Prelude[">>="](Control_Monad_Aff.bindAff)(makeVar)(function (_21) {
+            return Prelude[">>="](Control_Monad_Aff.bindAff)(putVar(_21)(a))(function () {
                 return Prelude["return"](Control_Monad_Aff.monadAff)(_21);
             });
         });
     };
     
     /**
-     *  | Kills an asynchronous queue.
+     *  | Kills an asynchronous avar.
      */
-    var killQueue = function (q) {
+    var killVar = function (q) {
         return function (e) {
-            return _killQueue(Control_Monad_Aff.nonCanceler, q, e);
+            return _killVar(Control_Monad_Aff.nonCanceler, q, e);
         };
     };
     return {
-        takeQueue: takeQueue, 
-        putQueue: putQueue, 
-        "makeQueue'": makeQueue$prime, 
-        makeQueue: makeQueue, 
-        killQueue: killQueue
+        takeVar: takeVar, 
+        putVar: putVar, 
+        "makeVar'": makeVar$prime, 
+        makeVar: makeVar, 
+        killVar: killVar
     };
 })();
 var PS = PS || {};
@@ -923,7 +924,7 @@ PS.Control_Monad_Aff_Par = (function () {
     "use strict";
     var Prelude = PS.Prelude;
     var Data_Monoid = PS.Data_Monoid;
-    var Control_Monad_Aff_Queue = PS.Control_Monad_Aff_Queue;
+    var Control_Monad_Aff_AVar = PS.Control_Monad_Aff_AVar;
     var Control_Monad_Aff = PS.Control_Monad_Aff;
     var Data_Either = PS.Data_Either;
     var Control_Plus = PS.Control_Plus;
@@ -955,28 +956,28 @@ PS.Control_Monad_Aff_Par = (function () {
             var maybeKill = function (va) {
                 return function (ve) {
                     return function (err) {
-                        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_Queue.takeQueue(ve))(function (_24) {
+                        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar.takeVar(ve))(function (_24) {
                             return Prelude[">>="](Control_Monad_Aff.bindAff)((function () {
                                 var _483 = _24 === 1;
                                 if (_483) {
-                                    return Control_Monad_Aff_Queue.killQueue(va)(err);
+                                    return Control_Monad_Aff_AVar.killVar(va)(err);
                                 };
                                 if (!_483) {
                                     return Prelude["return"](Control_Monad_Aff.monadAff)(Prelude.unit);
                                 };
                                 throw new Error("Failed pattern match");
                             })())(function () {
-                                return Control_Monad_Aff_Queue.putQueue(ve)(_24 + 1);
+                                return Control_Monad_Aff_AVar.putVar(ve)(_24 + 1);
                             });
                         });
                     };
                 };
             };
-            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_Queue.makeQueue)(function (_26) {
-                return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_Queue["makeQueue'"](0))(function (_25) {
-                    return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.forkAff(Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(_293))(Data_Either.either(maybeKill(_26)(_25))(Control_Monad_Aff_Queue.putQueue(_26)))))(function () {
-                        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.forkAff(Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(_294))(Data_Either.either(maybeKill(_26)(_25))(Control_Monad_Aff_Queue.putQueue(_26)))))(function () {
-                            return Control_Monad_Aff_Queue.takeQueue(_26);
+            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar.makeVar)(function (_26) {
+                return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar["makeVar'"](0))(function (_25) {
+                    return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.forkAff(Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(_293))(Data_Either.either(maybeKill(_26)(_25))(Control_Monad_Aff_AVar.putVar(_26)))))(function () {
+                        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.forkAff(Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(_294))(Data_Either.either(maybeKill(_26)(_25))(Control_Monad_Aff_AVar.putVar(_26)))))(function () {
+                            return Control_Monad_Aff_AVar.takeVar(_26);
                         });
                     });
                 });
@@ -1002,7 +1003,7 @@ PS.Examples = (function () {
     var Control_Monad_Error_Class = PS.Control_Monad_Error_Class;
     var Control_Monad_Eff_Exception = PS.Control_Monad_Eff_Exception;
     var Data_Either = PS.Data_Either;
-    var Control_Monad_Aff_Queue = PS.Control_Monad_Aff_Queue;
+    var Control_Monad_Aff_AVar = PS.Control_Monad_Aff_AVar;
     var Control_Monad_Aff_Par = PS.Control_Monad_Aff_Par;
     var Control_Alt = PS.Control_Alt;
     var Control_Apply = PS.Control_Apply;
@@ -1014,9 +1015,9 @@ PS.Examples = (function () {
             return test_sequencing(_464 - 1);
         });
     };
-    var test_putTakeQueue = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_Queue.makeQueue)(function (_33) {
-        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.forkAff(Control_Monad_Aff.later(Control_Monad_Aff_Queue.putQueue(_33)(1.0))))(function () {
-            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_Queue.takeQueue(_33))(function (_32) {
+    var test_putTakeQueue = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar.makeVar)(function (_33) {
+        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.forkAff(Control_Monad_Aff.later(Control_Monad_Aff_AVar.putVar(_33)(1.0))))(function () {
+            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar.takeVar(_33))(function (_32) {
                 return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Success: Value " + Prelude.show(Prelude.showNumber)(_32)));
             });
         });
@@ -1037,9 +1038,9 @@ PS.Examples = (function () {
     var test_parRace = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_Par.runPar(Control_Alt["<|>"](Control_Monad_Aff_Par.altPar)(Control_Monad_Aff["later'"](100)(Prelude.pure(Control_Monad_Aff.applicativeAff)("Success: Early bird got the worm")))(Control_Monad_Aff["later'"](200)(Prelude.pure(Control_Monad_Aff.applicativeAff)("Failure: Late bird got the worm")))))(function (_36) {
         return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace(_36));
     });
-    var test_killQueue = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_Queue.makeQueue)(function (_35) {
-        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_Queue.killQueue(_35)(Control_Monad_Eff_Exception.error("DOA")))(function () {
-            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(Control_Monad_Aff_Queue.takeQueue(_35)))(function (_34) {
+    var test_killQueue = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar.makeVar)(function (_35) {
+        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar.killVar(_35)(Control_Monad_Eff_Exception.error("DOA")))(function () {
+            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(Control_Monad_Aff_AVar.takeVar(_35)))(function (_34) {
                 return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Data_Either.either(Prelude["const"](Debug_Trace.trace("Success: Killed queue dead")))(Prelude["const"](Debug_Trace.trace("Failure: Oh noes, queue survived!")))(_34));
             });
         });
@@ -1060,9 +1061,9 @@ PS.Examples = (function () {
                                 return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.later(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Success: It happened later"))))(function () {
                                     return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing apathize")))(function () {
                                         return Prelude[">>="](Control_Monad_Aff.bindAff)(test_apathize)(function () {
-                                            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing Queue - putQueue, takeQueue")))(function () {
+                                            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing Queue - putVar, takeVar")))(function () {
                                                 return Prelude[">>="](Control_Monad_Aff.bindAff)(test_putTakeQueue)(function () {
-                                                    return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing killQueue")))(function () {
+                                                    return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing killVar")))(function () {
                                                         return Prelude[">>="](Control_Monad_Aff.bindAff)(test_killQueue)(function () {
                                                             return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing Par (<|>)")))(function () {
                                                                 return Prelude[">>="](Control_Monad_Aff.bindAff)(test_parRace)(function () {

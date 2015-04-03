@@ -51,9 +51,16 @@ module Control.Monad.Aff
   runAff ex f aff = runFn3 _runAff ex f aff
 
   -- | Creates an asynchronous effect from a function that accepts error and 
-  -- | success callbacks.
+  -- | success callbacks. This function can be used for asynchronous computations
+  -- | that cannot be canceled.
   makeAff :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> Eff e Unit) -> Aff e a
-  makeAff h = runFn2 _makeAff nonCanceler h
+  makeAff h = makeAff' (\e a -> const nonCanceler <$> h e a)
+
+  -- | Creates an asynchronous effect from a function that accepts error and 
+  -- | success callbacks, and returns a canceler for the computation. This 
+  -- | function can be used for asynchronous computations that can be canceled.
+  makeAff' :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> Eff e (Canceler e)) -> Aff e a
+  makeAff' h = _makeAff h
 
   -- | Runs the asynchronous computation off the current execution context.
   later :: forall e a. Aff e a -> Aff e a
@@ -61,34 +68,7 @@ module Control.Monad.Aff
 
   -- | Runs the asynchronous computation later (off the current execution context).
   later' :: forall e a. Number -> Aff e a -> Aff e a
-  later' n aff = runFn2 _setTimeout n aff
-
-  foreign import _setTimeout """
-    function _setTimeout(millis, aff) {
-      return function(success, error) {
-        var canceler;
-        var cancel = false;
-
-        var timeout = setTimeout(function() {
-          if (!cancel) {
-            canceler = aff(success, error);
-          }
-        }, millis);
-
-        return function(e) {
-          return function(success, error) {
-            if (canceler !== undefined) {
-              canceler(e)(success, error);
-            } else {
-              cancel = true;
-              clearTimeout(timeout);
-              error(e);
-            }
-          };
-        };
-      };
-    }
-  """ :: forall e a. Fn2 Number (Aff e a) (Aff e a)
+  later' n aff = runFn3 _setTimeout nonCanceler n aff
 
   -- | Forks the specified asynchronous computation so subsequent monadic binds 
   -- | will not block on the result of the computation.
@@ -151,6 +131,34 @@ module Control.Monad.Aff
 
   instance monadPlusAff :: MonadPlus (Aff e)
 
+  foreign import _setTimeout """
+    function _setTimeout(nonCanceler, millis, aff) {
+      return function(success, error) {
+        var canceler;
+        var cancel = false;
+
+        var timeout = setTimeout(function() {
+          if (!cancel) {
+            canceler = aff(success, error);
+          }
+        }, millis);
+
+        return function(e) {
+          return function(success, error) {
+            if (canceler !== undefined) {
+              return canceler(e)(success, error);
+            } else {
+              cancel = true;
+              clearTimeout(timeout);
+              error(e);
+              return nonCanceler;
+            }
+          };
+        };
+      };
+    }
+  """ :: forall e a. Fn3 (Canceler e) Number (Aff e a) (Aff e a)
+
   foreign import _unsafeInterleaveAff """
     function _unsafeInterleaveAff(aff) {
       return aff;
@@ -174,9 +182,9 @@ module Control.Monad.Aff
   """ :: forall e a. Fn2 (Canceler e) (Aff e a) (Aff e (Canceler e))
 
   foreign import _makeAff """
-    function _makeAff(canceler, cb) {
+    function _makeAff(cb) {
       return function(success, error) {
-        cb(function(e) {
+        return cb(function(e) {
           return function() {
             error(e);
           };
@@ -189,11 +197,9 @@ module Control.Monad.Aff
             }
           };
         })();
-
-        return canceler;
       }
     }
-    """ :: forall e a. Fn2 (Canceler e) ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> Eff e Unit) (Aff e a)
+    """ :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> Eff e (Canceler e)) -> Aff e a
 
   foreign import _pure """
     function _pure(canceler, v) {

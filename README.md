@@ -171,21 +171,19 @@ canceled <- canceler $ error "Just had to cancel"
 _        <- liftEff $ if canceled then (trace "Canceled") else (trace "Not Canceled")
 ```
 
-## Queues
+## AVars
 
-The `Control.Monad.Aff.Queue` module contains asynchronous queues. These can 
-be used as low-level building blocks for asynchronous programs.
+The `Control.Monad.Aff.AVar` module contains asynchronous variables, which are very similar to Haskell's `MVar` construct. These can be used as low-level building blocks for asynchronous programs.
 
 ```purescript
-do v <- makeQueue
-   forkAff (later $ putQueue v 1.0)
-   a <- takeQueue v 
+do v <- makeVar
+   forkAff (later $ putVar v 1.0)
+   a <- takeVar v 
    liftEff $ trace ("Succeeded with " ++ show a)
 ```
 
 You can use these constructs as one-sided blocking queues, which suspend (if 
-necessary) on `take` operations, or as asynchronous variables (similar to 
-Haskell's `MVar` construct).
+necessary) on `take` operations, or as asynchronous, empty-or-full variables.
 
 ## Parallel Execution
 
