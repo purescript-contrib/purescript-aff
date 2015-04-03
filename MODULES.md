@@ -21,6 +21,13 @@ type PureAff a = forall e. Aff e a
 
 A pure asynchronous computation, having no effects.
 
+#### `Canceler`
+
+``` purescript
+type Canceler e = Error -> Aff e Boolean
+```
+
+
 #### `launchAff`
 
 ``` purescript
@@ -46,7 +53,8 @@ makeAff :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> Eff e Unit
 ```
 
 Creates an asynchronous effect from a function that accepts error and 
-success callbacks.
+success callbacks. This function can be used for asynchronous computations
+that cannot be canceled.
 
 #### `later`
 
@@ -67,7 +75,7 @@ Runs the asynchronous computation later (off the current execution context).
 #### `forkAff`
 
 ``` purescript
-forkAff :: forall e a. Aff e a -> Aff e Unit
+forkAff :: forall e a. Aff e a -> Aff e (Canceler e)
 ```
 
 Forks the specified asynchronous computation so subsequent monadic binds 
@@ -96,6 +104,14 @@ liftEff' :: forall e a. Eff (err :: Exception | e) a -> Aff e (Either Error a)
 ```
 
 Lifts a synchronous computation and makes explicit any failure from exceptions.
+
+#### `nonCanceler`
+
+``` purescript
+nonCanceler :: forall e. Canceler e
+```
+
+A constant function that always returns a pure false value.
 
 #### `semigroupAff`
 
@@ -191,6 +207,79 @@ instance monadPlusAff :: MonadPlus (Aff e)
 
 
 
+## Module Control.Monad.Aff.AVar
+
+#### `AVAR`
+
+``` purescript
+data AVAR :: !
+```
+
+
+#### `AVar`
+
+``` purescript
+data AVar :: * -> *
+```
+
+
+#### `AffAVar`
+
+``` purescript
+type AffAVar e a = Aff (avar :: AVAR | e) a
+```
+
+
+#### `makeVar`
+
+``` purescript
+makeVar :: forall e a. AffAVar e (AVar a)
+```
+
+Makes a new asynchronous avar.
+
+#### `makeVar'`
+
+``` purescript
+makeVar' :: forall e a. a -> AffAVar e (AVar a)
+```
+
+Makes a avar and sets it to some value.
+
+#### `takeVar`
+
+``` purescript
+takeVar :: forall e a. AVar a -> AffAVar e a
+```
+
+Takes the next value from the asynchronous avar.
+
+#### `putVar`
+
+``` purescript
+putVar :: forall e a. AVar a -> a -> AffAVar e Unit
+```
+
+Puts a new value into the asynchronous avar. If the avar has
+been killed, this will result in an error.
+
+#### `modifyVar`
+
+``` purescript
+modifyVar :: forall e a. (a -> a) -> AVar a -> AffAVar e Unit
+```
+
+Modifies the value at the head of the avar (will suspend until one is available).
+
+#### `killVar`
+
+``` purescript
+killVar :: forall e a. AVar a -> Error -> AffAVar e Unit
+```
+
+Kills an asynchronous avar.
+
+
 ## Module Control.Monad.Aff.Class
 
 #### `MonadAff`
@@ -215,14 +304,14 @@ instance monadAffAff :: MonadAff e (Aff e)
 
 ``` purescript
 newtype Par e a
-  = Par (AffQueue e a)
+  = Par (AffAVar e a)
 ```
 
 
 #### `runPar`
 
 ``` purescript
-runPar :: forall e a. Par e a -> AffQueue e a
+runPar :: forall e a. Par e a -> AffAVar e a
 ```
 
 Extracts the `Aff` from the `Par`.
@@ -283,79 +372,6 @@ instance plusPar :: Plus (Par e)
 instance alternativePar :: Alternative (Par e)
 ```
 
-
-
-## Module Control.Monad.Aff.Queue
-
-#### `QueueFx`
-
-``` purescript
-data QueueFx :: !
-```
-
-
-#### `Queue`
-
-``` purescript
-data Queue :: * -> *
-```
-
-
-#### `AffQueue`
-
-``` purescript
-type AffQueue e a = Aff (queue :: QueueFx | e) a
-```
-
-
-#### `makeQueue`
-
-``` purescript
-makeQueue :: forall e a. AffQueue e (Queue a)
-```
-
-Makes a new asynchronous queue.
-
-#### `makeQueue'`
-
-``` purescript
-makeQueue' :: forall e a. a -> AffQueue e (Queue a)
-```
-
-Makes a queue and sets it to some value.
-
-#### `takeQueue`
-
-``` purescript
-takeQueue :: forall e a. Queue a -> AffQueue e a
-```
-
-Takes the next value from the asynchronous queue.
-
-#### `putQueue`
-
-``` purescript
-putQueue :: forall e a. Queue a -> a -> AffQueue e Unit
-```
-
-Puts a new value into the asynchronous queue. If the queue has
-been killed, this will result in an error.
-
-#### `modifyQueue`
-
-``` purescript
-modifyQueue :: forall e a. (a -> a) -> Queue a -> AffQueue e Unit
-```
-
-Modifies the value at the head of the queue (will suspend until one is available).
-
-#### `killQueue`
-
-``` purescript
-killQueue :: forall e a. Queue a -> Error -> AffQueue e Unit
-```
-
-Kills an asynchronous queue.
 
 
 ## Module Control.Monad.Aff.Unsafe
