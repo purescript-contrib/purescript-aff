@@ -3,15 +3,27 @@ module Control.Monad.Aff.Unsafe where
 
   foreign import unsafeTrace """
     function unsafeTrace(v) {
-      return function(error) {
-        return function(success) {
-          return function() {
-            console.log(v);
+      return function(success, error) {
+        console.log(v);
 
-            success({})();
-          }
+        try {
+          success(v);
+        } catch (e) {
+          error(e);
         }
-      }
+
+        var nonCanceler;
+
+        nonCanceler = function(e) {
+          return function(sucess, error) {
+            success(false);
+
+            return nonCanceler;
+          }
+        };
+
+        return nonCanceler;
+      };
     }
   """ :: forall e a. a -> Aff e Unit
 
