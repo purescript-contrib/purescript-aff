@@ -179,8 +179,8 @@ PS.Prelude = (function () {
     };
     var moduloSemiringNumber = new ModuloSemiring(numDiv, function () {
         return semiringNumber;
-    }, function (_45) {
-        return function (_46) {
+    }, function (_48) {
+        return function (_49) {
             return 0;
         };
     });
@@ -196,9 +196,9 @@ PS.Prelude = (function () {
     /**
      *  | Returns its first argument and ignores its second.
      */
-    var $$const = function (_39) {
-        return function (_40) {
-            return _39;
+    var $$const = function (_42) {
+        return function (_43) {
+            return _42;
         };
     };
     var ap = function (__dict_Monad_16) {
@@ -361,10 +361,40 @@ var PS = PS || {};
 PS.Control_Alt = (function () {
     "use strict";
     var Prelude = PS.Prelude;
+    
+    /**
+     *  | The `Alt` type class identifies an associative operation on a type
+     *  | constructor.  It is similar to `Semigroup`, except that it applies to
+     *  | types of kind `* -> *`, like `Array` or `List`, rather than concrete types
+     *  | `String` or `Number`.
+     *  |
+     *  | `Alt` instances are required to satisfy the following laws:
+     *  |
+     *  | - Associativity: `(x <|> y) <|> z == x <|> (y <|> z)`
+     *  | - Distributivity: `f <$> (x <|> y) == (f <$> x) <|> (f <$> y)`
+     *  |
+     *  | For example, the `Array` (`[]`) type is an instance of `Alt`, where
+     *  | `(<|>)` is defined to be concatenation.
+     */
     var Alt = function ($less$bar$greater, __superclass_Prelude$dotFunctor_0) {
         this["<|>"] = $less$bar$greater;
         this["__superclass_Prelude.Functor_0"] = __superclass_Prelude$dotFunctor_0;
     };
+    
+    /**
+     *  | The `Alt` type class identifies an associative operation on a type
+     *  | constructor.  It is similar to `Semigroup`, except that it applies to
+     *  | types of kind `* -> *`, like `Array` or `List`, rather than concrete types
+     *  | `String` or `Number`.
+     *  |
+     *  | `Alt` instances are required to satisfy the following laws:
+     *  |
+     *  | - Associativity: `(x <|> y) <|> z == x <|> (y <|> z)`
+     *  | - Distributivity: `f <$> (x <|> y) == (f <$> x) <|> (f <$> y)`
+     *  |
+     *  | For example, the `Array` (`[]`) type is an instance of `Alt`, where
+     *  | `(<|>)` is defined to be concatenation.
+     */
     var $less$bar$greater = function (dict) {
         return dict["<|>"];
     };
@@ -378,6 +408,14 @@ PS.Data_Either = (function () {
     "use strict";
     var Prelude = PS.Prelude;
     var Control_Alt = PS.Control_Alt;
+    var Control_Extend = PS.Control_Extend;
+    
+    /**
+     *  | The `Either` type is used to represent a choice between two types of value.
+     *  |
+     *  | A common use case for `Either` is error handling, where `Left` is used to
+     *  | carry an error value and `Right` is used to carry a success value.
+     */
     var Left = (function () {
         function Left(value0) {
             this.value0 = value0;
@@ -387,6 +425,13 @@ PS.Data_Either = (function () {
         };
         return Left;
     })();
+    
+    /**
+     *  | The `Either` type is used to represent a choice between two types of value.
+     *  |
+     *  | A common use case for `Either` is error handling, where `Left` is used to
+     *  | carry an error value and `Right` is used to carry a success value.
+     */
     var Right = (function () {
         function Right(value0) {
             this.value0 = value0;
@@ -396,14 +441,25 @@ PS.Data_Either = (function () {
         };
         return Right;
     })();
-    var either = function (_81) {
-        return function (_82) {
-            return function (_83) {
-                if (_83 instanceof Left) {
-                    return _81(_83.value0);
+    
+    /**
+     *  | Takes two functions and an `Either` value, if the value is a `Left` the
+     *  | inner value is applied to the first function, if the value is a `Right`
+     *  | the inner value is applied to the second function.
+     *  |
+     *  | ``` purescript
+     *  | either f g (Left x) == f x
+     *  | either f g (Right y) == g y
+     *  | ```
+     */
+    var either = function (_86) {
+        return function (_87) {
+            return function (_88) {
+                if (_88 instanceof Left) {
+                    return _86(_88.value0);
                 };
-                if (_83 instanceof Right) {
-                    return _82(_83.value0);
+                if (_88 instanceof Right) {
+                    return _87(_88.value0);
                 };
                 throw new Error("Failed pattern match");
             };
@@ -478,11 +534,50 @@ PS.Control_Monad_Error_Class = (function () {
     var Control_Monad_State_Trans = PS.Control_Monad_State_Trans;
     var Control_Monad_Error = PS.Control_Monad_Error;
     var Data_Either = PS.Data_Either;
+    var Data_Maybe = PS.Data_Maybe;
     var Data_Monoid = PS.Data_Monoid;
+    
+    /**
+     *  | The `MonadError` type class represents those monads which support errors via
+     *  | `throwError` and `catchError`.
+     *  |
+     *  | - `throwError e` throws the error `e`
+     *  | - `catchError x f` calls the error handler `f` if an error is thrown during the
+     *  |   evaluation of `x`.
+     *  |
+     *  | An implementation is provided for `ErrorT`, and for other monad transformers
+     *  | defined in this library.
+     *  |
+     *  | Laws:
+     *  |
+     *  | - Left zero: `throwError e >>= f = throwError e`
+     *  | - Catch: `catchError (throwError e) f = f e`
+     *  | - Pure: `catchError (pure a) f = pure a`
+     *  | 
+     */
     var MonadError = function (catchError, throwError) {
         this.catchError = catchError;
         this.throwError = throwError;
     };
+    
+    /**
+     *  | The `MonadError` type class represents those monads which support errors via
+     *  | `throwError` and `catchError`.
+     *  |
+     *  | - `throwError e` throws the error `e`
+     *  | - `catchError x f` calls the error handler `f` if an error is thrown during the
+     *  |   evaluation of `x`.
+     *  |
+     *  | An implementation is provided for `ErrorT`, and for other monad transformers
+     *  | defined in this library.
+     *  |
+     *  | Laws:
+     *  |
+     *  | - Left zero: `throwError e >>= f = throwError e`
+     *  | - Catch: `catchError (throwError e) f = f e`
+     *  | - Pure: `catchError (pure a) f = pure a`
+     *  | 
+     */
     var throwError = function (dict) {
         return dict.throwError;
     };
@@ -896,9 +991,9 @@ PS.Control_Monad_Aff_AVar = (function () {
      *  | Makes a avar and sets it to some value.
      */
     var makeVar$prime = function (a) {
-        return Prelude[">>="](Control_Monad_Aff.bindAff)(makeVar)(function (_21) {
-            return Prelude[">>="](Control_Monad_Aff.bindAff)(putVar(_21)(a))(function () {
-                return Prelude["return"](Control_Monad_Aff.monadAff)(_21);
+        return Prelude[">>="](Control_Monad_Aff.bindAff)(makeVar)(function (_24) {
+            return Prelude[">>="](Control_Monad_Aff.bindAff)(putVar(_24)(a))(function () {
+                return Prelude["return"](Control_Monad_Aff.monadAff)(_24);
             });
         });
     };
@@ -939,45 +1034,45 @@ PS.Control_Monad_Aff_Par = (function () {
     /**
      *  | Extracts the `Aff` from the `Par`.
      */
-    var runPar = function (_288) {
-        return _288;
+    var runPar = function (_296) {
+        return _296;
     };
-    var functorPar = new Prelude.Functor(function (_289) {
-        return function (_290) {
-            return Prelude["<$>"](Control_Monad_Aff.functorAff)(_289)(_290);
+    var functorPar = new Prelude.Functor(function (_297) {
+        return function (_298) {
+            return Prelude["<$>"](Control_Monad_Aff.functorAff)(_297)(_298);
         };
     });
     
     /**
      *  | Returns the first value, or the first error if both error.
      */
-    var altPar = new Control_Alt.Alt(function (_293) {
-        return function (_294) {
+    var altPar = new Control_Alt.Alt(function (_301) {
+        return function (_302) {
             var maybeKill = function (va) {
                 return function (ve) {
                     return function (err) {
-                        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar.takeVar(ve))(function (_24) {
+                        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar.takeVar(ve))(function (_27) {
                             return Prelude[">>="](Control_Monad_Aff.bindAff)((function () {
-                                var _483 = _24 === 1;
-                                if (_483) {
+                                var _491 = _27 === 1;
+                                if (_491) {
                                     return Control_Monad_Aff_AVar.killVar(va)(err);
                                 };
-                                if (!_483) {
+                                if (!_491) {
                                     return Prelude["return"](Control_Monad_Aff.monadAff)(Prelude.unit);
                                 };
                                 throw new Error("Failed pattern match");
                             })())(function () {
-                                return Control_Monad_Aff_AVar.putVar(ve)(_24 + 1);
+                                return Control_Monad_Aff_AVar.putVar(ve)(_27 + 1);
                             });
                         });
                     };
                 };
             };
-            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar.makeVar)(function (_26) {
-                return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar["makeVar'"](0))(function (_25) {
-                    return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.forkAff(Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(_293))(Data_Either.either(maybeKill(_26)(_25))(Control_Monad_Aff_AVar.putVar(_26)))))(function () {
-                        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.forkAff(Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(_294))(Data_Either.either(maybeKill(_26)(_25))(Control_Monad_Aff_AVar.putVar(_26)))))(function () {
-                            return Control_Monad_Aff_AVar.takeVar(_26);
+            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar.makeVar)(function (_29) {
+                return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar["makeVar'"](0))(function (_28) {
+                    return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.forkAff(Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(_301))(Data_Either.either(maybeKill(_29)(_28))(Control_Monad_Aff_AVar.putVar(_29)))))(function () {
+                        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.forkAff(Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(_302))(Data_Either.either(maybeKill(_29)(_28))(Control_Monad_Aff_AVar.putVar(_29)))))(function () {
+                            return Control_Monad_Aff_AVar.takeVar(_29);
                         });
                     });
                 });
@@ -1007,18 +1102,18 @@ PS.Examples = (function () {
     var Control_Monad_Aff_Par = PS.Control_Monad_Aff_Par;
     var Control_Alt = PS.Control_Alt;
     var Control_Apply = PS.Control_Apply;
-    var test_sequencing = function (_464) {
-        if (_464 === 0) {
+    var test_sequencing = function (_472) {
+        if (_472 === 0) {
             return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Done"));
         };
-        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff["later'"](100)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace(Prelude.show(Prelude.showNumber)(_464 / 10) + " seconds left"))))(function () {
-            return test_sequencing(_464 - 1);
+        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff["later'"](100)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace(Prelude.show(Prelude.showNumber)(_472 / 10) + " seconds left"))))(function () {
+            return test_sequencing(_472 - 1);
         });
     };
-    var test_putTakeQueue = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar.makeVar)(function (_33) {
-        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.forkAff(Control_Monad_Aff.later(Control_Monad_Aff_AVar.putVar(_33)(1.0))))(function () {
-            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar.takeVar(_33))(function (_32) {
-                return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Success: Value " + Prelude.show(Prelude.showNumber)(_32)));
+    var test_putTakeQueue = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar.makeVar)(function (_36) {
+        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.forkAff(Control_Monad_Aff.later(Control_Monad_Aff_AVar.putVar(_36)(1.0))))(function () {
+            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar.takeVar(_36))(function (_35) {
+                return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Success: Value " + Prelude.show(Prelude.showNumber)(_35)));
             });
         });
     });
@@ -1029,24 +1124,24 @@ PS.Examples = (function () {
             });
         });
     });
-    var test_parRaceKill2 = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(Control_Monad_Aff_Par.runPar(Control_Alt["<|>"](Control_Monad_Aff_Par.altPar)(Control_Monad_Aff["later'"](100)(Control_Monad_Error_Class.throwError(Control_Monad_Aff.monadErrorAff)(Control_Monad_Eff_Exception.error("Oh noes!"))))(Control_Monad_Aff["later'"](200)(Control_Monad_Error_Class.throwError(Control_Monad_Aff.monadErrorAff)(Control_Monad_Eff_Exception.error("Oh noes!")))))))(function (_38) {
-        return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Data_Either.either(Prelude["const"](Debug_Trace.trace("Success: Killing both kills it dead")))(Prelude["const"](Debug_Trace.trace("Failure: It's alive!!!")))(_38));
+    var test_parRaceKill2 = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(Control_Monad_Aff_Par.runPar(Control_Alt["<|>"](Control_Monad_Aff_Par.altPar)(Control_Monad_Aff["later'"](100)(Control_Monad_Error_Class.throwError(Control_Monad_Aff.monadErrorAff)(Control_Monad_Eff_Exception.error("Oh noes!"))))(Control_Monad_Aff["later'"](200)(Control_Monad_Error_Class.throwError(Control_Monad_Aff.monadErrorAff)(Control_Monad_Eff_Exception.error("Oh noes!")))))))(function (_41) {
+        return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Data_Either.either(Prelude["const"](Debug_Trace.trace("Success: Killing both kills it dead")))(Prelude["const"](Debug_Trace.trace("Failure: It's alive!!!")))(_41));
     });
-    var test_parRaceKill1 = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_Par.runPar(Control_Alt["<|>"](Control_Monad_Aff_Par.altPar)(Control_Monad_Aff["later'"](100)(Control_Monad_Error_Class.throwError(Control_Monad_Aff.monadErrorAff)(Control_Monad_Eff_Exception.error("Oh noes!"))))(Control_Monad_Aff["later'"](200)(Prelude.pure(Control_Monad_Aff.applicativeAff)("Success: Early error was ignored in favor of late success")))))(function (_37) {
-        return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace(_37));
+    var test_parRaceKill1 = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_Par.runPar(Control_Alt["<|>"](Control_Monad_Aff_Par.altPar)(Control_Monad_Aff["later'"](100)(Control_Monad_Error_Class.throwError(Control_Monad_Aff.monadErrorAff)(Control_Monad_Eff_Exception.error("Oh noes!"))))(Control_Monad_Aff["later'"](200)(Prelude.pure(Control_Monad_Aff.applicativeAff)("Success: Early error was ignored in favor of late success")))))(function (_40) {
+        return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace(_40));
     });
-    var test_parRace = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_Par.runPar(Control_Alt["<|>"](Control_Monad_Aff_Par.altPar)(Control_Monad_Aff["later'"](100)(Prelude.pure(Control_Monad_Aff.applicativeAff)("Success: Early bird got the worm")))(Control_Monad_Aff["later'"](200)(Prelude.pure(Control_Monad_Aff.applicativeAff)("Failure: Late bird got the worm")))))(function (_36) {
-        return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace(_36));
+    var test_parRace = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_Par.runPar(Control_Alt["<|>"](Control_Monad_Aff_Par.altPar)(Control_Monad_Aff["later'"](100)(Prelude.pure(Control_Monad_Aff.applicativeAff)("Success: Early bird got the worm")))(Control_Monad_Aff["later'"](200)(Prelude.pure(Control_Monad_Aff.applicativeAff)("Failure: Late bird got the worm")))))(function (_39) {
+        return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace(_39));
     });
-    var test_killQueue = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar.makeVar)(function (_35) {
-        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar.killVar(_35)(Control_Monad_Eff_Exception.error("DOA")))(function () {
-            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(Control_Monad_Aff_AVar.takeVar(_35)))(function (_34) {
-                return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Data_Either.either(Prelude["const"](Debug_Trace.trace("Success: Killed queue dead")))(Prelude["const"](Debug_Trace.trace("Failure: Oh noes, queue survived!")))(_34));
+    var test_killQueue = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar.makeVar)(function (_38) {
+        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar.killVar(_38)(Control_Monad_Eff_Exception.error("DOA")))(function () {
+            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(Control_Monad_Aff_AVar.takeVar(_38)))(function (_37) {
+                return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Data_Either.either(Prelude["const"](Debug_Trace.trace("Success: Killed queue dead")))(Prelude["const"](Debug_Trace.trace("Failure: Oh noes, queue survived!")))(_37));
             });
         });
     });
-    var test_attempt = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(Control_Monad_Error_Class.throwError(Control_Monad_Aff.monadErrorAff)(Control_Monad_Eff_Exception.error("Oh noes!"))))(function (_31) {
-        return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Data_Either.either(Prelude["const"](Debug_Trace.trace("Success: Exception caught")))(Prelude["const"](Debug_Trace.trace("Failure: Exception NOT caught!!!")))(_31));
+    var test_attempt = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(Control_Monad_Error_Class.throwError(Control_Monad_Aff.monadErrorAff)(Control_Monad_Eff_Exception.error("Oh noes!"))))(function (_34) {
+        return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Data_Either.either(Prelude["const"](Debug_Trace.trace("Success: Exception caught")))(Prelude["const"](Debug_Trace.trace("Failure: Exception NOT caught!!!")))(_34));
     });
     var test_apathize = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.apathize(Control_Monad_Error_Class.throwError(Control_Monad_Aff.monadErrorAff)(Control_Monad_Eff_Exception.error("Oh noes!"))))(function () {
         return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Success: Exceptions don't stop the apathetic"));
