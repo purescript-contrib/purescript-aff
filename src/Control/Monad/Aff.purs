@@ -149,8 +149,15 @@ module Control.Monad.Aff
               return canceler(e)(success, error);
             } else {
               cancel = true;
+              
               clearTimeout(timeout);
-              error(e);
+
+              try {
+                success(true);
+              } catch (e) {
+                error(e);
+              }
+
               return nonCanceler;
             }
           };

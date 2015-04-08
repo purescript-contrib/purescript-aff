@@ -45,6 +45,13 @@ module Examples where
     a <- takeVar v 
     liftEff $ trace ("Success: Value " ++ show a)
 
+  test_killFirstForked :: Test
+  test_killFirstForked = do 
+    c <- forkAff (later' 100 $ pure "Failure: This should have been killed!")
+    b <- c (error "Just die")
+    liftEff $ trace (if b then "Success: Killed first forked" else "Failure: Couldn't kill first forked")
+
+
   test_killQueue :: TestAVar
   test_killQueue = do
     v <- makeVar
@@ -82,6 +89,9 @@ module Examples where
 
     liftEff $ trace "Testing later"
     later $ liftEff $ trace "Success: It happened later"
+
+    liftEff $ trace "Testing kill of first forked"
+    test_killFirstForked
 
     liftEff $ trace "Testing apathize"
     test_apathize
