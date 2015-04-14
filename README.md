@@ -167,7 +167,7 @@ using the returned canceler:
 
 ```purescript
 canceler <- forkAff myAff
-canceled <- canceler $ error "Just had to cancel"
+canceled <- canceler `cancel` (error "Just had to cancel")
 _        <- liftEff $ if canceled then (trace "Canceled") else (trace "Not Canceled")
 ```
 

@@ -1,9 +1,10 @@
 module Control.Monad.Aff 
   ( Aff()
-  , Canceler()
+  , Canceler(..)
   , PureAff(..)
   , apathize
   , attempt
+  , cancel
   , forkAff
   , later
   , later'
@@ -38,7 +39,14 @@ module Control.Monad.Aff
   -- | A pure asynchronous computation, having no effects.
   type PureAff a = forall e. Aff e a
 
-  type Canceler e = Error -> Aff e Boolean
+  -- | A canceler is asynchronous function that can be used to attempt the 
+  -- | cancelation of a computation. Returns a boolean flag indicating whether
+  -- | or not the cancellation was successful.
+  newtype Canceler e = Canceler (Error -> Aff e Boolean)
+
+  -- | Unwraps the canceler function from the newtype that wraps it.
+  cancel :: forall e. Canceler e -> Error ->  Aff e Boolean
+  cancel (Canceler f) = f
 
   -- | Converts the asynchronous computation into a synchronous one. All values 
   -- | and errors are ignored.
@@ -89,7 +97,7 @@ module Control.Monad.Aff
 
   -- | A constant function that always returns a pure false value.
   nonCanceler :: forall e. Canceler e
-  nonCanceler = const (pure false)
+  nonCanceler = Canceler (const (pure false))
 
   instance semigroupAff :: (Semigroup a) => Semigroup (Aff e a) where
     (<>) a b = (<>) <$> a <*> b
@@ -131,6 +139,12 @@ module Control.Monad.Aff
 
   instance monadPlusAff :: MonadPlus (Aff e)
 
+  instance semigroupCanceler :: Semigroup (Canceler e) where
+    (<>) (Canceler f1) (Canceler f2) = Canceler (\e -> (&&) <$> f1 e <*> f2 e)
+
+  instance monoidCanceler :: Monoid (Canceler e) where
+    mempty = Canceler (const (pure true))
+
   foreign import _setTimeout """
     function _setTimeout(nonCanceler, millis, aff) {
       return function(success, error) {
@@ -149,7 +163,7 @@ module Control.Monad.Aff
               return canceler(e)(success, error);
             } else {
               cancel = true;
-              
+
               clearTimeout(timeout);
 
               try {

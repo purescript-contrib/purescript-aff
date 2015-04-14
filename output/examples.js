@@ -621,7 +621,7 @@ PS.Control_Monad_Aff = (function () {
               return canceler(e)(success, error);
             } else {
               cancel = true;
-              
+
               clearTimeout(timeout);
 
               try {
@@ -750,6 +750,15 @@ PS.Control_Monad_Aff = (function () {
     };
     
     /**
+     *  | A canceler is asynchronous function that can be used to attempt the 
+     *  | cancelation of a computation. Returns a boolean flag indicating whether
+     *  | or not the cancellation was successful.
+     */
+    var Canceler = function (x) {
+        return x;
+    };
+    
+    /**
      *  | Runs the asynchronous computation. You must supply an error callback and a 
      *  | success callback.
      */
@@ -771,6 +780,13 @@ PS.Control_Monad_Aff = (function () {
             return _fmap(f, fa);
         };
     });
+    
+    /**
+     *  | Unwraps the canceler function from the newtype that wraps it.
+     */
+    var cancel = function (_298) {
+        return _298;
+    };
     
     /**
      *  | Promotes any error to the value level of the asynchronous monad.
@@ -852,12 +868,14 @@ PS.Control_Monad_Aff = (function () {
         return Prelude["<$>"](functorAff)(Prelude["const"](Prelude.unit))(attempt(a));
     };
     return {
+        Canceler: Canceler, 
         runAff: runAff, 
         nonCanceler: nonCanceler, 
         launchAff: launchAff, 
         "later'": later$prime, 
         later: later, 
         forkAff: forkAff, 
+        cancel: cancel, 
         attempt: attempt, 
         apathize: apathize, 
         functorAff: functorAff, 
@@ -1041,30 +1059,30 @@ PS.Control_Monad_Aff_Par = (function () {
     /**
      *  | Extracts the `Aff` from the `Par`.
      */
-    var runPar = function (_298) {
-        return _298;
+    var runPar = function (_301) {
+        return _301;
     };
-    var functorPar = new Prelude.Functor(function (_299) {
-        return function (_300) {
-            return Prelude["<$>"](Control_Monad_Aff.functorAff)(_299)(_300);
+    var functorPar = new Prelude.Functor(function (_302) {
+        return function (_303) {
+            return Prelude["<$>"](Control_Monad_Aff.functorAff)(_302)(_303);
         };
     });
     
     /**
      *  | Returns the first value, or the first error if both error.
      */
-    var altPar = new Control_Alt.Alt(function (_303) {
-        return function (_304) {
+    var altPar = new Control_Alt.Alt(function (_306) {
+        return function (_307) {
             var maybeKill = function (va) {
                 return function (ve) {
                     return function (err) {
                         return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar.takeVar(ve))(function (_27) {
                             return Prelude[">>="](Control_Monad_Aff.bindAff)((function () {
-                                var _493 = _27 === 1;
-                                if (_493) {
+                                var _497 = _27 === 1;
+                                if (_497) {
                                     return Control_Monad_Aff_AVar.killVar(va)(err);
                                 };
-                                if (!_493) {
+                                if (!_497) {
                                     return Prelude["return"](Control_Monad_Aff.monadAff)(Prelude.unit);
                                 };
                                 throw new Error("Failed pattern match");
@@ -1077,8 +1095,8 @@ PS.Control_Monad_Aff_Par = (function () {
             };
             return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar.makeVar)(function (_29) {
                 return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar["makeVar'"](0))(function (_28) {
-                    return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.forkAff(Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(_303))(Data_Either.either(maybeKill(_29)(_28))(Control_Monad_Aff_AVar.putVar(_29)))))(function () {
-                        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.forkAff(Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(_304))(Data_Either.either(maybeKill(_29)(_28))(Control_Monad_Aff_AVar.putVar(_29)))))(function () {
+                    return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.forkAff(Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(_306))(Data_Either.either(maybeKill(_29)(_28))(Control_Monad_Aff_AVar.putVar(_29)))))(function () {
+                        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.forkAff(Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(_307))(Data_Either.either(maybeKill(_29)(_28))(Control_Monad_Aff_AVar.putVar(_29)))))(function () {
                             return Control_Monad_Aff_AVar.takeVar(_29);
                         });
                     });
@@ -1109,12 +1127,12 @@ PS.Examples = (function () {
     var Control_Monad_Aff_Par = PS.Control_Monad_Aff_Par;
     var Control_Alt = PS.Control_Alt;
     var Control_Apply = PS.Control_Apply;
-    var test_sequencing = function (_474) {
-        if (_474 === 0) {
+    var test_sequencing = function (_477) {
+        if (_477 === 0) {
             return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Done"));
         };
-        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff["later'"](100)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace(Prelude.show(Prelude.showNumber)(_474 / 10) + " seconds left"))))(function () {
-            return test_sequencing(_474 - 1);
+        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff["later'"](100)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace(Prelude.show(Prelude.showNumber)(_477 / 10) + " seconds left"))))(function () {
+            return test_sequencing(_477 - 1);
         });
     };
     var test_putTakeQueue = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar.makeVar)(function (_36) {
@@ -1148,7 +1166,7 @@ PS.Examples = (function () {
         });
     });
     var test_killFirstForked = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.forkAff(Control_Monad_Aff["later'"](100)(Prelude.pure(Control_Monad_Aff.applicativeAff)("Failure: This should have been killed!"))))(function (_38) {
-        return Prelude[">>="](Control_Monad_Aff.bindAff)(_38(Control_Monad_Eff_Exception.error("Just die")))(function (_37) {
+        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.cancel(_38)(Control_Monad_Eff_Exception.error("Just die")))(function (_37) {
             return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace((function () {
                 if (_37) {
                     return "Success: Killed first forked";

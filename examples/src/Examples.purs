@@ -48,7 +48,7 @@ module Examples where
   test_killFirstForked :: Test
   test_killFirstForked = do 
     c <- forkAff (later' 100 $ pure "Failure: This should have been killed!")
-    b <- c (error "Just die")
+    b <- c `cancel` (error "Just die")
     liftEff $ trace (if b then "Success: Killed first forked" else "Failure: Couldn't kill first forked")
 
 
