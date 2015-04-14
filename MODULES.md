@@ -46,8 +46,9 @@ Unwraps the canceler function from the newtype that wraps it.
 cancelWith :: forall e a. Aff e a -> Canceler e -> Aff e a
 ```
 
-If the first asynchronous computation is canceled, then the specified 
-canceler will also be called.
+This function allows you to attach a custom canceler to an asynchronous
+computation. If the computation is canceled, then the custom canceler 
+will be run along side the computation's own canceler.
 
 #### `launchAff`
 

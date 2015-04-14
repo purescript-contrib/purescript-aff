@@ -732,7 +732,7 @@ PS.Control_Monad_Aff = (function () {
         } catch (e) {
           error(e);
         }
-        
+
         return canceler;
       }
     };
@@ -740,7 +740,7 @@ PS.Control_Monad_Aff = (function () {
     function _throwError(canceler, e) {
       return function(success, error) {
         error(e);
-        
+
         return canceler;
       }
     };
@@ -760,15 +760,15 @@ PS.Control_Monad_Aff = (function () {
     function _bind(aff, f) {
       return function(success, error) {
         var canceler;
-        
+
         canceler = aff(function(v) {
-          try {        
+          try {
             canceler = f(v)(success, error);
           } catch (e) {
             error(e);
           }
         }, error);
-        
+
         return function(e) {
           return function(success, error) {
             return canceler(e)(success, error);
@@ -816,7 +816,7 @@ PS.Control_Monad_Aff = (function () {
         } catch (e) {
           error(e);
         }
-        
+
         return canceler;
       };
     };
@@ -831,7 +831,7 @@ PS.Control_Monad_Aff = (function () {
     };
     
     /**
-     *  | Runs the asynchronous computation. You must supply an error callback and a 
+     *  | Runs the asynchronous computation. You must supply an error callback and a
      *  | success callback.
      */
     var runAff = function (ex) {
@@ -843,7 +843,7 @@ PS.Control_Monad_Aff = (function () {
     };
     
     /**
-     *  | Converts the asynchronous computation into a synchronous one. All values 
+     *  | Converts the asynchronous computation into a synchronous one. All values
      *  | and errors are ignored.
      */
     var launchAff = runAff(Prelude["const"](Prelude.pure(Control_Monad_Eff.applicativeEff)(Prelude.unit)))(Prelude["const"](Prelude.pure(Control_Monad_Eff.applicativeEff)(Prelude.unit)));
@@ -902,8 +902,9 @@ PS.Control_Monad_Aff = (function () {
     });
     
     /**
-     *  | If the first asynchronous computation is canceled, then the specified 
-     *  | canceler will also be called.
+     *  | This function allows you to attach a custom canceler to an asynchronous
+     *  | computation. If the computation is canceled, then the custom canceler 
+     *  | will be run along side the computation's own canceler.
      */
     var cancelWith = function (aff) {
         return function (c) {
@@ -912,7 +913,7 @@ PS.Control_Monad_Aff = (function () {
     };
     
     /**
-     *  | Forks the specified asynchronous computation so subsequent monadic binds 
+     *  | Forks the specified asynchronous computation so subsequent monadic binds
      *  | will not block on the result of the computation.
      */
     var forkAff = function (aff) {
@@ -939,7 +940,7 @@ PS.Control_Monad_Aff = (function () {
     });
     
     /**
-     *  | Allows users to catch and throw errors on the error channel of the 
+     *  | Allows users to catch and throw errors on the error channel of the
      *  | asynchronous computation. See documentation in `purescript-transformers`.
      */
     var monadErrorAff = new Control_Monad_Error_Class.MonadError(function (aff) {
