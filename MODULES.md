@@ -24,9 +24,30 @@ A pure asynchronous computation, having no effects.
 #### `Canceler`
 
 ``` purescript
-type Canceler e = Error -> Aff e Boolean
+newtype Canceler e
+  = Canceler (Error -> Aff e Boolean)
 ```
 
+A canceler is asynchronous function that can be used to attempt the 
+cancelation of a computation. Returns a boolean flag indicating whether
+or not the cancellation was successful.
+
+#### `cancel`
+
+``` purescript
+cancel :: forall e. Canceler e -> Error -> Aff e Boolean
+```
+
+Unwraps the canceler function from the newtype that wraps it.
+
+#### `cancelWith`
+
+``` purescript
+cancelWith :: forall e a. Aff e a -> Canceler e -> Aff e a
+```
+
+If the first asynchronous computation is canceled, then the specified 
+canceler will also be called.
 
 #### `launchAff`
 
@@ -216,11 +237,22 @@ instance monadPlusAff :: MonadPlus (Aff e)
 ```
 
 
+#### `semigroupCanceler`
+
+``` purescript
+instance semigroupCanceler :: Semigroup (Canceler e)
+```
+
+
+#### `monoidCanceler`
+
+``` purescript
+instance monoidCanceler :: Monoid (Canceler e)
+```
+
+
 
 ## Module Control.Monad.Aff.AVar
-
-
-A low-level primitive for building asynchronous code.
 
 #### `AVAR`
 
@@ -312,10 +344,6 @@ instance monadAffAff :: MonadAff e (Aff e)
 
 
 ## Module Control.Monad.Aff.Par
-
-
-A newtype over `Aff` that provides `Applicative` instances that run in 
-parallel.
 
 #### `Par`
 
