@@ -1,5 +1,6 @@
 -- | A newtype over `Aff` that provides `Applicative` instances that run in 
--- | parallel.
+-- | parallel. This is useful, for example, if you want to run a whole bunch 
+-- | of AJAX requests at the same time, rather than sequentially.
 module Control.Monad.Aff.Par 
   ( Par(..)
   , runPar
@@ -36,9 +37,9 @@ module Control.Monad.Aff.Par
     (<*>) (Par ff) (Par fa) = Par do
       vf <- makeVar 
       va <- makeVar
-      forkAff (ff >>= putVar vf)
-      forkAff (fa >>= putVar va)
-      takeVar vf <*> takeVar va
+      c1 <- forkAff (ff >>= putVar vf)
+      c2 <- forkAff (fa >>= putVar va)
+      (takeVar vf <*> takeVar va) `cancelWith` (c1 <> c2)
 
   instance applicativePar :: Applicative (Par e) where
     pure v = Par (pure v)
@@ -53,9 +54,9 @@ module Control.Monad.Aff.Par
       in Par do
         va <- makeVar     -- the `a` value
         ve <- makeVar' 0  -- the error count (starts at 0)
-        forkAff $ attempt a1 >>= either (maybeKill va ve) (putVar va)
-        forkAff $ attempt a2 >>= either (maybeKill va ve) (putVar va)
-        takeVar va
+        c1 <- forkAff $ attempt a1 >>= either (maybeKill va ve) (putVar va)
+        c2 <- forkAff $ attempt a2 >>= either (maybeKill va ve) (putVar va)
+        (takeVar va) `cancelWith` (c1 <> c2)
 
   instance plusPar :: Plus (Par e) where
     empty = Par empty

@@ -171,6 +171,13 @@ canceled <- canceler `cancel` (error "Just had to cancel")
 _        <- liftEff $ if canceled then (trace "Canceled") else (trace "Not Canceled")
 ```
 
+If you want to run a custom canceler if some other asynchronous computation is
+cancelled, you can use the `cancelWith` combinator:
+
+```purescript
+otherAff `cancelWith` myCanceler
+```
+
 ## AVars
 
 The `Control.Monad.Aff.AVar` module contains asynchronous variables, which are very similar to Haskell's `MVar` construct. These can be used as low-level building blocks for asynchronous programs.

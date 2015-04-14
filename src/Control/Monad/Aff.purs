@@ -5,6 +5,7 @@ module Control.Monad.Aff
   , apathize
   , attempt
   , cancel
+  , cancelWith
   , forkAff
   , later
   , later'
@@ -47,6 +48,11 @@ module Control.Monad.Aff
   -- | Unwraps the canceler function from the newtype that wraps it.
   cancel :: forall e. Canceler e -> Error ->  Aff e Boolean
   cancel (Canceler f) = f
+
+  -- | If the first asynchronous computation is canceled, then the specified 
+  -- | canceler will also be called.
+  cancelWith :: forall e a. Aff e a -> Canceler e -> Aff e a
+  cancelWith aff c = runFn3 _cancelWith nonCanceler aff c
 
   -- | Converts the asynchronous computation into a synchronous one. All values 
   -- | and errors are ignored.
@@ -144,6 +150,48 @@ module Control.Monad.Aff
 
   instance monoidCanceler :: Monoid (Canceler e) where
     mempty = Canceler (const (pure true))
+
+  foreign import _cancelWith """
+    function _cancelWith(nonCanceler, aff, canceler1) {
+      return function(success, error) {
+        var canceler2 = aff(success, error);
+
+        return function(e) {
+          return function(success, error) {
+            var cancellations = 0;
+            var result        = true;
+            var errored       = false;
+
+            var s = function(bool) {
+              cancellations = cancellations + 1;
+              result        = result && bool;
+
+              if (cancellations == 2) {
+                try {
+                  success(result);
+                } catch (e) {
+                  error(e);
+                }
+              }
+            };
+
+            var f = function(err) {
+              if (!errored) {
+                errored = true;
+
+                error(err);
+              }
+            };
+
+            canceler1(s, f);
+            canceler2(s, f);
+
+            return nonCanceler;
+          };
+        };
+      };
+    }
+  """ :: forall e a. Fn3 (Canceler e) (Aff e a) (Canceler e) (Aff e a)
 
   foreign import _setTimeout """
     function _setTimeout(nonCanceler, millis, aff) {
