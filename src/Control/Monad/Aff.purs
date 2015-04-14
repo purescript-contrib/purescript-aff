@@ -1,4 +1,4 @@
-module Control.Monad.Aff 
+module Control.Monad.Aff
   ( Aff()
   , Canceler()
   , PureAff(..)
@@ -10,10 +10,11 @@ module Control.Monad.Aff
   , launchAff
   , liftEff'
   , makeAff
+  , makeAff'
   , nonCanceler
   , runAff
   )
-  where 
+  where
 
   import Data.Either(Either(..), either)
   import Data.Function(Fn2(), Fn3(), runFn2, runFn3)
@@ -29,7 +30,7 @@ module Control.Monad.Aff
   import Control.Monad.Eff.Class
   import Control.Monad.Error.Class(MonadError, throwError)
 
-  -- | A computation with effects `e`. The computation either errors or 
+  -- | A computation with effects `e`. The computation either errors or
   -- | produces a value of type `a`.
   -- |
   -- | This is moral equivalent of `ErrorT (ContT Unit (Eff e)) a`.
@@ -40,24 +41,24 @@ module Control.Monad.Aff
 
   type Canceler e = Error -> Aff e Boolean
 
-  -- | Converts the asynchronous computation into a synchronous one. All values 
+  -- | Converts the asynchronous computation into a synchronous one. All values
   -- | and errors are ignored.
   launchAff :: forall e a. Aff e a -> Eff e Unit
   launchAff = runAff (const (pure unit)) (const (pure unit))
 
-  -- | Runs the asynchronous computation. You must supply an error callback and a 
+  -- | Runs the asynchronous computation. You must supply an error callback and a
   -- | success callback.
   runAff :: forall e a. (Error -> Eff e Unit) -> (a -> Eff e Unit) -> Aff e a -> Eff e Unit
   runAff ex f aff = runFn3 _runAff ex f aff
 
-  -- | Creates an asynchronous effect from a function that accepts error and 
+  -- | Creates an asynchronous effect from a function that accepts error and
   -- | success callbacks. This function can be used for asynchronous computations
   -- | that cannot be canceled.
   makeAff :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> Eff e Unit) -> Aff e a
   makeAff h = makeAff' (\e a -> const nonCanceler <$> h e a)
 
-  -- | Creates an asynchronous effect from a function that accepts error and 
-  -- | success callbacks, and returns a canceler for the computation. This 
+  -- | Creates an asynchronous effect from a function that accepts error and
+  -- | success callbacks, and returns a canceler for the computation. This
   -- | function can be used for asynchronous computations that can be canceled.
   makeAff' :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> Eff e (Canceler e)) -> Aff e a
   makeAff' h = _makeAff h
@@ -70,7 +71,7 @@ module Control.Monad.Aff
   later' :: forall e a. Number -> Aff e a -> Aff e a
   later' n aff = runFn3 _setTimeout nonCanceler n aff
 
-  -- | Forks the specified asynchronous computation so subsequent monadic binds 
+  -- | Forks the specified asynchronous computation so subsequent monadic binds
   -- | will not block on the result of the computation.
   forkAff :: forall e a. Aff e a -> Aff e (Canceler e)
   forkAff aff = runFn2 _forkAff nonCanceler aff
@@ -114,7 +115,7 @@ module Control.Monad.Aff
   instance monadEffAff :: MonadEff e (Aff e) where
     liftEff eff = runFn2 _liftEff nonCanceler eff
 
-  -- | Allows users to catch and throw errors on the error channel of the 
+  -- | Allows users to catch and throw errors on the error channel of the
   -- | asynchronous computation. See documentation in `purescript-transformers`.
   instance monadErrorAff :: MonadError Error (Aff e) where
     throwError e = runFn2 _throwError nonCanceler e
@@ -149,7 +150,7 @@ module Control.Monad.Aff
               return canceler(e)(success, error);
             } else {
               cancel = true;
-              
+
               clearTimeout(timeout);
 
               try {
@@ -216,7 +217,7 @@ module Control.Monad.Aff
         } catch (e) {
           error(e);
         }
-        
+
         return canceler;
       }
     }""" :: forall e a. Fn2 (Canceler e) a (Aff e a)
@@ -225,7 +226,7 @@ module Control.Monad.Aff
     function _throwError(canceler, e) {
       return function(success, error) {
         error(e);
-        
+
         return canceler;
       }
     }""" :: forall e a. Fn2 (Canceler e) Error (Aff e a)
@@ -247,15 +248,15 @@ module Control.Monad.Aff
     function _bind(aff, f) {
       return function(success, error) {
         var canceler;
-        
+
         canceler = aff(function(v) {
-          try {        
+          try {
             canceler = f(v)(success, error);
           } catch (e) {
             error(e);
           }
         }, error);
-        
+
         return function(e) {
           return function(success, error) {
             return canceler(e)(success, error);
@@ -306,7 +307,7 @@ module Control.Monad.Aff
         } catch (e) {
           error(e);
         }
-        
+
         return canceler;
       };
     }""" :: forall e a. Fn2 (Canceler e) (Eff e a) (Aff e a)

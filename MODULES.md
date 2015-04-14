@@ -8,7 +8,7 @@
 data Aff :: # ! -> * -> *
 ```
 
-A computation with effects `e`. The computation either errors or 
+A computation with effects `e`. The computation either errors or
 produces a value of type `a`.
 
 This is moral equivalent of `ErrorT (ContT Unit (Eff e)) a`.
@@ -34,7 +34,7 @@ type Canceler e = Error -> Aff e Boolean
 launchAff :: forall e a. Aff e a -> Eff e Unit
 ```
 
-Converts the asynchronous computation into a synchronous one. All values 
+Converts the asynchronous computation into a synchronous one. All values
 and errors are ignored.
 
 #### `runAff`
@@ -43,7 +43,7 @@ and errors are ignored.
 runAff :: forall e a. (Error -> Eff e Unit) -> (a -> Eff e Unit) -> Aff e a -> Eff e Unit
 ```
 
-Runs the asynchronous computation. You must supply an error callback and a 
+Runs the asynchronous computation. You must supply an error callback and a
 success callback.
 
 #### `makeAff`
@@ -52,9 +52,19 @@ success callback.
 makeAff :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> Eff e Unit) -> Aff e a
 ```
 
-Creates an asynchronous effect from a function that accepts error and 
+Creates an asynchronous effect from a function that accepts error and
 success callbacks. This function can be used for asynchronous computations
 that cannot be canceled.
+
+#### `makeAff'`
+
+``` purescript
+makeAff' :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> Eff e (Canceler e)) -> Aff e a
+```
+
+Creates an asynchronous effect from a function that accepts error and
+success callbacks, and returns a canceler for the computation. This
+function can be used for asynchronous computations that can be canceled.
 
 #### `later`
 
@@ -78,7 +88,7 @@ Runs the asynchronous computation later (off the current execution context).
 forkAff :: forall e a. Aff e a -> Aff e (Canceler e)
 ```
 
-Forks the specified asynchronous computation so subsequent monadic binds 
+Forks the specified asynchronous computation so subsequent monadic binds
 will not block on the result of the computation.
 
 #### `attempt`
@@ -175,7 +185,7 @@ instance monadEffAff :: MonadEff e (Aff e)
 instance monadErrorAff :: MonadError Error (Aff e)
 ```
 
-Allows users to catch and throw errors on the error channel of the 
+Allows users to catch and throw errors on the error channel of the
 asynchronous computation. See documentation in `purescript-transformers`.
 
 #### `altAff`
@@ -208,6 +218,9 @@ instance monadPlusAff :: MonadPlus (Aff e)
 
 
 ## Module Control.Monad.Aff.AVar
+
+
+A low-level primitive for building asynchronous code.
 
 #### `AVAR`
 
@@ -299,6 +312,10 @@ instance monadAffAff :: MonadAff e (Aff e)
 
 
 ## Module Control.Monad.Aff.Par
+
+
+A newtype over `Aff` that provides `Applicative` instances that run in 
+parallel.
 
 #### `Par`
 
