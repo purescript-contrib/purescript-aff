@@ -107,6 +107,9 @@ module Control.Monad.Aff
   nonCanceler :: forall e. Canceler e
   nonCanceler = Canceler (const (pure false))
 
+  alwaysCanceler :: forall e. Canceler e
+  alwaysCanceler = Canceler (const (pure true))
+
   instance semigroupAff :: (Semigroup a) => Semigroup (Aff e a) where
     (<>) a b = (<>) <$> a <*> b
 
@@ -117,13 +120,13 @@ module Control.Monad.Aff
     (<$>) f fa = runFn2 _fmap f fa
 
   instance applyAff :: Apply (Aff e) where
-    (<*>) ff fa = runFn2 _bind ff (\f -> f <$> fa)
+    (<*>) ff fa = runFn3 _bind alwaysCanceler ff (\f -> f <$> fa)
 
   instance applicativeAff :: Applicative (Aff e) where
     pure v = runFn2 _pure nonCanceler v
 
   instance bindAff :: Bind (Aff e) where
-    (>>=) fa f = runFn2 _bind fa f
+    (>>=) fa f = runFn3 _bind alwaysCanceler fa f
 
   instance monadAff :: Monad (Aff e)
 
@@ -168,7 +171,7 @@ module Control.Monad.Aff
               cancellations = cancellations + 1;
               result        = result && bool;
 
-              if (cancellations == 2) {
+              if (cancellations === 2 && !errored) {
                 try {
                   success(result);
                 } catch (e) {
@@ -185,8 +188,8 @@ module Control.Monad.Aff
               }
             };
 
-            canceler1(s, f);
-            canceler2(s, f);
+            canceler2(e)(s, f);
+            canceler1(e)(s, f);            
 
             return nonCanceler;
           };
@@ -199,27 +202,22 @@ module Control.Monad.Aff
     function _setTimeout(nonCanceler, millis, aff) {
       return function(success, error) {
         var canceler;
-        var cancel = false;
 
         var timeout = setTimeout(function() {
-          if (!cancel) {
-            canceler = aff(success, error);
-          }
+          canceler = aff(success, error);
         }, millis);
 
         return function(e) {
-          return function(success, error) {
+          return function(s, f) {
             if (canceler !== undefined) {
-              return canceler(e)(success, error);
+              return canceler(e)(s, f);
             } else {
-              cancel = true;
-
               clearTimeout(timeout);
 
               try {
-                success(true);
+                s(true);
               } catch (e) {
-                error(e);
+                f(e);
               }
 
               return nonCanceler;
@@ -238,8 +236,10 @@ module Control.Monad.Aff
 
   foreign import _forkAff """
     function _forkAff(canceler, aff) {
+      var voidF = function(){};
+
       return function(success, error) {
-        var canceler = aff(function(){}, function(){});
+        var canceler = aff(voidF, voidF);
 
         try {
           success(canceler);
@@ -291,7 +291,7 @@ module Control.Monad.Aff
         error(e);
 
         return canceler;
-      }
+      };
     }""" :: forall e a. Fn2 (Canceler e) Error (Aff e a)
 
   foreign import _fmap """
@@ -308,25 +308,52 @@ module Control.Monad.Aff
     }""" :: forall e a b. Fn2 (a -> b) (Aff e a) (Aff e b)
 
   foreign import _bind """
-    function _bind(aff, f) {
+    function _bind(alwaysCanceler, aff, f) {
       return function(success, error) {
-        var canceler;
+        var canceler1, canceler2;
 
-        canceler = aff(function(v) {
-          try {
-            canceler = f(v)(success, error);
-          } catch (e) {
-            error(e);
+        var isCanceled    = false;
+        var requestCancel = false;
+
+        var onCanceler = function(){};
+
+        canceler1 = aff(function(v) {
+          if (!requestCancel) {
+            canceler2 = f(v)(success, error);
+
+            onCanceler(canceler2);
+          } else {
+            isCanceled = true;
           }
+
+          return canceler;
         }, error);
 
         return function(e) {
-          return function(success, error) {
-            return canceler(e)(success, error);
-          }
+          return function(s, f) {
+            requestCancel = true;
+
+            if (canceler2 !== undefined) {
+              return canceler2(e)(s, f);
+            } else {
+              return canceler1(e)(function(bool) {
+                if (bool || isCanceled) {
+                  try {
+                    s(true);
+                  } catch (e) {
+                    f(e);
+                  }
+                } else {
+                  onCanceler = function(canceler) {
+                    canceler(e)(s, f);
+                  };
+                }
+              }, f);
+            }
+          };
         };
       };
-    }""" :: forall e a b. Fn2 (Aff e a) (a -> Aff e b) (Aff e b)
+    }""" :: forall e a b. Fn3 (Canceler e) (Aff e a) (a -> Aff e b) (Aff e b)
 
   foreign import _attempt """
     function _attempt(Left, Right, aff) {

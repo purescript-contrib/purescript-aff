@@ -78,6 +78,9 @@ PS.Prelude = (function () {
     var Unit = function (x) {
         return x;
     };
+    var Semigroupoid = function ($less$less$less) {
+        this["<<<"] = $less$less$less;
+    };
     var Show = function (show) {
         this.show = show;
     };
@@ -149,6 +152,9 @@ PS.Prelude = (function () {
     var $less$greater = function (dict) {
         return dict["<>"];
     };
+    var $less$less$less = function (dict) {
+        return dict["<<<"];
+    };
     var $less$times$greater = function (dict) {
         return dict["<*>"];
     };
@@ -194,6 +200,13 @@ PS.Prelude = (function () {
         return dict.show;
     };
     var semiringNumber = new Semiring(numMul, numAdd, 1, 0);
+    var semigroupoidArr = new Semigroupoid(function (f) {
+        return function (g) {
+            return function (x) {
+                return f(g(x));
+            };
+        };
+    });
     var semigroupString = new Semigroup(concatString);
     var ringNumber = new Ring(numSub, function () {
         return semiringNumber;
@@ -206,8 +219,8 @@ PS.Prelude = (function () {
     };
     var moduloSemiringNumber = new ModuloSemiring(numDiv, function () {
         return semiringNumber;
-    }, function (_54) {
-        return function (_55) {
+    }, function (_60) {
+        return function (_61) {
             return 0;
         };
     });
@@ -223,9 +236,9 @@ PS.Prelude = (function () {
     /**
      *  | Returns its first argument and ignores its second.
      */
-    var $$const = function (_48) {
-        return function (_49) {
-            return _48;
+    var $$const = function (_54) {
+        return function (_55) {
+            return _54;
         };
     };
     var boolLikeBoolean = new BoolLike(boolAnd, boolNot, boolOr);
@@ -254,6 +267,7 @@ PS.Prelude = (function () {
         Apply: Apply, 
         Functor: Functor, 
         Show: Show, 
+        Semigroupoid: Semigroupoid, 
         unit: unit, 
         "++": $plus$plus, 
         "<>": $less$greater, 
@@ -273,7 +287,9 @@ PS.Prelude = (function () {
         "<$>": $less$dollar$greater, 
         show: show, 
         "$": $dollar, 
+        "<<<": $less$less$less, 
         "const": $$const, 
+        semigroupoidArr: semigroupoidArr, 
         showNumber: showNumber, 
         semiringNumber: semiringNumber, 
         ringNumber: ringNumber, 
@@ -483,14 +499,14 @@ PS.Data_Either = (function () {
      *  | either f g (Right y) == g y
      *  | ```
      */
-    var either = function (_92) {
-        return function (_93) {
-            return function (_94) {
-                if (_94 instanceof Left) {
-                    return _92(_94.value0);
+    var either = function (_98) {
+        return function (_99) {
+            return function (_100) {
+                if (_100 instanceof Left) {
+                    return _98(_100.value0);
                 };
-                if (_94 instanceof Right) {
-                    return _93(_94.value0);
+                if (_100 instanceof Right) {
+                    return _99(_100.value0);
                 };
                 throw new Error("Failed pattern match");
             };
@@ -649,7 +665,7 @@ PS.Control_Monad_Aff = (function () {
               cancellations = cancellations + 1;
               result        = result && bool;
 
-              if (cancellations == 2) {
+              if (cancellations === 2 && !errored) {
                 try {
                   success(result);
                 } catch (e) {
@@ -666,8 +682,8 @@ PS.Control_Monad_Aff = (function () {
               }
             };
 
-            canceler1(s, f);
-            canceler2(s, f);
+            canceler2(e)(s, f);
+            canceler1(e)(s, f);            
 
             return nonCanceler;
           };
@@ -679,27 +695,22 @@ PS.Control_Monad_Aff = (function () {
     function _setTimeout(nonCanceler, millis, aff) {
       return function(success, error) {
         var canceler;
-        var cancel = false;
 
         var timeout = setTimeout(function() {
-          if (!cancel) {
-            canceler = aff(success, error);
-          }
+          canceler = aff(success, error);
         }, millis);
 
         return function(e) {
-          return function(success, error) {
+          return function(s, f) {
             if (canceler !== undefined) {
-              return canceler(e)(success, error);
+              return canceler(e)(s, f);
             } else {
-              cancel = true;
-
               clearTimeout(timeout);
 
               try {
-                success(true);
+                s(true);
               } catch (e) {
-                error(e);
+                f(e);
               }
 
               return nonCanceler;
@@ -711,8 +722,10 @@ PS.Control_Monad_Aff = (function () {
   ;
     
     function _forkAff(canceler, aff) {
+      var voidF = function(){};
+
       return function(success, error) {
-        var canceler = aff(function(){}, function(){});
+        var canceler = aff(voidF, voidF);
 
         try {
           success(canceler);
@@ -742,7 +755,7 @@ PS.Control_Monad_Aff = (function () {
         error(e);
 
         return canceler;
-      }
+      };
     };
     
     function _fmap(f, aff) {
@@ -757,22 +770,49 @@ PS.Control_Monad_Aff = (function () {
       };
     };
     
-    function _bind(aff, f) {
+    function _bind(alwaysCanceler, aff, f) {
       return function(success, error) {
-        var canceler;
+        var canceler1, canceler2;
 
-        canceler = aff(function(v) {
-          try {
-            canceler = f(v)(success, error);
-          } catch (e) {
-            error(e);
+        var isCanceled    = false;
+        var requestCancel = false;
+
+        var onCanceler = function(){};
+
+        canceler1 = aff(function(v) {
+          if (!requestCancel) {
+            canceler2 = f(v)(success, error);
+
+            onCanceler(canceler2);
+          } else {
+            isCanceled = true;
           }
+
+          return canceler;
         }, error);
 
         return function(e) {
-          return function(success, error) {
-            return canceler(e)(success, error);
-          }
+          return function(s, f) {
+            requestCancel = true;
+
+            if (canceler2 !== undefined) {
+              return canceler2(e)(s, f);
+            } else {
+              return canceler1(e)(function(bool) {
+                if (bool || isCanceled) {
+                  try {
+                    s(true);
+                  } catch (e) {
+                    f(e);
+                  }
+                } else {
+                  onCanceler = function(canceler) {
+                    canceler(e)(s, f);
+                  };
+                }
+              }, f);
+            }
+          };
         };
       };
     };
@@ -856,8 +896,8 @@ PS.Control_Monad_Aff = (function () {
     /**
      *  | Unwraps the canceler function from the newtype that wraps it.
      */
-    var cancel = function (_302) {
-        return _302;
+    var cancel = function (_308) {
+        return _308;
     };
     
     /**
@@ -866,28 +906,21 @@ PS.Control_Monad_Aff = (function () {
     var attempt = function (aff) {
         return _attempt(Data_Either.Left.create, Data_Either.Right.create, aff);
     };
+    
+    /**
+     *  | Ignores any errors.
+     */
+    var apathize = function (a) {
+        return Prelude["<$>"](functorAff)(Prelude["const"](Prelude.unit))(attempt(a));
+    };
     var applyAff = new Prelude.Apply(function (ff) {
         return function (fa) {
-            return _bind(ff, function (f) {
+            return _bind(alwaysCanceler, ff, function (f) {
                 return Prelude["<$>"](functorAff)(f)(fa);
             });
         };
     }, function () {
         return functorAff;
-    });
-    var bindAff = new Prelude.Bind(function (fa) {
-        return function (f) {
-            return _bind(fa, f);
-        };
-    }, function () {
-        return applyAff;
-    });
-    var semigroupCanceler = new Prelude.Semigroup(function (_303) {
-        return function (_304) {
-            return function (e) {
-                return Prelude["<*>"](applyAff)(Prelude["<$>"](functorAff)(Prelude["&&"](Prelude.boolLikeBoolean))(_303(e)))(_304(e));
-            };
-        };
     });
     var applicativeAff = new Prelude.Applicative(function () {
         return applyAff;
@@ -895,11 +928,7 @@ PS.Control_Monad_Aff = (function () {
         return _pure(nonCanceler, v);
     });
     var nonCanceler = Prelude["const"](Prelude.pure(applicativeAff)(false));
-    var monadAff = new Prelude.Monad(function () {
-        return applicativeAff;
-    }, function () {
-        return bindAff;
-    });
+    var alwaysCanceler = Prelude["const"](Prelude.pure(applicativeAff)(true));
     
     /**
      *  | This function allows you to attach a custom canceler to an asynchronous
@@ -933,6 +962,25 @@ PS.Control_Monad_Aff = (function () {
      *  | Runs the asynchronous computation off the current execution context.
      */
     var later = later$prime(0);
+    var semigroupCanceler = new Prelude.Semigroup(function (_309) {
+        return function (_310) {
+            return function (e) {
+                return Prelude["<*>"](applyAff)(Prelude["<$>"](functorAff)(Prelude["&&"](Prelude.boolLikeBoolean))(_309(e)))(_310(e));
+            };
+        };
+    });
+    var bindAff = new Prelude.Bind(function (fa) {
+        return function (f) {
+            return _bind(alwaysCanceler, fa, f);
+        };
+    }, function () {
+        return applyAff;
+    });
+    var monadAff = new Prelude.Monad(function () {
+        return applicativeAff;
+    }, function () {
+        return bindAff;
+    });
     var monadEffAff = new Control_Monad_Eff_Class.MonadEff(function () {
         return monadAff;
     }, function (eff) {
@@ -950,13 +998,6 @@ PS.Control_Monad_Aff = (function () {
     }, function (e) {
         return _throwError(nonCanceler, e);
     });
-    
-    /**
-     *  | Ignores any errors.
-     */
-    var apathize = function (a) {
-        return Prelude["<$>"](functorAff)(Prelude["const"](Prelude.unit))(attempt(a));
-    };
     return {
         Canceler: Canceler, 
         runAff: runAff, 
@@ -1151,30 +1192,30 @@ PS.Control_Monad_Aff_Par = (function () {
     /**
      *  | Extracts the `Aff` from the `Par`.
      */
-    var runPar = function (_305) {
-        return _305;
+    var runPar = function (_311) {
+        return _311;
     };
-    var functorPar = new Prelude.Functor(function (_306) {
-        return function (_307) {
-            return Prelude["<$>"](Control_Monad_Aff.functorAff)(_306)(_307);
+    var functorPar = new Prelude.Functor(function (_312) {
+        return function (_313) {
+            return Prelude["<$>"](Control_Monad_Aff.functorAff)(_312)(_313);
         };
     });
     
     /**
      *  | Returns the first value, or the first error if both error.
      */
-    var altPar = new Control_Alt.Alt(function (_310) {
-        return function (_311) {
+    var altPar = new Control_Alt.Alt(function (_316) {
+        return function (_317) {
             var maybeKill = function (va) {
                 return function (ve) {
                     return function (err) {
                         return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar.takeVar(ve))(function (_29) {
                             return Prelude[">>="](Control_Monad_Aff.bindAff)((function () {
-                                var _503 = _29 === 1;
-                                if (_503) {
+                                var _509 = _29 === 1;
+                                if (_509) {
                                     return Control_Monad_Aff_AVar.killVar(va)(err);
                                 };
-                                if (!_503) {
+                                if (!_509) {
                                     return Prelude["return"](Control_Monad_Aff.monadAff)(Prelude.unit);
                                 };
                                 throw new Error("Failed pattern match");
@@ -1187,8 +1228,8 @@ PS.Control_Monad_Aff_Par = (function () {
             };
             return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar.makeVar)(function (_33) {
                 return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar["makeVar'"](0))(function (_32) {
-                    return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.forkAff(Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(_310))(Data_Either.either(maybeKill(_33)(_32))(Control_Monad_Aff_AVar.putVar(_33)))))(function (_31) {
-                        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.forkAff(Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(_311))(Data_Either.either(maybeKill(_33)(_32))(Control_Monad_Aff_AVar.putVar(_33)))))(function (_30) {
+                    return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.forkAff(Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(_316))(Data_Either.either(maybeKill(_33)(_32))(Control_Monad_Aff_AVar.putVar(_33)))))(function (_31) {
+                        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.forkAff(Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(_317))(Data_Either.either(maybeKill(_33)(_32))(Control_Monad_Aff_AVar.putVar(_33)))))(function (_30) {
                             return Control_Monad_Aff.cancelWith(Control_Monad_Aff_AVar.takeVar(_33))(Prelude["<>"](Control_Monad_Aff.semigroupCanceler)(_31)(_30));
                         });
                     });
@@ -1219,15 +1260,29 @@ PS.Examples = (function () {
     var Control_Monad_Aff_Par = PS.Control_Monad_Aff_Par;
     var Control_Alt = PS.Control_Alt;
     var Control_Apply = PS.Control_Apply;
-    var test_sequencing = function (_481) {
-        if (_481 === 0) {
+    var test_sequencing = function (_487) {
+        if (_487 === 0) {
             return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Done"));
         };
-        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff["later'"](100)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace(Prelude.show(Prelude.showNumber)(_481 / 10) + " seconds left"))))(function () {
-            return test_sequencing(_481 - 1);
+        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff["later'"](100)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace(Prelude.show(Prelude.showNumber)(_487 / 10) + " seconds left"))))(function () {
+            return test_sequencing(_487 - 1);
         });
     };
-    var test_putTakeQueue = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar.makeVar)(function (_40) {
+    var test_semigroupCanceler = (function () {
+        var c = Prelude["<>"](Control_Monad_Aff.semigroupCanceler)(Prelude["const"](Prelude.pure(Control_Monad_Aff.applicativeAff)(true)))(Prelude["const"](Prelude.pure(Control_Monad_Aff.applicativeAff)(true)));
+        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.cancel(c)(Control_Monad_Eff_Exception.error("CANCEL")))(function (_48) {
+            return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace((function () {
+                if (_48) {
+                    return "Success: Canceled semigroup composite canceler";
+                };
+                if (!_48) {
+                    return "Failure: Could not cancel semigroup composite canceler";
+                };
+                throw new Error("Failed pattern match");
+            })()));
+        });
+    })();
+    var test_putTakeVar = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar.makeVar)(function (_40) {
         return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.forkAff(Control_Monad_Aff.later(Control_Monad_Aff_AVar.putVar(_40)(1.0))))(function () {
             return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar.takeVar(_40))(function (_39) {
                 return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Success: Value " + Prelude.show(Prelude.showNumber)(_39)));
@@ -1250,7 +1305,7 @@ PS.Examples = (function () {
     var test_parRace = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_Par.runPar(Control_Alt["<|>"](Control_Monad_Aff_Par.altPar)(Control_Monad_Aff["later'"](100)(Prelude.pure(Control_Monad_Aff.applicativeAff)("Success: Early bird got the worm")))(Control_Monad_Aff["later'"](200)(Prelude.pure(Control_Monad_Aff.applicativeAff)("Failure: Late bird got the worm")))))(function (_45) {
         return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace(_45));
     });
-    var test_killQueue = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar.makeVar)(function (_44) {
+    var test_killVar = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar.makeVar)(function (_44) {
         return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar.killVar(_44)(Control_Monad_Eff_Exception.error("DOA")))(function () {
             return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(Control_Monad_Aff_AVar.takeVar(_44)))(function (_43) {
                 return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Data_Either.either(Prelude["const"](Debug_Trace.trace("Success: Killed queue dead")))(Prelude["const"](Debug_Trace.trace("Failure: Oh noes, queue survived!")))(_43));
@@ -1270,6 +1325,36 @@ PS.Examples = (function () {
             })()));
         });
     });
+    var test_cancelPar = Prelude[">>="](Control_Monad_Aff.bindAff)(Prelude["<<<"](Prelude.semigroupoidArr)(Control_Monad_Aff.forkAff)(Control_Monad_Aff_Par.runPar)(Control_Alt["<|>"](Control_Monad_Aff_Par.altPar)(Control_Monad_Aff["later'"](100)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Failure: #1 should not get through"))))(Control_Monad_Aff["later'"](100)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Failure: #2 should not get through"))))))(function (_53) {
+        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.cancel(_53)(Control_Monad_Eff_Exception.error("Must cancel")))(function (_52) {
+            return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace((function () {
+                if (_52) {
+                    return "Success: Canceling composite of two Par succeeded";
+                };
+                if (!_52) {
+                    return "Failure: Canceling composite of two Par failed";
+                };
+                throw new Error("Failed pattern match");
+            })()));
+        });
+    });
+    var test_cancelLater = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.forkAff(Prelude[">>="](Control_Monad_Aff.bindAff)(Prelude.pure(Control_Monad_Aff.applicativeAff)("Binding"))(function () {
+        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff["later'"](100)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Failure: Later was not canceled!"))))(function (_49) {
+            return Prelude.pure(Control_Monad_Aff.applicativeAff)("Binding");
+        });
+    })))(function (_51) {
+        return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.cancel(_51)(Control_Monad_Eff_Exception.error("Cause")))(function (_50) {
+            return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace((function () {
+                if (_50) {
+                    return "Success: Canceled later";
+                };
+                if (!_50) {
+                    return "Failure: Did not cancel later";
+                };
+                throw new Error("Failed pattern match");
+            })()));
+        });
+    });
     var test_attempt = Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(Control_Monad_Error_Class.throwError(Control_Monad_Aff.monadErrorAff)(Control_Monad_Eff_Exception.error("Oh noes!"))))(function (_38) {
         return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Data_Either.either(Prelude["const"](Debug_Trace.trace("Success: Exception caught")))(Prelude["const"](Debug_Trace.trace("Failure: Exception NOT caught!!!")))(_38));
     });
@@ -1284,21 +1369,33 @@ PS.Examples = (function () {
                         return Prelude[">>="](Control_Monad_Aff.bindAff)(test_attempt)(function () {
                             return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing later")))(function () {
                                 return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.later(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Success: It happened later"))))(function () {
-                                    return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing kill of first forked")))(function () {
-                                        return Prelude[">>="](Control_Monad_Aff.bindAff)(test_killFirstForked)(function () {
-                                            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing apathize")))(function () {
-                                                return Prelude[">>="](Control_Monad_Aff.bindAff)(test_apathize)(function () {
-                                                    return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing Queue - putVar, takeVar")))(function () {
-                                                        return Prelude[">>="](Control_Monad_Aff.bindAff)(test_putTakeQueue)(function () {
-                                                            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing killVar")))(function () {
-                                                                return Prelude[">>="](Control_Monad_Aff.bindAff)(test_killQueue)(function () {
-                                                                    return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing Par (<|>)")))(function () {
-                                                                        return Prelude[">>="](Control_Monad_Aff.bindAff)(test_parRace)(function () {
-                                                                            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing Par (<|>) - kill one")))(function () {
-                                                                                return Prelude[">>="](Control_Monad_Aff.bindAff)(test_parRaceKill1)(function () {
-                                                                                    return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing Par (<|>) - kill two")))(function () {
-                                                                                        return Prelude[">>="](Control_Monad_Aff.bindAff)(test_parRaceKill2)(function () {
-                                                                                            return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Done testing"));
+                                    return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing kill of later")))(function () {
+                                        return Prelude[">>="](Control_Monad_Aff.bindAff)(test_cancelLater)(function () {
+                                            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing kill of first forked")))(function () {
+                                                return Prelude[">>="](Control_Monad_Aff.bindAff)(test_killFirstForked)(function () {
+                                                    return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing apathize")))(function () {
+                                                        return Prelude[">>="](Control_Monad_Aff.bindAff)(test_apathize)(function () {
+                                                            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing semigroup canceler")))(function () {
+                                                                return Prelude[">>="](Control_Monad_Aff.bindAff)(test_semigroupCanceler)(function () {
+                                                                    return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing AVar - putVar, takeVar")))(function () {
+                                                                        return Prelude[">>="](Control_Monad_Aff.bindAff)(test_putTakeVar)(function () {
+                                                                            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing AVar killVar")))(function () {
+                                                                                return Prelude[">>="](Control_Monad_Aff.bindAff)(test_killVar)(function () {
+                                                                                    return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing Par (<|>)")))(function () {
+                                                                                        return Prelude[">>="](Control_Monad_Aff.bindAff)(test_parRace)(function () {
+                                                                                            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing Par (<|>) - kill one")))(function () {
+                                                                                                return Prelude[">>="](Control_Monad_Aff.bindAff)(test_parRaceKill1)(function () {
+                                                                                                    return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing Par (<|>) - kill two")))(function () {
+                                                                                                        return Prelude[">>="](Control_Monad_Aff.bindAff)(test_parRaceKill2)(function () {
+                                                                                                            return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Testing cancel of Par (<|>)")))(function () {
+                                                                                                                return Prelude[">>="](Control_Monad_Aff.bindAff)(test_cancelPar)(function () {
+                                                                                                                    return Control_Monad_Eff_Class.liftEff(Control_Monad_Aff.monadEffAff)(Debug_Trace.trace("Done testing"));
+                                                                                                                });
+                                                                                                            });
+                                                                                                        });
+                                                                                                    });
+                                                                                                });
+                                                                                            });
                                                                                         });
                                                                                     });
                                                                                 });
@@ -1323,12 +1420,15 @@ PS.Examples = (function () {
     }));
     return {
         main: main, 
+        test_cancelPar: test_cancelPar, 
+        test_cancelLater: test_cancelLater, 
+        test_semigroupCanceler: test_semigroupCanceler, 
         test_parRaceKill2: test_parRaceKill2, 
         test_parRaceKill1: test_parRaceKill1, 
         test_parRace: test_parRace, 
-        test_killQueue: test_killQueue, 
+        test_killVar: test_killVar, 
         test_killFirstForked: test_killFirstForked, 
-        test_putTakeQueue: test_putTakeQueue, 
+        test_putTakeVar: test_putTakeVar, 
         test_apathize: test_apathize, 
         test_attempt: test_attempt, 
         test_pure: test_pure, 
