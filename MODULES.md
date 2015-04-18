@@ -8,8 +8,8 @@
 data Aff :: # ! -> * -> *
 ```
 
-A computation with effects `e`. The computation either errors or
-produces a value of type `a`.
+An asynchronous computation with effects `e`. The computation either 
+errors or produces a value of type `a`.
 
 This is moral equivalent of `ErrorT (ContT Unit (Eff e)) a`.
 
@@ -19,7 +19,8 @@ This is moral equivalent of `ErrorT (ContT Unit (Eff e)) a`.
 type PureAff a = forall e. Aff e a
 ```
 
-A pure asynchronous computation, having no effects.
+A pure asynchronous computation, having no effects other than 
+asynchronous computation.
 
 #### `Canceler`
 
@@ -30,7 +31,9 @@ newtype Canceler e
 
 A canceler is asynchronous function that can be used to attempt the 
 cancelation of a computation. Returns a boolean flag indicating whether
-or not the cancellation was successful.
+or not the cancellation was successful. Many computations may be composite,
+in such cases the flag indicates whether any part of the computation was 
+successfully canceled. The flag should not be used for communication.
 
 #### `cancel`
 
@@ -102,7 +105,8 @@ Runs the asynchronous computation off the current execution context.
 later' :: forall e a. Number -> Aff e a -> Aff e a
 ```
 
-Runs the asynchronous computation later (off the current execution context).
+Runs the specified asynchronous computation later, by the specified 
+number of milliseconds.
 
 #### `forkAff`
 
@@ -110,8 +114,11 @@ Runs the asynchronous computation later (off the current execution context).
 forkAff :: forall e a. Aff e a -> Aff e (Canceler e)
 ```
 
-Forks the specified asynchronous computation so subsequent monadic binds
+Forks the specified asynchronous computation so subsequent computations
 will not block on the result of the computation.
+
+Returns a canceler that can be used to attempt cancellation of the 
+forked computation.
 
 #### `attempt`
 
@@ -143,7 +150,7 @@ Lifts a synchronous computation and makes explicit any failure from exceptions.
 nonCanceler :: forall e. Canceler e
 ```
 
-A constant function that always returns a pure false value.
+A constant canceller that always returns false.
 
 #### `semigroupAff`
 
@@ -342,6 +349,18 @@ class MonadAff e m where
 instance monadAffAff :: MonadAff e (Aff e)
 ```
 
+
+
+## Module Control.Monad.Aff.Debug.Trace
+
+#### `trace`
+
+``` purescript
+trace :: forall e a. (Show a) => a -> Aff (trace :: T.Trace | e) a
+```
+
+Traces any `Show`-able value to the console. This basically saves you 
+from writing `liftEff $ trace x` everywhere.
 
 
 ## Module Control.Monad.Aff.Par

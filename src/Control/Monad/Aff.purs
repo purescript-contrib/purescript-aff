@@ -32,18 +32,21 @@ module Control.Monad.Aff
   import Control.Monad.Eff.Class
   import Control.Monad.Error.Class(MonadError, throwError)
 
-  -- | A computation with effects `e`. The computation either errors or
-  -- | produces a value of type `a`.
+  -- | An asynchronous computation with effects `e`. The computation either 
+  -- | errors or produces a value of type `a`.
   -- |
   -- | This is moral equivalent of `ErrorT (ContT Unit (Eff e)) a`.
   foreign import data Aff :: # ! -> * -> *
 
-  -- | A pure asynchronous computation, having no effects.
+  -- | A pure asynchronous computation, having no effects other than 
+  -- | asynchronous computation.
   type PureAff a = forall e. Aff e a
 
   -- | A canceler is asynchronous function that can be used to attempt the 
   -- | cancelation of a computation. Returns a boolean flag indicating whether
-  -- | or not the cancellation was successful.
+  -- | or not the cancellation was successful. Many computations may be composite,
+  -- | in such cases the flag indicates whether any part of the computation was 
+  -- | successfully canceled. The flag should not be used for communication.
   newtype Canceler e = Canceler (Error -> Aff e Boolean)
 
   -- | Unwraps the canceler function from the newtype that wraps it.
@@ -82,12 +85,16 @@ module Control.Monad.Aff
   later :: forall e a. Aff e a -> Aff e a
   later = later' 0
 
-  -- | Runs the asynchronous computation later (off the current execution context).
+  -- | Runs the specified asynchronous computation later, by the specified 
+  -- | number of milliseconds.
   later' :: forall e a. Number -> Aff e a -> Aff e a
   later' n aff = runFn3 _setTimeout nonCanceler n aff
 
-  -- | Forks the specified asynchronous computation so subsequent monadic binds
+  -- | Forks the specified asynchronous computation so subsequent computations
   -- | will not block on the result of the computation.
+  -- |
+  -- | Returns a canceler that can be used to attempt cancellation of the 
+  -- | forked computation.
   forkAff :: forall e a. Aff e a -> Aff e (Canceler e)
   forkAff aff = runFn2 _forkAff nonCanceler aff
 
@@ -103,10 +110,11 @@ module Control.Monad.Aff
   liftEff' :: forall e a. Eff (err :: Exception | e) a -> Aff e (Either Error a)
   liftEff' eff = attempt (_unsafeInterleaveAff (runFn2 _liftEff nonCanceler eff))
 
-  -- | A constant function that always returns a pure false value.
+  -- | A constant canceller that always returns false.
   nonCanceler :: forall e. Canceler e
   nonCanceler = Canceler (const (pure false))
 
+  -- | A constant canceller that always returns true.
   alwaysCanceler :: forall e. Canceler e
   alwaysCanceler = Canceler (const (pure true))
 

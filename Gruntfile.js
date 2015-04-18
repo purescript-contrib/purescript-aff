@@ -47,6 +47,6 @@ module.exports = function(grunt) {
   grunt.loadNpmTasks('grunt-jsvalidate');
   
   grunt.registerTask("make", ["pscMake", "jsvalidate", "dotPsci", "pscDocs"]);
-  grunt.registerTask("test", ["jsvalidate", "psc"]);
+  grunt.registerTask("test", ["jsvalidate", "psc", "pscDocs"]);
   grunt.registerTask("default", ["make"]);
 };
