@@ -318,15 +318,17 @@ module Control.Monad.Aff
         var onCanceler = function(){};
 
         canceler1 = aff(function(v) {
-          if (!requestCancel) {
+          if (requestCancel) {
+            isCanceled = true;
+
+            return alwaysCanceler;
+          } else {
             canceler2 = f(v)(success, error);
 
             onCanceler(canceler2);
-          } else {
-            isCanceled = true;
-          }
 
-          return canceler;
+            return canceler2;
+          }
         }, error);
 
         return function(e) {

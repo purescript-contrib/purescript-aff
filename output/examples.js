@@ -651,47 +651,6 @@ PS.Control_Monad_Aff = (function () {
     var Control_Monad_Eff_Unsafe = PS.Control_Monad_Eff_Unsafe;
     var Control_Monad_Eff_Class = PS.Control_Monad_Eff_Class;
     
-    function _cancelWith(nonCanceler, aff, canceler1) {
-      return function(success, error) {
-        var canceler2 = aff(success, error);
-
-        return function(e) {
-          return function(success, error) {
-            var cancellations = 0;
-            var result        = true;
-            var errored       = false;
-
-            var s = function(bool) {
-              cancellations = cancellations + 1;
-              result        = result && bool;
-
-              if (cancellations === 2 && !errored) {
-                try {
-                  success(result);
-                } catch (e) {
-                  error(e);
-                }
-              }
-            };
-
-            var f = function(err) {
-              if (!errored) {
-                errored = true;
-
-                error(err);
-              }
-            };
-
-            canceler2(e)(s, f);
-            canceler1(e)(s, f);            
-
-            return nonCanceler;
-          };
-        };
-      };
-    }
-  ;
-    
     function _setTimeout(nonCanceler, millis, aff) {
       return function(success, error) {
         var canceler;
@@ -780,15 +739,17 @@ PS.Control_Monad_Aff = (function () {
         var onCanceler = function(){};
 
         canceler1 = aff(function(v) {
-          if (!requestCancel) {
+          if (requestCancel) {
+            isCanceled = true;
+
+            return alwaysCanceler;
+          } else {
             canceler2 = f(v)(success, error);
 
             onCanceler(canceler2);
-          } else {
-            isCanceled = true;
-          }
 
-          return canceler;
+            return canceler2;
+          }
         }, error);
 
         return function(e) {
@@ -931,17 +892,6 @@ PS.Control_Monad_Aff = (function () {
     var alwaysCanceler = Prelude["const"](Prelude.pure(applicativeAff)(true));
     
     /**
-     *  | This function allows you to attach a custom canceler to an asynchronous
-     *  | computation. If the computation is canceled, then the custom canceler 
-     *  | will be run along side the computation's own canceler.
-     */
-    var cancelWith = function (aff) {
-        return function (c) {
-            return _cancelWith(nonCanceler, aff, c);
-        };
-    };
-    
-    /**
      *  | Forks the specified asynchronous computation so subsequent monadic binds
      *  | will not block on the result of the computation.
      */
@@ -1006,7 +956,6 @@ PS.Control_Monad_Aff = (function () {
         "later'": later$prime, 
         later: later, 
         forkAff: forkAff, 
-        cancelWith: cancelWith, 
         cancel: cancel, 
         attempt: attempt, 
         apathize: apathize, 
@@ -1230,7 +1179,7 @@ PS.Control_Monad_Aff_Par = (function () {
                 return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff_AVar["makeVar'"](0))(function (_32) {
                     return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.forkAff(Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(_316))(Data_Either.either(maybeKill(_33)(_32))(Control_Monad_Aff_AVar.putVar(_33)))))(function (_31) {
                         return Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.forkAff(Prelude[">>="](Control_Monad_Aff.bindAff)(Control_Monad_Aff.attempt(_317))(Data_Either.either(maybeKill(_33)(_32))(Control_Monad_Aff_AVar.putVar(_33)))))(function (_30) {
-                            return Control_Monad_Aff.cancelWith(Control_Monad_Aff_AVar.takeVar(_33))(Prelude["<>"](Control_Monad_Aff.semigroupCanceler)(_31)(_30));
+                            return Control_Monad_Aff_AVar.takeVar(_33);
                         });
                     });
                 });
