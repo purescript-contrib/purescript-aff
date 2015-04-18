@@ -50,7 +50,7 @@ module Control.Monad.Aff.AVar
   killVar q e = runFn3 _killVar nonCanceler q e
 
   foreign import _makeVar """
-    function _makeVar(canceler) {
+    function _makeVar(nonCanceler) {
       return function(success, error) {
         try {
           success({
@@ -62,13 +62,13 @@ module Control.Monad.Aff.AVar
           error(e);
         }
 
-        return canceler;
+        return nonCanceler;
       }
     }
   """ :: forall e a. Canceler e -> AffAVar e (AVar a)
 
   foreign import _takeVar """
-    function _takeVar(canceler, avar) {
+    function _takeVar(nonCanceler, avar) {
       return function(success, error) {
         if (avar.error !== undefined) {
           error(avar.error);
@@ -80,13 +80,13 @@ module Control.Monad.Aff.AVar
           avar.consumers.push({success: success, error: error});
         }
 
-        return canceler;
+        return nonCanceler;
       } 
     }
   """ :: forall e a. Fn2 (Canceler e) (AVar a) (AffAVar e a)
   
   foreign import _putVar """
-    function _putVar(canceler, avar, a) {
+    function _putVar(nonCanceler, avar, a) {
       return function(success, error) {
         if (avar.error !== undefined) {
           error(avar.error);
@@ -114,13 +114,13 @@ module Control.Monad.Aff.AVar
           success({});
         }
 
-        return canceler;
+        return nonCanceler;
       }
     }
   """ :: forall e a. Fn3 (Canceler e) (AVar a) a (AffAVar e Unit)
 
   foreign import _killVar """
-    function _killVar(canceler, avar, e) {
+    function _killVar(nonCanceler, avar, e) {
       return function(success, error) {
         if (avar.error !== undefined) {
           error(avar.error);
@@ -143,7 +143,7 @@ module Control.Monad.Aff.AVar
           else success({});
         }
 
-        return canceler;
+        return nonCanceler;
       }
     }
   """ :: forall e a. Fn3 (Canceler e) (AVar a) Error (AffAVar e Unit)

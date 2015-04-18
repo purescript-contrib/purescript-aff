@@ -143,6 +143,9 @@ PS.Prelude = (function () {
     var Semigroup = function ($less$greater) {
         this["<>"] = $less$greater;
     };
+    var $bar$bar = function (dict) {
+        return dict["||"];
+    };
     var $greater$greater$eq = function (dict) {
         return dict[">>="];
     };
@@ -185,9 +188,6 @@ PS.Prelude = (function () {
      */
     var $plus = function (dict) {
         return dict["+"];
-    };
-    var $amp$amp = function (dict) {
-        return dict["&&"];
     };
     var $dollar = function (f) {
         return function (x) {
@@ -271,7 +271,7 @@ PS.Prelude = (function () {
         unit: unit, 
         "++": $plus$plus, 
         "<>": $less$greater, 
-        "&&": $amp$amp, 
+        "||": $bar$bar, 
         refIneq: refIneq, 
         refEq: refEq, 
         "==": $eq$eq, 
@@ -658,12 +658,12 @@ PS.Control_Monad_Aff = (function () {
         return function(e) {
           return function(success, error) {
             var cancellations = 0;
-            var result        = true;
+            var result        = false;
             var errored       = false;
 
             var s = function(bool) {
               cancellations = cancellations + 1;
-              result        = result && bool;
+              result        = result || bool;
 
               if (cancellations === 2 && !errored) {
                 try {
@@ -967,7 +967,7 @@ PS.Control_Monad_Aff = (function () {
     var semigroupCanceler = new Prelude.Semigroup(function (_309) {
         return function (_310) {
             return function (e) {
-                return Prelude["<*>"](applyAff)(Prelude["<$>"](functorAff)(Prelude["&&"](Prelude.boolLikeBoolean))(_309(e)))(_310(e));
+                return Prelude["<*>"](applyAff)(Prelude["<$>"](functorAff)(Prelude["||"](Prelude.boolLikeBoolean))(_309(e)))(_310(e));
             };
         };
     });
@@ -1030,7 +1030,7 @@ PS.Control_Monad_Aff_AVar = (function () {
     var Data_Function = PS.Data_Function;
     var Control_Monad_Eff_Exception = PS.Control_Monad_Eff_Exception;
     
-    function _makeVar(canceler) {
+    function _makeVar(nonCanceler) {
       return function(success, error) {
         try {
           success({
@@ -1042,12 +1042,12 @@ PS.Control_Monad_Aff_AVar = (function () {
           error(e);
         }
 
-        return canceler;
+        return nonCanceler;
       }
     }
   ;
     
-    function _takeVar(canceler, avar) {
+    function _takeVar(nonCanceler, avar) {
       return function(success, error) {
         if (avar.error !== undefined) {
           error(avar.error);
@@ -1059,12 +1059,12 @@ PS.Control_Monad_Aff_AVar = (function () {
           avar.consumers.push({success: success, error: error});
         }
 
-        return canceler;
+        return nonCanceler;
       } 
     }
   ;
     
-    function _putVar(canceler, avar, a) {
+    function _putVar(nonCanceler, avar, a) {
       return function(success, error) {
         if (avar.error !== undefined) {
           error(avar.error);
@@ -1092,12 +1092,12 @@ PS.Control_Monad_Aff_AVar = (function () {
           success({});
         }
 
-        return canceler;
+        return nonCanceler;
       }
     }
   ;
     
-    function _killVar(canceler, avar, e) {
+    function _killVar(nonCanceler, avar, e) {
       return function(success, error) {
         if (avar.error !== undefined) {
           error(avar.error);
@@ -1120,7 +1120,7 @@ PS.Control_Monad_Aff_AVar = (function () {
           else success({});
         }
 
-        return canceler;
+        return nonCanceler;
       }
     }
   ;

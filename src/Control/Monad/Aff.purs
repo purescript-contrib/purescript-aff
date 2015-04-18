@@ -151,7 +151,7 @@ module Control.Monad.Aff
   instance monadPlusAff :: MonadPlus (Aff e)
 
   instance semigroupCanceler :: Semigroup (Canceler e) where
-    (<>) (Canceler f1) (Canceler f2) = Canceler (\e -> (&&) <$> f1 e <*> f2 e)
+    (<>) (Canceler f1) (Canceler f2) = Canceler (\e -> (||) <$> f1 e <*> f2 e)
 
   instance monoidCanceler :: Monoid (Canceler e) where
     mempty = Canceler (const (pure true))
@@ -164,12 +164,12 @@ module Control.Monad.Aff
         return function(e) {
           return function(success, error) {
             var cancellations = 0;
-            var result        = true;
+            var result        = false;
             var errored       = false;
 
             var s = function(bool) {
               cancellations = cancellations + 1;
-              result        = result && bool;
+              result        = result || bool;
 
               if (cancellations === 2 && !errored) {
                 try {
