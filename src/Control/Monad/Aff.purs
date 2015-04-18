@@ -235,7 +235,7 @@ module Control.Monad.Aff
   """ :: forall e1 e2 a. Aff e1 a -> Aff e2 a
 
   foreign import _forkAff """
-    function _forkAff(canceler, aff) {
+    function _forkAff(nonCanceler, aff) {
       var voidF = function(){};
 
       return function(success, error) {
@@ -247,7 +247,7 @@ module Control.Monad.Aff
           error(e);
         }
 
-        return canceler;
+        return nonCanceler;
       };
     }
   """ :: forall e a. Fn2 (Canceler e) (Aff e a) (Aff e (Canceler e))

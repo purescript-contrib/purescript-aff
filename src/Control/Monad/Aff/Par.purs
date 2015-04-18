@@ -56,7 +56,7 @@ module Control.Monad.Aff.Par
         ve <- makeVar' 0  -- the error count (starts at 0)
         c1 <- forkAff $ attempt a1 >>= either (maybeKill va ve) (putVar va)
         c2 <- forkAff $ attempt a2 >>= either (maybeKill va ve) (putVar va)
-        (takeVar va) -- `cancelWith` (c1 <> c2)
+        (takeVar va) `cancelWith` (c1 <> c2)
 
   instance plusPar :: Plus (Par e) where
     empty = Par empty
