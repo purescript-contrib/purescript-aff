@@ -281,7 +281,7 @@ module Control.Monad.Aff
     """ :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> Eff e (Canceler e)) -> Aff e a
 
   foreign import _pure """
-    function _pure(canceler, v) {
+    function _pure(nonCanceler, v) {
       return function(success, error) {
         try {
           success(v);
@@ -289,16 +289,16 @@ module Control.Monad.Aff
           error(e);
         }
 
-        return canceler;
+        return nonCanceler;
       }
     }""" :: forall e a. Fn2 (Canceler e) a (Aff e a)
 
   foreign import _throwError """
-    function _throwError(canceler, e) {
+    function _throwError(nonCanceler, e) {
       return function(success, error) {
         error(e);
 
-        return canceler;
+        return nonCanceler;
       };
     }""" :: forall e a. Fn2 (Canceler e) Error (Aff e a)
 
@@ -400,7 +400,7 @@ module Control.Monad.Aff
     }""" :: forall e a. Fn3 (Error -> Eff e Unit) (a -> Eff e Unit) (Aff e a) (Eff e Unit)
 
   foreign import _liftEff """
-    function _liftEff(canceler, e) {
+    function _liftEff(nonCanceler, e) {
       return function(success, error) {
         try {
           success(e());
@@ -408,7 +408,7 @@ module Control.Monad.Aff
           error(e);
         }
 
-        return canceler;
+        return nonCanceler;
       };
     }""" :: forall e a. Fn2 (Canceler e) (Eff e a) (Aff e a)
 

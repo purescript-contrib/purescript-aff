@@ -745,7 +745,7 @@ PS.Control_Monad_Aff = (function () {
     }
   ;
     
-    function _pure(canceler, v) {
+    function _pure(nonCanceler, v) {
       return function(success, error) {
         try {
           success(v);
@@ -753,15 +753,15 @@ PS.Control_Monad_Aff = (function () {
           error(e);
         }
 
-        return canceler;
+        return nonCanceler;
       }
     };
     
-    function _throwError(canceler, e) {
+    function _throwError(nonCanceler, e) {
       return function(success, error) {
         error(e);
 
-        return canceler;
+        return nonCanceler;
       };
     };
     
@@ -858,7 +858,7 @@ PS.Control_Monad_Aff = (function () {
       };
     };
     
-    function _liftEff(canceler, e) {
+    function _liftEff(nonCanceler, e) {
       return function(success, error) {
         try {
           success(e());
@@ -866,7 +866,7 @@ PS.Control_Monad_Aff = (function () {
           error(e);
         }
 
-        return canceler;
+        return nonCanceler;
       };
     };
     
