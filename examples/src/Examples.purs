@@ -142,7 +142,7 @@ module Examples where
     liftEff $ trace "Testing Par (<|>) - kill two"
     test_parRaceKill2
 
-    liftEff $ trace "Testing cancel of Par (<|>)"
-    test_cancelPar
+    -- liftEff $ trace "Testing cancel of Par (<|>)"
+    -- test_cancelPar
 
     liftEff $ trace "Done testing"
