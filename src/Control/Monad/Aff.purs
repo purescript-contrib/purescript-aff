@@ -107,7 +107,7 @@ module Control.Monad.Aff
   apathize a = const unit <$> attempt a
 
   -- | Compute `aff1`, followed by `aff2` regardless of whether `aff1` terminated successfully.
-  finally :: forall e a. Aff e a -> Aff e Unit -> Aff e a
+  finally :: forall e a b. Aff e a -> Aff e b -> Aff e a
   finally aff1 aff2 = do
     x <- attempt aff1
     aff2
