@@ -106,6 +106,13 @@ module Control.Monad.Aff
   apathize :: forall e a. Aff e a -> Aff e Unit
   apathize a = const unit <$> attempt a
 
+  -- | Compute `aff1`, followed by `aff2` regardless of whether `aff1` terminated successfully.
+  finally :: forall e a. Aff e a -> Aff e Unit -> Aff e a
+  finally aff1 aff2 = do
+    x <- attempt aff1
+    aff2
+    either throwError pure x
+
   -- | Lifts a synchronous computation and makes explicit any failure from exceptions.
   liftEff' :: forall e a. Eff (err :: Exception | e) a -> Aff e (Either Error a)
   liftEff' eff = attempt (_unsafeInterleaveAff (runFn2 _liftEff nonCanceler eff))
