@@ -6,6 +6,7 @@ module Control.Monad.Aff
   , attempt
   , cancel
   , cancelWith
+  , finally
   , forkAff
   , later
   , later'
@@ -89,6 +90,13 @@ module Control.Monad.Aff
   -- | number of milliseconds.
   later' :: forall e a. Number -> Aff e a -> Aff e a
   later' n aff = runFn3 _setTimeout nonCanceler n aff
+
+  -- | Compute `aff1`, followed by `aff2` regardless of whether `aff1` terminated successfully.
+  finally :: forall e a b. Aff e a -> Aff e b -> Aff e a
+  finally aff1 aff2 = do
+    x <- attempt aff1
+    aff2
+    either throwError pure x
 
   -- | Forks the specified asynchronous computation so subsequent computations
   -- | will not block on the result of the computation.
