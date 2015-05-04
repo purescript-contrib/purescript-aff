@@ -60,6 +60,21 @@ module Examples where
     e <- attempt $ takeVar v
     either (const $ trace "Success: Killed queue dead") (const $ trace "Failure: Oh noes, queue survived!") e
 
+  test_finally :: TestAVar _
+  test_finally = do
+    v <- makeVar
+    finally
+      (putVar v 0)
+      (putVar v 2)
+    apathize $ finally
+      (throwError (error "poof!") *> putVar v 666) -- this putVar should not get executed
+      (putVar v 40)
+    n1 <- takeVar v
+    n2 <- takeVar v
+    n3 <- takeVar v
+    trace $ if n1 + n2 + n3 == 42 then "Success: effects amount to 42."
+                                  else "Failure: Expected 42."
+
   test_parRace :: TestAVar _
   test_parRace = do
     s <- runPar (Par (later' 100 $ pure "Success: Early bird got the worm") <|> 
@@ -133,6 +148,9 @@ module Examples where
 
     trace "Testing AVar killVar"
     test_killVar
+
+    trace "Testing finally"
+    test_finally
 
     trace "Testing Par (<|>)"
     test_parRace

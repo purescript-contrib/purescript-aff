@@ -6,6 +6,7 @@ module Control.Monad.Aff
   , attempt
   , cancel
   , cancelWith
+  , finally
   , forkAff
   , later
   , later'
