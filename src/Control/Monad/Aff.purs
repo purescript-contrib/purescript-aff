@@ -33,20 +33,20 @@ module Control.Monad.Aff
   import Control.Monad.Eff.Class
   import Control.Monad.Error.Class(MonadError, throwError)
 
-  -- | An asynchronous computation with effects `e`. The computation either 
+  -- | An asynchronous computation with effects `e`. The computation either
   -- | errors or produces a value of type `a`.
   -- |
   -- | This is moral equivalent of `ErrorT (ContT Unit (Eff e)) a`.
   foreign import data Aff :: # ! -> * -> *
 
-  -- | A pure asynchronous computation, having no effects other than 
+  -- | A pure asynchronous computation, having no effects other than
   -- | asynchronous computation.
   type PureAff a = forall e. Aff e a
 
-  -- | A canceler is asynchronous function that can be used to attempt the 
+  -- | A canceler is asynchronous function that can be used to attempt the
   -- | cancelation of a computation. Returns a boolean flag indicating whether
   -- | or not the cancellation was successful. Many computations may be composite,
-  -- | in such cases the flag indicates whether any part of the computation was 
+  -- | in such cases the flag indicates whether any part of the computation was
   -- | successfully canceled. The flag should not be used for communication.
   newtype Canceler e = Canceler (Error -> Aff e Boolean)
 
@@ -55,7 +55,7 @@ module Control.Monad.Aff
   cancel (Canceler f) = f
 
   -- | This function allows you to attach a custom canceler to an asynchronous
-  -- | computation. If the computation is canceled, then the custom canceler 
+  -- | computation. If the computation is canceled, then the custom canceler
   -- | will be run along side the computation's own canceler.
   cancelWith :: forall e a. Aff e a -> Canceler e -> Aff e a
   cancelWith aff c = runFn3 _cancelWith nonCanceler aff c
@@ -86,7 +86,7 @@ module Control.Monad.Aff
   later :: forall e a. Aff e a -> Aff e a
   later = later' 0
 
-  -- | Runs the specified asynchronous computation later, by the specified 
+  -- | Runs the specified asynchronous computation later, by the specified
   -- | number of milliseconds.
   later' :: forall e a. Number -> Aff e a -> Aff e a
   later' n aff = runFn3 _setTimeout nonCanceler n aff
@@ -101,7 +101,7 @@ module Control.Monad.Aff
   -- | Forks the specified asynchronous computation so subsequent computations
   -- | will not block on the result of the computation.
   -- |
-  -- | Returns a canceler that can be used to attempt cancellation of the 
+  -- | Returns a canceler that can be used to attempt cancellation of the
   -- | forked computation.
   forkAff :: forall e a. Aff e a -> Aff e (Canceler e)
   forkAff aff = runFn2 _forkAff nonCanceler aff
@@ -205,7 +205,7 @@ module Control.Monad.Aff
             };
 
             canceler2(e)(s, f);
-            canceler1(e)(s, f);            
+            canceler1(e)(s, f);
 
             return nonCanceler;
           };
@@ -216,10 +216,15 @@ module Control.Monad.Aff
 
   foreign import _setTimeout """
     function _setTimeout(nonCanceler, millis, aff) {
+      var set = setTimeout, clear = clearTimeout;
+      if (millis <= 0 && typeof setImmediate === "function") {
+        set = setImmediate;
+        clear = clearImmediate;
+      }
       return function(success, error) {
         var canceler;
 
-        var timeout = setTimeout(function() {
+        var timeout = set(function() {
           canceler = aff(success, error);
         }, millis);
 
@@ -228,7 +233,7 @@ module Control.Monad.Aff
             if (canceler !== undefined) {
               return canceler(e)(s, f);
             } else {
-              clearTimeout(timeout);
+              clear(timeout);
 
               try {
                 s(true);
