@@ -108,6 +108,14 @@ later' :: forall e a. Number -> Aff e a -> Aff e a
 Runs the specified asynchronous computation later, by the specified
 number of milliseconds.
 
+#### `finally`
+
+``` purescript
+finally :: forall e a b. Aff e a -> Aff e b -> Aff e a
+```
+
+Compute `aff1`, followed by `aff2` regardless of whether `aff1` terminated successfully.
+
 #### `forkAff`
 
 ``` purescript
@@ -262,6 +270,9 @@ instance monoidCanceler :: Monoid (Canceler e)
 
 ## Module Control.Monad.Aff.AVar
 
+
+A low-level primitive for building asynchronous code.
+
 #### `AVAR`
 
 ``` purescript
@@ -364,6 +375,11 @@ from writing `liftEff $ trace x` everywhere.
 
 
 ## Module Control.Monad.Aff.Par
+
+
+A newtype over `Aff` that provides `Applicative` instances that run in 
+parallel. This is useful, for example, if you want to run a whole bunch 
+of AJAX requests at the same time, rather than sequentially.
 
 #### `Par`
 
