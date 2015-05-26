@@ -8,7 +8,7 @@
 data Aff :: # ! -> * -> *
 ```
 
-An asynchronous computation with effects `e`. The computation either 
+An asynchronous computation with effects `e`. The computation either
 errors or produces a value of type `a`.
 
 This is moral equivalent of `ErrorT (ContT Unit (Eff e)) a`.
@@ -19,7 +19,7 @@ This is moral equivalent of `ErrorT (ContT Unit (Eff e)) a`.
 type PureAff a = forall e. Aff e a
 ```
 
-A pure asynchronous computation, having no effects other than 
+A pure asynchronous computation, having no effects other than
 asynchronous computation.
 
 #### `Canceler`
@@ -29,10 +29,10 @@ newtype Canceler e
   = Canceler (Error -> Aff e Boolean)
 ```
 
-A canceler is asynchronous function that can be used to attempt the 
+A canceler is asynchronous function that can be used to attempt the
 cancelation of a computation. Returns a boolean flag indicating whether
 or not the cancellation was successful. Many computations may be composite,
-in such cases the flag indicates whether any part of the computation was 
+in such cases the flag indicates whether any part of the computation was
 successfully canceled. The flag should not be used for communication.
 
 #### `cancel`
@@ -50,7 +50,7 @@ cancelWith :: forall e a. Aff e a -> Canceler e -> Aff e a
 ```
 
 This function allows you to attach a custom canceler to an asynchronous
-computation. If the computation is canceled, then the custom canceler 
+computation. If the computation is canceled, then the custom canceler
 will be run along side the computation's own canceler.
 
 #### `launchAff`
@@ -105,7 +105,7 @@ Runs the asynchronous computation off the current execution context.
 later' :: forall e a. Number -> Aff e a -> Aff e a
 ```
 
-Runs the specified asynchronous computation later, by the specified 
+Runs the specified asynchronous computation later, by the specified
 number of milliseconds.
 
 #### `forkAff`
@@ -117,7 +117,7 @@ forkAff :: forall e a. Aff e a -> Aff e (Canceler e)
 Forks the specified asynchronous computation so subsequent computations
 will not block on the result of the computation.
 
-Returns a canceler that can be used to attempt cancellation of the 
+Returns a canceler that can be used to attempt cancellation of the
 forked computation.
 
 #### `attempt`
