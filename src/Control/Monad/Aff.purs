@@ -216,10 +216,15 @@ module Control.Monad.Aff
 
   foreign import _setTimeout """
     function _setTimeout(nonCanceler, millis, aff) {
+      var set = setTimeout, clear = clearTimeout;
+      if (millis <= 0 && typeof setImmediate === "function") {
+        set = setImmediate;
+        clear = clearImmediate;
+      }
       return function(success, error) {
         var canceler;
 
-        var timeout = setTimeout(function() {
+        var timeout = set(function() {
           canceler = aff(success, error);
         }, millis);
 
@@ -228,7 +233,7 @@ module Control.Monad.Aff
             if (canceler !== undefined) {
               return canceler(e)(s, f);
             } else {
-              clearTimeout(timeout);
+              clear(timeout);
 
               try {
                 s(true);
