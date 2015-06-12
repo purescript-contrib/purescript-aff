@@ -6,6 +6,7 @@ module Control.Monad.Aff.Par
   , runPar
   ) where
 
+  import Prelude
   import Control.Monad.Aff
   import Control.Monad.Aff.AVar
 
@@ -25,16 +26,16 @@ module Control.Monad.Aff.Par
   runPar (Par aff) = aff
 
   instance semigroupPar :: (Semigroup a) => Semigroup (Par e a) where
-    (<>) a b = (<>) <$> a <*> b
+    append a b = append <$> a <*> b
 
   instance monoidPar :: (Monoid a) => Monoid (Par e a) where
     mempty = pure mempty
 
   instance functorPar :: Functor (Par e) where
-    (<$>) f (Par fa) = Par (f <$> fa)
+    map f (Par fa) = Par (f <$> fa)
 
   instance applyPar :: Apply (Par e) where
-    (<*>) (Par ff) (Par fa) = Par do
+    apply (Par ff) (Par fa) = Par do
       vf <- makeVar 
       va <- makeVar
       c1 <- forkAff (ff >>= putVar vf)
@@ -46,7 +47,7 @@ module Control.Monad.Aff.Par
 
   -- | Returns the first value, or the first error if both error.
   instance altPar :: Alt (Par e) where
-    (<|>) (Par a1) (Par a2) = 
+    alt (Par a1) (Par a2) = 
       let maybeKill va ve err = 
         do e <- takeVar ve
            if e == 1 then killVar va err else return unit

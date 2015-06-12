@@ -11,7 +11,7 @@ The moral equivalent of `ErrorT (ContT Unit (Eff e) a`, for effects `e`.
 ```purescript
 main = launchAff $ 
   do response <- Ajax.get "http://foo.bar"
-     liftEff $ trace response.body
+     liftEff $ log response.body
 ```
 
 See the [examples directory](/examples/src/Examples.purs) for more examples.
@@ -78,7 +78,7 @@ This eliminates callback hell and allows us to write code simply using `do` nota
 
 ```purescript
 do response <- ajaxGet' req
-   liftEff $ trace response.body
+   liftEff $ log response.body
 ```
 
 ## Eff
@@ -88,7 +88,7 @@ All purely synchronous computations (`Eff`) can be lifted to asynchronous comput
 ```purescript
 import Control.Monad.Eff.Class
 
-liftEff $ trace "Hello world!"
+liftEff $ log "Hello world!"
 ```
 
 This lets you write your whole program in `Aff`, and still call out to synchronous code.
@@ -97,7 +97,7 @@ If your `Eff` code throws exceptions (`err :: Exception`), you can remove the ex
 
 ```purescript
 do e <- liftEff' myExcFunc
-   liftEff $ either (const $ trace "Oh noes!") (const $ trace "Yays!") e
+   liftEff $ either (const $ log "Oh noes!") (const $ log "Yays!") e
 ```
 
 ## Dealing with Failure
@@ -122,7 +122,7 @@ This returns an `Either Error a` that you can use to recover from failure.
 
 ```purescript
 do e <- attempt $ Ajax.get "http://foo.com"
-   liftEff $ either (const $ trace "Oh noes!") (const $ trace "Yays!") e
+   liftEff $ either (const $ log "Oh noes!") (const $ log "Yays!") e
 ```
 
 #### 2. Alt
@@ -168,7 +168,7 @@ using the returned canceler:
 ```purescript
 canceler <- forkAff myAff
 canceled <- canceler `cancel` (error "Just had to cancel")
-_        <- liftEff $ if canceled then (trace "Canceled") else (trace "Not Canceled")
+_        <- liftEff $ if canceled then (log "Canceled") else (log "Not Canceled")
 ```
 
 If you want to run a custom canceler if some other asynchronous computation is
@@ -186,7 +186,7 @@ The `Control.Monad.Aff.AVar` module contains asynchronous variables, which are v
 do v <- makeVar
    forkAff (later $ putVar v 1.0)
    a <- takeVar v 
-   liftEff $ trace ("Succeeded with " ++ show a)
+   liftEff $ log ("Succeeded with " ++ show a)
 ```
 
 You can use these constructs as one-sided blocking queues, which suspend (if 
@@ -212,4 +212,9 @@ A parallel computation can be canceled if both of its individual components can 
 
 # API Docs
 
-[MODULES.md](MODULES.md)
+* [Control.Monad.Aff](docs/Control.Monad.Aff.md)
+* [Control.Monad.Aff.AVar](docs/Control.Monad.Aff.AVar.md)
+* [Control.Monad.Aff.Console](docs/Control.Monad.Aff.Console.md)
+* [Control.Monad.Aff.Class](docs/Control.Monad.Aff.Class.md)
+* [Control.Monad.Aff.Par](docs/Control.Monad.Aff.Par.md)
+* [Control.Monad.Aff.Unsafe](docs/Control.Monad.Aff.Unsafe.md)
