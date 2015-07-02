@@ -1,4 +1,5 @@
 module Control.Monad.Aff.Class where
+  import Prelude (id)
   import Control.Monad.Aff
 
   class MonadAff e m where

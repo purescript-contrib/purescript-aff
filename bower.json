@@ -19,13 +19,16 @@
     "package.json"
   ],
   "dependencies": {
-    "purescript-tuples":        "~0.3.0",
-    "purescript-either":        "~0.1.4",
-    "purescript-monoid":        "~0.2.0",
-    "purescript-exceptions":    "~0.2.2",
-    "purescript-control":       "~0.2.2",
-    "purescript-maybe":         "~0.2.1",
-    "purescript-monad-eff":     "~0.1.0",
-    "purescript-transformers":  "~0.5.1"
+    "purescript-prelude":       "~0.1.0",
+    "purescript-console":       "~0.1.0",
+    "purescript-tuples":        "~0.4.0",
+    "purescript-either":        "~0.2.0",
+    "purescript-monoid":        "~0.3.0",
+    "purescript-exceptions":    "~0.3.0",
+    "purescript-control":       "~0.3.0",
+    "purescript-maybe":         "~0.3.0",
+    "purescript-eff":           "~0.1.0",
+    "purescript-transformers":  "~0.6.0",
+    "purescript-functions":     "~0.1.0"
   }
 }

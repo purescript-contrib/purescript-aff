@@ -19,6 +19,7 @@ module Control.Monad.Aff
   )
   where
 
+  import Prelude
   import Data.Either(Either(..), either)
   import Data.Function(Fn2(), Fn3(), runFn2, runFn3)
   import Data.Monoid(Monoid, mempty)
@@ -28,7 +29,7 @@ module Control.Monad.Aff
   import Control.Alternative(Alternative)
   import Control.MonadPlus(MonadPlus)
   import Control.Monad.Eff
-  import Control.Monad.Eff.Exception(Error(), Exception(), catchException, error)
+  import Control.Monad.Eff.Exception(Error(), EXCEPTION(), catchException, error)
   import Control.Monad.Eff.Unsafe(unsafeInterleaveEff)
   import Control.Monad.Eff.Class
   import Control.Monad.Error.Class(MonadError, throwError)
@@ -88,7 +89,7 @@ module Control.Monad.Aff
 
   -- | Runs the specified asynchronous computation later, by the specified
   -- | number of milliseconds.
-  later' :: forall e a. Number -> Aff e a -> Aff e a
+  later' :: forall e a. Int -> Aff e a -> Aff e a
   later' n aff = runFn3 _setTimeout nonCanceler n aff
 
   -- | Compute `aff1`, followed by `aff2` regardless of whether `aff1` terminated successfully.
@@ -115,7 +116,7 @@ module Control.Monad.Aff
   apathize a = const unit <$> attempt a
 
   -- | Lifts a synchronous computation and makes explicit any failure from exceptions.
-  liftEff' :: forall e a. Eff (err :: Exception | e) a -> Aff e (Either Error a)
+  liftEff' :: forall e a. Eff (err :: EXCEPTION | e) a -> Aff e (Either Error a)
   liftEff' eff = attempt (_unsafeInterleaveAff (runFn2 _liftEff nonCanceler eff))
 
   -- | A constant canceller that always returns false.
@@ -127,22 +128,22 @@ module Control.Monad.Aff
   alwaysCanceler = Canceler (const (pure true))
 
   instance semigroupAff :: (Semigroup a) => Semigroup (Aff e a) where
-    (<>) a b = (<>) <$> a <*> b
+    append a b = (<>) <$> a <*> b
 
   instance monoidAff :: (Monoid a) => Monoid (Aff e a) where
     mempty = pure mempty
 
   instance functorAff :: Functor (Aff e) where
-    (<$>) f fa = runFn2 _fmap f fa
+    map f fa = runFn2 _fmap f fa
 
   instance applyAff :: Apply (Aff e) where
-    (<*>) ff fa = runFn3 _bind alwaysCanceler ff (\f -> f <$> fa)
+    apply ff fa = runFn3 _bind alwaysCanceler ff (\f -> f <$> fa)
 
   instance applicativeAff :: Applicative (Aff e) where
     pure v = runFn2 _pure nonCanceler v
 
   instance bindAff :: Bind (Aff e) where
-    (>>=) fa f = runFn3 _bind alwaysCanceler fa f
+    bind fa f = runFn3 _bind alwaysCanceler fa f
 
   instance monadAff :: Monad (Aff e)
 
@@ -157,7 +158,7 @@ module Control.Monad.Aff
     catchError aff ex = attempt aff >>= either ex pure
 
   instance altAff :: Alt (Aff e) where
-    (<|>) a1 a2 = attempt a1 >>= either (const a2) pure
+    alt a1 a2 = attempt a1 >>= either (const a2) pure
 
   instance plusAff :: Plus (Aff e) where
     empty = throwError $ error "Always fails"
@@ -167,263 +168,34 @@ module Control.Monad.Aff
   instance monadPlusAff :: MonadPlus (Aff e)
 
   instance semigroupCanceler :: Semigroup (Canceler e) where
-    (<>) (Canceler f1) (Canceler f2) = Canceler (\e -> (||) <$> f1 e <*> f2 e)
+    append (Canceler f1) (Canceler f2) = Canceler (\e -> (||) <$> f1 e <*> f2 e)
 
   instance monoidCanceler :: Monoid (Canceler e) where
     mempty = Canceler (const (pure true))
 
-  foreign import _cancelWith """
-    function _cancelWith(nonCanceler, aff, canceler1) {
-      return function(success, error) {
-        var canceler2 = aff(success, error);
+  foreign import _cancelWith :: forall e a. Fn3 (Canceler e) (Aff e a) (Canceler e) (Aff e a)
 
-        return function(e) {
-          return function(success, error) {
-            var cancellations = 0;
-            var result        = false;
-            var errored       = false;
+  foreign import _setTimeout :: forall e a. Fn3 (Canceler e) Int (Aff e a) (Aff e a)
 
-            var s = function(bool) {
-              cancellations = cancellations + 1;
-              result        = result || bool;
+  foreign import _unsafeInterleaveAff :: forall e1 e2 a. Aff e1 a -> Aff e2 a
 
-              if (cancellations === 2 && !errored) {
-                try {
-                  success(result);
-                } catch (e) {
-                  error(e);
-                }
-              }
-            };
+  foreign import _forkAff :: forall e a. Fn2 (Canceler e) (Aff e a) (Aff e (Canceler e))
 
-            var f = function(err) {
-              if (!errored) {
-                errored = true;
+  foreign import _makeAff :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> Eff e (Canceler e)) -> Aff e a
 
-                error(err);
-              }
-            };
+  foreign import _pure :: forall e a. Fn2 (Canceler e) a (Aff e a)
 
-            canceler2(e)(s, f);
-            canceler1(e)(s, f);
+  foreign import _throwError :: forall e a. Fn2 (Canceler e) Error (Aff e a)
 
-            return nonCanceler;
-          };
-        };
-      };
-    }
-  """ :: forall e a. Fn3 (Canceler e) (Aff e a) (Canceler e) (Aff e a)
+  foreign import _fmap :: forall e a b. Fn2 (a -> b) (Aff e a) (Aff e b)
 
-  foreign import _setTimeout """
-    function _setTimeout(nonCanceler, millis, aff) {
-      var set = setTimeout, clear = clearTimeout;
-      if (millis <= 0 && typeof setImmediate === "function") {
-        set = setImmediate;
-        clear = clearImmediate;
-      }
-      return function(success, error) {
-        var canceler;
+  foreign import _bind :: forall e a b. Fn3 (Canceler e) (Aff e a) (a -> Aff e b) (Aff e b)
 
-        var timeout = set(function() {
-          canceler = aff(success, error);
-        }, millis);
+  foreign import _attempt :: forall e a. Fn3 (forall x y. x -> Either x y) (forall x y. y -> Either x y) (Aff e a) (Aff e (Either Error a))
 
-        return function(e) {
-          return function(s, f) {
-            if (canceler !== undefined) {
-              return canceler(e)(s, f);
-            } else {
-              clear(timeout);
+  foreign import _runAff :: forall e a. Fn3 (Error -> Eff e Unit) (a -> Eff e Unit) (Aff e a) (Eff e Unit)
 
-              try {
-                s(true);
-              } catch (e) {
-                f(e);
-              }
-
-              return nonCanceler;
-            }
-          };
-        };
-      };
-    }
-  """ :: forall e a. Fn3 (Canceler e) Number (Aff e a) (Aff e a)
-
-  foreign import _unsafeInterleaveAff """
-    function _unsafeInterleaveAff(aff) {
-      return aff;
-    }
-  """ :: forall e1 e2 a. Aff e1 a -> Aff e2 a
-
-  foreign import _forkAff """
-    function _forkAff(nonCanceler, aff) {
-      var voidF = function(){};
-
-      return function(success, error) {
-        var canceler = aff(voidF, voidF);
-
-        try {
-          success(canceler);
-        } catch (e) {
-          error(e);
-        }
-
-        return nonCanceler;
-      };
-    }
-  """ :: forall e a. Fn2 (Canceler e) (Aff e a) (Aff e (Canceler e))
-
-  foreign import _makeAff """
-    function _makeAff(cb) {
-      return function(success, error) {
-        return cb(function(e) {
-          return function() {
-            error(e);
-          };
-        })(function(v) {
-          return function() {
-            try {
-              success(v);
-            } catch (e) {
-              error(e);
-            }
-          };
-        })();
-      }
-    }
-    """ :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> Eff e (Canceler e)) -> Aff e a
-
-  foreign import _pure """
-    function _pure(nonCanceler, v) {
-      return function(success, error) {
-        try {
-          success(v);
-        } catch (e) {
-          error(e);
-        }
-
-        return nonCanceler;
-      }
-    }""" :: forall e a. Fn2 (Canceler e) a (Aff e a)
-
-  foreign import _throwError """
-    function _throwError(nonCanceler, e) {
-      return function(success, error) {
-        error(e);
-
-        return nonCanceler;
-      };
-    }""" :: forall e a. Fn2 (Canceler e) Error (Aff e a)
-
-  foreign import _fmap """
-    function _fmap(f, aff) {
-      return function(success, error) {
-        return aff(function(v) {
-          try {
-            success(f(v));
-          } catch (e) {
-            error(e);
-          }
-        }, error);
-      };
-    }""" :: forall e a b. Fn2 (a -> b) (Aff e a) (Aff e b)
-
-  foreign import _bind """
-    function _bind(alwaysCanceler, aff, f) {
-      return function(success, error) {
-        var canceler1, canceler2;
-
-        var isCanceled    = false;
-        var requestCancel = false;
-
-        var onCanceler = function(){};
-
-        canceler1 = aff(function(v) {
-          if (requestCancel) {
-            isCanceled = true;
-
-            return alwaysCanceler;
-          } else {
-            canceler2 = f(v)(success, error);
-
-            onCanceler(canceler2);
-
-            return canceler2;
-          }
-        }, error);
-
-        return function(e) {
-          return function(s, f) {
-            requestCancel = true;
-
-            if (canceler2 !== undefined) {
-              return canceler2(e)(s, f);
-            } else {
-              return canceler1(e)(function(bool) {
-                if (bool || isCanceled) {
-                  try {
-                    s(true);
-                  } catch (e) {
-                    f(e);
-                  }
-                } else {
-                  onCanceler = function(canceler) {
-                    canceler(e)(s, f);
-                  };
-                }
-              }, f);
-            }
-          };
-        };
-      };
-    }""" :: forall e a b. Fn3 (Canceler e) (Aff e a) (a -> Aff e b) (Aff e b)
-
-  foreign import _attempt """
-    function _attempt(Left, Right, aff) {
-      return function(success, error) {
-        return aff(function(v) {
-          try {
-            success(Right(v));
-          } catch (e) {
-            error(e);
-          }
-        }, function(e) {
-          try {
-            success(Left(e));
-          } catch (e) {
-            error(e);
-          }
-        });
-      };
-    }"""  :: forall e a. Fn3 (forall x y. x -> Either x y) (forall x y. y -> Either x y) (Aff e a) (Aff e (Either Error a))
-
-  foreign import _runAff """
-    function _runAff(errorT, successT, aff) {
-      return function() {
-        return aff(function(v) {
-          try {
-            successT(v)();
-          } catch (e) {
-            errorT(e)();
-          }
-        }, function(e) {
-          errorT(e)();
-        });
-      };
-    }""" :: forall e a. Fn3 (Error -> Eff e Unit) (a -> Eff e Unit) (Aff e a) (Eff e Unit)
-
-  foreign import _liftEff """
-    function _liftEff(nonCanceler, e) {
-      return function(success, error) {
-        try {
-          success(e());
-        } catch (e) {
-          error(e);
-        }
-
-        return nonCanceler;
-      };
-    }""" :: forall e a. Fn2 (Canceler e) (Eff e a) (Aff e a)
+  foreign import _liftEff :: forall e a. Fn2 (Canceler e) (Eff e a) (Aff e a)
 
 
 
