@@ -26,6 +26,7 @@ instance altAff :: Alt (Aff e)
 instance plusAff :: Plus (Aff e)
 instance alternativeAff :: Alternative (Aff e)
 instance monadPlusAff :: MonadPlus (Aff e)
+instance monadRecAff :: MonadRec (Aff e)
 ```
 
 #### `PureAff`
