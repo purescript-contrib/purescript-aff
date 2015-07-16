@@ -4,10 +4,12 @@ var gulp        = require('gulp')
   , purescript  = require('gulp-purescript')
   , jsValidate  = require('gulp-jsvalidate')
   , plumber     = require("gulp-plumber")
+  , run         = require("gulp-run")
   ;
 
 var sources = [
   'src/**/*.purs',
+  'test/**/*.purs',
   'examples/src/**/*.purs',
   'bower_components/purescript-*/src/**/*.purs'
 ];
@@ -27,13 +29,6 @@ gulp.task('psc', function() {
   return purescript.psc({
     src: sources,
     ffi: foreigns
-  })
-});
-
-gulp.task('pscBundle', function() {
-  return purescript.pscBundle({
-    src: "output/**/*.js",
-    output: "output/examples.js"
   })
 });
 
@@ -59,6 +54,18 @@ gulp.task('dotPsci', function() {
   .pipe(gulp.dest('.'))
 })
 
+gulp.task('examples', ['psc'], function() {
+  return purescript.pscBundle({
+    src: "output/**/*.js",
+    main: "Examples",
+    output: "examples/output/examples.js"
+  })
+});
+
+gulp.task('test', ['psc'], function() {
+  return purescript.pscBundle({ src: "output/**/*.js", main: "Test.Main" })
+    .pipe(run("node"));
+});
+
 gulp.task('make', ['jsvalidate', 'psc', 'dotPsci', 'pscDocs']);
-gulp.task('test', ['jsvalidate', 'psc', 'pscBundle', 'pscDocs']);
-gulp.task('default', ['make']);
+gulp.task('default', ['make', 'examples', 'test']);

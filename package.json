@@ -1,9 +1,10 @@
 {
   "private": true,
-  "dependencies": {
+  "devDependencies": {
     "gulp": "^3.8.6",
-    "gulp-plumber": "^1.0.0",
     "gulp-jsvalidate": "^2.0.0",
-    "gulp-purescript": "^0.5.0"
+    "gulp-plumber": "^1.0.0",
+    "gulp-purescript": "^0.5.0",
+    "gulp-run": "^1.6.8"
   }
 }

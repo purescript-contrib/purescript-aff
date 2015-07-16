@@ -20,19 +20,21 @@ module Control.Monad.Aff
   where
 
   import Prelude
+
+  import Control.Alt(Alt)
+  import Control.Alternative(Alternative)
+  import Control.Monad.Eff(Eff())
+  import Control.Monad.Eff.Class(MonadEff, liftEff)
+  import Control.Monad.Eff.Exception(Error(), EXCEPTION(), catchException, error)
+  import Control.Monad.Eff.Unsafe(unsafeInterleaveEff)
+  import Control.Monad.Error.Class(MonadError, throwError)
+  import Control.Monad.Rec.Class(MonadRec, tailRecM)
+  import Control.MonadPlus(MonadPlus)
+  import Control.Plus(Plus)
+
   import Data.Either(Either(..), either)
   import Data.Function(Fn2(), Fn3(), runFn2, runFn3)
   import Data.Monoid(Monoid, mempty)
-  import Control.Apply
-  import Control.Alt(Alt)
-  import Control.Plus(Plus)
-  import Control.Alternative(Alternative)
-  import Control.MonadPlus(MonadPlus)
-  import Control.Monad.Eff
-  import Control.Monad.Eff.Exception(Error(), EXCEPTION(), catchException, error)
-  import Control.Monad.Eff.Unsafe(unsafeInterleaveEff)
-  import Control.Monad.Eff.Class
-  import Control.Monad.Error.Class(MonadError, throwError)
 
   -- | An asynchronous computation with effects `e`. The computation either
   -- | errors or produces a value of type `a`.
@@ -166,6 +168,17 @@ module Control.Monad.Aff
   instance alternativeAff :: Alternative (Aff e)
 
   instance monadPlusAff :: MonadPlus (Aff e)
+
+  instance monadRecAff :: MonadRec (Aff e) where
+    tailRecM f a = go 0 f a
+      where
+      go size f a = do
+        e <- f a
+        case e of
+          Left a' | size < 100 -> go (size + 1) f a'
+                  | otherwise -> later (tailRecM f a')
+          Right b -> pure b
+
 
   instance semigroupCanceler :: Semigroup (Canceler e) where
     append (Canceler f1) (Canceler f2) = Canceler (\e -> (||) <$> f1 e <*> f2 e)
