@@ -23,6 +23,7 @@ module Control.Monad.Aff
 
   import Control.Alt(Alt)
   import Control.Alternative(Alternative)
+  import Control.Monad.Cont.Class(MonadCont)
   import Control.Monad.Eff(Eff())
   import Control.Monad.Eff.Class(MonadEff, liftEff)
   import Control.Monad.Eff.Exception(Error(), EXCEPTION(), catchException, error)
@@ -179,6 +180,8 @@ module Control.Monad.Aff
                   | otherwise -> later (tailRecM f a')
           Right b -> pure b
 
+  instance monadContAff :: MonadCont (Aff e) where
+    callCC f = makeAff (\eb cb -> runAff eb cb (f \a -> makeAff (\_ _ -> cb a)))
 
   instance semigroupCanceler :: Semigroup (Canceler e) where
     append (Canceler f1) (Canceler f2) = Canceler (\e -> (||) <$> f1 e <*> f2 e)
