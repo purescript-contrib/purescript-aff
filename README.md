@@ -53,9 +53,8 @@ This function expects you to provide a handler, which should call a user-supplie
 
 For example, let's say we have an AJAX request function that expects a callback:
 
-```purescript
-foreign import ajaxGet """
-function ajaxGet(callback) { // accepts a callback
+```javascript
+exports.ajaxGet = function(callback) { // accepts a callback
   return function(request) { // and a request
     return function() { // returns an effect
       doNativeRequest(request, function(response) {
@@ -64,7 +63,10 @@ function ajaxGet(callback) { // accepts a callback
     }
   }
 }
-""" :: forall e. (Response -> Eff e Unit) -> Request -> Eff e Unit
+```
+
+```purescript
+foreign import ajaxGet :: forall e. (Response -> Eff e Unit) -> Request -> Eff e Unit
 ```
 
 We can wrap this into an asynchronous computation like so:
