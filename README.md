@@ -85,7 +85,7 @@ do response <- ajaxGet' req
 
 ## Eff
 
-All purely synchronous computations (`Eff`) can be lifted to asynchronous computations with `liftEff` defined in `Control.Monad.Eff.Class` (see [here](https://github.com/paf31/purescript-monad-eff)).
+All purely synchronous computations (`Eff`) can be lifted to asynchronous computations with `liftEff` defined in `Control.Monad.Eff.Class` (see [here](https://github.com/purescript/purescript-eff)).
 
 ```purescript
 import Control.Monad.Eff.Class
