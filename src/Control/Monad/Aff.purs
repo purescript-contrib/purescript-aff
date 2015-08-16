@@ -26,7 +26,7 @@ module Control.Monad.Aff
   import Control.Monad.Cont.Class(MonadCont)
   import Control.Monad.Eff(Eff())
   import Control.Monad.Eff.Class(MonadEff, liftEff)
-  import Control.Monad.Eff.Exception(Error(), EXCEPTION(), catchException, error)
+  import Control.Monad.Eff.Exception(Error(), EXCEPTION(), catchException, throwException, error)
   import Control.Monad.Eff.Unsafe(unsafeInterleaveEff)
   import Control.Monad.Error.Class(MonadError, throwError)
   import Control.Monad.Rec.Class(MonadRec, tailRecM)
@@ -65,9 +65,12 @@ module Control.Monad.Aff
   cancelWith aff c = runFn3 _cancelWith nonCanceler aff c
 
   -- | Converts the asynchronous computation into a synchronous one. All values
-  -- | and errors are ignored.
-  launchAff :: forall e a. Aff e a -> Eff e Unit
-  launchAff = runAff (const (pure unit)) (const (pure unit))
+  -- | are ignored, and if the computation produces an error, it is thrown.
+  launchAff :: forall e a. Aff e a -> Eff (err :: EXCEPTION | e) Unit
+  launchAff = runAff throwException (const (pure unit)) <<< liftEx
+    where
+    liftEx :: forall e a. Aff e a -> Aff (err :: EXCEPTION | e) a
+    liftEx = _unsafeInterleaveAff
 
   -- | Runs the asynchronous computation. You must supply an error callback and a
   -- | success callback.

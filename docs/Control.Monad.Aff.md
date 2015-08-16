@@ -79,11 +79,11 @@ will be run along side the computation's own canceler.
 #### `launchAff`
 
 ``` purescript
-launchAff :: forall e a. Aff e a -> Eff e Unit
+launchAff :: forall e a. Aff e a -> Eff (err :: EXCEPTION | e) Unit
 ```
 
 Converts the asynchronous computation into a synchronous one. All values
-and errors are ignored.
+are ignored, and if the computation produces an error, it is thrown.
 
 #### `runAff`
 
