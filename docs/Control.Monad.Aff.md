@@ -85,6 +85,15 @@ launchAff :: forall e a. Aff e a -> Eff (err :: EXCEPTION | e) Unit
 Converts the asynchronous computation into a synchronous one. All values
 are ignored, and if the computation produces an error, it is thrown.
 
+Catching exceptions by using `catchException` with the resulting Eff
+computation is not recommended, as exceptions may end up being thrown in
+a different thread, due to the asynchronous nature of Aff. In such a
+case, the exception cannot be caught.
+
+If you do need to handle exceptions, you can use `runAff` instead, or
+you can handle the exception within the Aff computation, using
+`catchError` (or any of the other mechanisms).
+
 #### `runAff`
 
 ``` purescript
