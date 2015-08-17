@@ -68,9 +68,8 @@ module Control.Monad.Aff
   -- | are ignored, and if the computation produces an error, it is thrown.
   -- |
   -- | Catching exceptions by using `catchException` with the resulting Eff
-  -- | computation is not recommended, as exceptions may end up being thrown in
-  -- | a different thread, due to the asynchronous nature of Aff. In such a
-  -- | case, the exception cannot be caught.
+  -- | computation is not recommended, as exceptions may end up being thrown
+  -- | asynchronously, in which case they cannot be caught.
   -- |
   -- | If you do need to handle exceptions, you can use `runAff` instead, or
   -- | you can handle the exception within the Aff computation, using
