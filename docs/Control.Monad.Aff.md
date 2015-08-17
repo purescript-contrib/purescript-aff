@@ -79,11 +79,19 @@ will be run along side the computation's own canceler.
 #### `launchAff`
 
 ``` purescript
-launchAff :: forall e a. Aff e a -> Eff e Unit
+launchAff :: forall e a. Aff e a -> Eff (err :: EXCEPTION | e) Unit
 ```
 
 Converts the asynchronous computation into a synchronous one. All values
-and errors are ignored.
+are ignored, and if the computation produces an error, it is thrown.
+
+Catching exceptions by using `catchException` with the resulting Eff
+computation is not recommended, as exceptions may end up being thrown
+asynchronously, in which case they cannot be caught.
+
+If you do need to handle exceptions, you can use `runAff` instead, or
+you can handle the exception within the Aff computation, using
+`catchError` (or any of the other mechanisms).
 
 #### `runAff`
 
