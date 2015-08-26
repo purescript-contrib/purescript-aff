@@ -11,7 +11,6 @@ class MonadAff e m where
 ``` purescript
 instance monadAffAff :: MonadAff e (Aff e)
 instance monadAffContT :: (Monad m, MonadAff eff m) => MonadAff eff (ContT r m)
-instance monadAffError :: (Monad m, MonadAff eff m) => MonadAff eff (ErrorT e m)
 instance monadAffExceptT :: (Monad m, MonadAff eff m) => MonadAff eff (ExceptT e m)
 instance monadAffListT :: (Monad m, MonadAff eff m) => MonadAff eff (ListT m)
 instance monadAffMaybe :: (Monad m, MonadAff eff m) => MonadAff eff (MaybeT m)

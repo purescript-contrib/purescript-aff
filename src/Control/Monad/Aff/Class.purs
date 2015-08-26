@@ -4,7 +4,6 @@ module Control.Monad.Aff.Class where
 
   import Control.Monad.Aff
   import Control.Monad.Cont.Trans (ContT())
-  import Control.Monad.Error.Trans (ErrorT())
   import Control.Monad.Except.Trans (ExceptT())
   import Control.Monad.List.Trans (ListT())
   import Control.Monad.Maybe.Trans (MaybeT())
@@ -23,9 +22,6 @@ module Control.Monad.Aff.Class where
     liftAff = id
 
   instance monadAffContT :: (Monad m, MonadAff eff m) => MonadAff eff (ContT r m) where
-    liftAff = lift <<< liftAff
-
-  instance monadAffError :: (Monad m, MonadAff eff m) => MonadAff eff (ErrorT e m) where
     liftAff = lift <<< liftAff
 
   instance monadAffExceptT :: (Monad m, MonadAff eff m) => MonadAff eff (ExceptT e m) where
