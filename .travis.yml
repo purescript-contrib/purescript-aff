@@ -7,3 +7,9 @@ install:
   - npm install && bower install
 script:
   - gulp
+deploy:
+  provider: script
+  script: update-pursuit.sh
+  skip_cleanup: true
+  on:
+    tags: true
