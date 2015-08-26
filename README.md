@@ -14,7 +14,7 @@ main = launchAff $
      liftEff $ log response.body
 ```
 
-See the [examples directory](/examples/src/Examples.purs) for more examples.
+See the [examples directory](https://github.com/slamdata/purescript-aff/blob/master/examples/src/Examples.purs) for more examples.
 
 # Getting Started
 
