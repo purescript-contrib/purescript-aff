@@ -1,5 +1,8 @@
 # purescript-aff
 
+[![Build Status](https://travis-ci.org/slamdata/purescript-aff.svg?branch=master)](https://travis-ci.org/slamdata/purescript-aff)
+[![Latest release](http://img.shields.io/bower/v/purescript-aff.svg)](https://github.com/slamdata/purescript-aff/releases)
+
 An asynchronous effect monad for PureScript.
 
 The moral equivalent of `ErrorT (ContT Unit (Eff e) a`, for effects `e`.
