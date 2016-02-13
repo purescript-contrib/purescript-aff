@@ -8,6 +8,7 @@ module Control.Monad.Aff
   , cancelWith
   , finally
   , forkAff
+  , forkAll
   , later
   , later'
   , launchAff
@@ -33,6 +34,7 @@ import Control.MonadPlus (MonadPlus)
 import Control.Plus (Plus)
 
 import Data.Either (Either(..), either)
+import Data.Foldable (Foldable, foldl)
 import Data.Function (Fn2(), Fn3(), runFn2, runFn3)
 import Data.Monoid (Monoid, mempty)
 
@@ -120,6 +122,12 @@ finally aff1 aff2 = do
 forkAff :: forall e a. Aff e a -> Aff e (Canceler e)
 forkAff aff = runFn2 _forkAff nonCanceler aff
 
+-- | Forks many asynchronous computation at once, ignoring the results.
+-- |
+-- | This function is stack-safe up to the selected Foldable instance.
+forkAll :: forall f e a. (Foldable f) => f (Aff e a) -> Aff e Unit
+forkAll affs = runFn3 _forkAll nonCanceler foldl affs
+
 -- | Promotes any error to the value level of the asynchronous monad.
 attempt :: forall e a. Aff e a -> Aff e (Either Error a)
 attempt aff = runFn3 _attempt Left Right aff
@@ -206,6 +214,8 @@ foreign import _setTimeout :: forall e a. Fn3 (Canceler e) Int (Aff e a) (Aff e 
 foreign import _unsafeInterleaveAff :: forall e1 e2 a. Aff e1 a -> Aff e2 a
 
 foreign import _forkAff :: forall e a. Fn2 (Canceler e) (Aff e a) (Aff e (Canceler e))
+
+foreign import _forkAll :: forall f e a b. Fn3 (Canceler e) ((b -> a -> b) -> b -> f a -> b) (f (Aff e a)) (Aff e Unit)
 
 foreign import _makeAff :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> Eff e (Canceler e)) -> Aff e a
 

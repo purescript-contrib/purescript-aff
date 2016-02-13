@@ -13,21 +13,21 @@ This is moral equivalent of `ErrorT (ContT Unit (Eff e)) a`.
 
 ##### Instances
 ``` purescript
-instance semigroupAff :: (Semigroup a) => Semigroup (Aff e a)
-instance monoidAff :: (Monoid a) => Monoid (Aff e a)
-instance functorAff :: Functor (Aff e)
-instance applyAff :: Apply (Aff e)
-instance applicativeAff :: Applicative (Aff e)
-instance bindAff :: Bind (Aff e)
-instance monadAff :: Monad (Aff e)
-instance monadEffAff :: MonadEff e (Aff e)
-instance monadErrorAff :: MonadError Error (Aff e)
-instance altAff :: Alt (Aff e)
-instance plusAff :: Plus (Aff e)
-instance alternativeAff :: Alternative (Aff e)
-instance monadPlusAff :: MonadPlus (Aff e)
-instance monadRecAff :: MonadRec (Aff e)
-instance monadContAff :: MonadCont (Aff e)
+(Semigroup a) => Semigroup (Aff e a)
+(Monoid a) => Monoid (Aff e a)
+Functor (Aff e)
+Apply (Aff e)
+Applicative (Aff e)
+Bind (Aff e)
+Monad (Aff e)
+MonadEff e (Aff e)
+MonadError Error (Aff e)
+Alt (Aff e)
+Plus (Aff e)
+Alternative (Aff e)
+MonadPlus (Aff e)
+MonadRec (Aff e)
+MonadCont (Aff e)
 ```
 
 #### `PureAff`
@@ -54,8 +54,8 @@ successfully canceled. The flag should not be used for communication.
 
 ##### Instances
 ``` purescript
-instance semigroupCanceler :: Semigroup (Canceler e)
-instance monoidCanceler :: Monoid (Canceler e)
+Semigroup (Canceler e)
+Monoid (Canceler e)
 ```
 
 #### `cancel`
@@ -158,6 +158,16 @@ will not block on the result of the computation.
 
 Returns a canceler that can be used to attempt cancellation of the
 forked computation.
+
+#### `forkAll`
+
+``` purescript
+forkAll :: forall f e a. (Foldable f) => f (Aff e a) -> Aff e Unit
+```
+
+Forks many asynchronous computation at once, ignoring the results.
+
+This function is stack-safe up to the selected Foldable instance.
 
 #### `attempt`
 

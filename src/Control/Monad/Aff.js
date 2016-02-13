@@ -96,6 +96,26 @@ exports._forkAff = function (nonCanceler, aff) {
   };
 }
 
+exports._forkAll = function (nonCanceler, foldl, affs) {
+  var voidF = function(){};
+
+  return function(success, error) {
+    foldl(function(_) {
+      return function(aff) {
+        aff(voidF, voidF);
+      };
+    })({})(affs);
+
+    try {
+      success({});
+    } catch(e) {
+      error(e);
+    }
+
+    return nonCanceler;
+  };
+}
+
 exports._makeAff = function (cb) {
   return function(success, error) {
     return cb(function(e) {
