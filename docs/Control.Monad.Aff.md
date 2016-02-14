@@ -162,12 +162,14 @@ forked computation.
 #### `forkAll`
 
 ``` purescript
-forkAll :: forall f e a. (Foldable f) => f (Aff e a) -> Aff e Unit
+forkAll :: forall f e a. (Foldable f) => f (Aff e a) -> Aff e (Canceler e)
 ```
 
-Forks many asynchronous computation at once, ignoring the results.
+Forks many asynchronous computation in a synchronous manner while being
+stack-safe up to the selected Foldable instance.
 
-This function is stack-safe up to the selected Foldable instance.
+Returns a canceler that can be used to attempt cancellation of all
+forked computations.
 
 #### `attempt`
 

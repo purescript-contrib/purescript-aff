@@ -100,14 +100,49 @@ exports._forkAll = function (nonCanceler, foldl, affs) {
   var voidF = function(){};
 
   return function(success, error) {
-    foldl(function(_) {
+    var cancelers = foldl(function(acc) {
       return function(aff) {
-        aff(voidF, voidF);
+        acc.push(aff(voidF, voidF));
+        return acc;
+      }
+    })([])(affs);
+
+    var canceler = function(e) {
+      return function(success, error) {
+        var cancellations = 0;
+        var result        = false;
+        var errored       = false;
+
+        var s = function(bool) {
+          cancellations = cancellations + 1;
+          result        = result || bool;
+
+          if (cancellations === cancelers.length && !errored) {
+            try {
+              success(result);
+            } catch (e) {
+              error(e);
+            }
+          }
+        };
+
+        var f = function(err) {
+          if (!errored) {
+            errored = true;
+            error(err);
+          }
+        };
+
+        for (var i = 0; i < cancelers.length; i++) {
+          cancelers[i](e)(s, f);
+        }
+
+        return nonCanceler;
       };
-    })({})(affs);
+    };
 
     try {
-      success({});
+      success(canceler);
     } catch(e) {
       error(e);
     }

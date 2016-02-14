@@ -2,16 +2,16 @@ module Test.Main where
 
 import Prelude
 
-import Control.Monad.Aff (Aff(), runAff, later', forkAll)
+import Control.Monad.Aff (Aff(), runAff, later', forkAll, cancel)
 import Control.Monad.Aff.AVar (AVAR(), makeVar', modifyVar, takeVar)
 import Control.Monad.Cont.Class (callCC)
 import Control.Monad.Eff (Eff())
 import Control.Monad.Eff.Class (liftEff)
 import Control.Monad.Eff.Console (CONSOLE(), log, print)
-import Control.Monad.Eff.Exception (EXCEPTION(), throwException)
+import Control.Monad.Eff.Exception (EXCEPTION(), throwException, error)
 import Control.Monad.Rec.Class (tailRecM)
 
-import Data.Array ((..))
+import Data.Array (replicate)
 import Data.Either (Either(..))
 
 loop :: forall eff. Int -> Aff (console :: CONSOLE | eff) Unit
@@ -25,9 +25,15 @@ loop n = tailRecM go n
 all :: forall eff. Int -> Aff (console :: CONSOLE, avar :: AVAR | eff) Unit
 all n = do
   var <- makeVar' 0
-  forkAll $ map (\_ -> modifyVar (+ 1) var) (1 .. n)
+  forkAll $ replicate n (modifyVar (+ 1) var)
   count <- takeVar var
   liftEff $ log ("Forked " <> show count)
+
+cancelAll :: forall eff. Int -> Aff (console :: CONSOLE, avar :: AVAR | eff) Unit
+cancelAll n = do
+  canceler <- forkAll $ replicate n (later' 100000 (liftEff $ log "oops"))
+  canceled <- cancel canceler (error "bye")
+  liftEff $ log ("Cancelled all: " <> show canceled)
 
 delay :: forall eff. Int -> Aff eff Unit
 delay n = callCC \cont ->
@@ -40,3 +46,4 @@ main = runAff throwException (const (pure unit)) $ do
   liftEff $ log "post-delay"
   loop 1000000
   all 100000
+  cancelAll 100000
