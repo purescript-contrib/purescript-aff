@@ -1,6 +1,6 @@
 module Control.Monad.Aff.Class where
 
-import Prelude
+import Prelude (class Monad, (<<<), id)
 
 import Control.Monad.Aff (Aff())
 import Control.Monad.Cont.Trans (ContT())
@@ -14,7 +14,7 @@ import Control.Monad.State.Trans (StateT())
 import Control.Monad.Trans (lift)
 import Control.Monad.Writer.Trans (WriterT())
 
-import Data.Monoid (Monoid)
+import Data.Monoid (class Monoid)
 
 class (MonadEff eff m) <= MonadAff eff m where
   liftAff :: forall a. Aff eff a -> m a

@@ -11,7 +11,7 @@ module Control.Monad.Aff.AVar
   , takeVar
   ) where
 
-import Prelude
+import Prelude (Unit, (>>>), (>>=), return, bind)
 
 import Control.Monad.Aff (Aff(), Canceler(), nonCanceler)
 import Control.Monad.Eff.Exception (Error())
