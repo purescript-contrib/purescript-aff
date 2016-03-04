@@ -9,10 +9,10 @@ exports._makeVar = function (nonCanceler) {
       success({
         consumers: [],
         producers: [],
-        error: undefined 
+        error: undefined
       });
-    } catch (e) {
-      error(e);
+    } catch (err) {
+      error(err);
     }
 
     return nonCanceler;
@@ -32,7 +32,7 @@ exports._takeVar = function (nonCanceler, avar) {
     }
 
     return nonCanceler;
-  } 
+  }
 }
 
 exports._putVar = function (nonCanceler, avar, a) {
@@ -43,8 +43,8 @@ exports._putVar = function (nonCanceler, avar, a) {
       avar.producers.push(function(success, error) {
         try {
           success(a);
-        } catch (e) {
-          error(e);
+        } catch (err) {
+          error(err);
         }
       });
 
@@ -54,10 +54,10 @@ exports._putVar = function (nonCanceler, avar, a) {
 
       try {
         consumer.success(a);
-      } catch (e) {
-        error(e);
+      } catch (err) {
+        error(err);
 
-        return;                  
+        return;
       }
 
       success({});
@@ -81,8 +81,8 @@ exports._killVar = function (nonCanceler, avar, e) {
 
         try {
           consumer.error(e);
-        } catch (e) {
-          errors.push(e);              
+        } catch (err) {
+          errors.push(err);
         }
       }
 
