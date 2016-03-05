@@ -34,7 +34,7 @@ import Control.MonadPlus (class MonadPlus)
 import Control.Plus (class Plus)
 
 import Data.Either (Either(..), either)
-import Data.Foldable (Foldable, foldl)
+import Data.Foldable (class Foldable, foldl)
 import Data.Function (Fn2(), Fn3(), runFn2, runFn3)
 import Data.Monoid (class Monoid, mempty)
 
