@@ -20,8 +20,8 @@ exports._cancelWith = function (nonCanceler, aff, canceler1) {
           if (cancellations === 2 && !errored) {
             try {
               success(result);
-            } catch (e) {
-              error(e);
+            } catch (err) {
+              error(err);
             }
           }
         };
@@ -65,8 +65,8 @@ exports._setTimeout = function (nonCanceler, millis, aff) {
 
           try {
             s(true);
-          } catch (e) {
-            f(e);
+          } catch (err) {
+            f(err);
           }
 
           return nonCanceler;
@@ -88,8 +88,8 @@ exports._forkAff = function (nonCanceler, aff) {
 
     try {
       success(canceler);
-    } catch (e) {
-      error(e);
+    } catch (err) {
+      error(err);
     }
 
     return nonCanceler;
@@ -120,8 +120,8 @@ exports._forkAll = function (nonCanceler, foldl, affs) {
           if (cancellations === cancelers.length && !errored) {
             try {
               success(result);
-            } catch (e) {
-              error(e);
+            } catch (err) {
+              error(err);
             }
           }
         };
@@ -143,8 +143,8 @@ exports._forkAll = function (nonCanceler, foldl, affs) {
 
     try {
       success(canceler);
-    } catch(e) {
-      error(e);
+    } catch (err) {
+      error(err);
     }
 
     return nonCanceler;
@@ -161,8 +161,8 @@ exports._makeAff = function (cb) {
       return function() {
         try {
           success(v);
-        } catch (e) {
-          error(e);
+        } catch (err) {
+          error(err);
         }
       };
     })();
@@ -173,8 +173,8 @@ exports._pure = function (nonCanceler, v) {
   return function(success, error) {
     try {
       success(v);
-    } catch (e) {
-      error(e);
+    } catch (err) {
+      error(err);
     }
 
     return nonCanceler;
@@ -194,8 +194,8 @@ exports._fmap = function (f, aff) {
     return aff(function(v) {
       try {
         success(f(v));
-      } catch (e) {
-        error(e);
+      } catch (err) {
+        error(err);
       }
     }, error);
   };
@@ -235,8 +235,8 @@ exports._bind = function (alwaysCanceler, aff, f) {
             if (bool || isCanceled) {
               try {
                 s(true);
-              } catch (e) {
-                f(e);
+              } catch (err) {
+                f(err);
               }
             } else {
               onCanceler = function(canceler) {
@@ -255,14 +255,14 @@ exports._attempt = function (Left, Right, aff) {
     return aff(function(v) {
       try {
         success(Right(v));
-      } catch (e) {
-        error(e);
+      } catch (err) {
+        error(err);
       }
     }, function(e) {
       try {
         success(Left(e));
-      } catch (e) {
-        error(e);
+      } catch (err) {
+        error(err);
       }
     });
   };
@@ -273,8 +273,8 @@ exports._runAff = function (errorT, successT, aff) {
     return aff(function(v) {
       try {
         successT(v)();
-      } catch (e) {
-        errorT(e)();
+      } catch (err) {
+        errorT(err)();
       }
     }, function(e) {
       errorT(e)();
@@ -286,8 +286,8 @@ exports._liftEff = function (nonCanceler, e) {
   return function(success, error) {
     try {
       success(e());
-    } catch (e) {
-      error(e);
+    } catch (err) {
+      error(err);
     }
 
     return nonCanceler;
