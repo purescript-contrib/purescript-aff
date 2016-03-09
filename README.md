@@ -1,7 +1,8 @@
 # purescript-aff
 
-[![Build Status](https://travis-ci.org/slamdata/purescript-aff.svg?branch=master)](https://travis-ci.org/slamdata/purescript-aff)
 [![Latest release](http://img.shields.io/bower/v/purescript-aff.svg)](https://github.com/slamdata/purescript-aff/releases)
+[![Build Status](https://travis-ci.org/slamdata/purescript-aff.svg?branch=master)](https://travis-ci.org/slamdata/purescript-aff)
+[![Dependency Status](https://www.versioneye.com/user/projects/56e00cb7df573d0048dafe47/badge.svg?style=flat)](https://www.versioneye.com/user/projects/56e00cb7df573d0048dafe47)
 
 An asynchronous effect monad for PureScript.
 
@@ -17,7 +18,7 @@ main = launchAff $
      liftEff $ log response.body
 ```
 
-See the [examples directory](https://github.com/slamdata/purescript-aff/blob/master/examples/src/Examples.purs) for more examples.
+See the [tests](https://github.com/slamdata/purescript-aff/blob/master/test/Test/Main.purs) for more examples.
 
 # Getting Started
 
@@ -217,9 +218,4 @@ A parallel computation can be canceled if both of its individual components can 
 
 # API Docs
 
-* [Control.Monad.Aff](docs/Control.Monad.Aff.md)
-* [Control.Monad.Aff.AVar](docs/Control.Monad.Aff.AVar.md)
-* [Control.Monad.Aff.Console](docs/Control.Monad.Aff.Console.md)
-* [Control.Monad.Aff.Class](docs/Control.Monad.Aff.Class.md)
-* [Control.Monad.Aff.Par](docs/Control.Monad.Aff.Par.md)
-* [Control.Monad.Aff.Unsafe](docs/Control.Monad.Aff.Unsafe.md)
+API documentation is [published on Pursuit](http://pursuit.purescript.org/packages/purescript-aff).

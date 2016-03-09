@@ -6,25 +6,21 @@
     "type": "git",
     "url": "git://github.com/slamdata/purescript-aff.git"
   },
-  "keywords": [
-    "purescript"
-  ],
-  "license": "MIT",
+  "license": "Apache-2.0",
   "ignore": [
     "**/.*",
     "bower_components",
     "node_modules",
     "output",
-    "tests",
-    "tmp",
+    "test",
     "bower.json",
-    "Gruntfile.js",
     "package.json"
   ],
   "dependencies": {
-    "purescript-console":      "^0.1.0",
-    "purescript-exceptions":   "^0.3.0",
-    "purescript-functions":    "^0.1.0",
+    "purescript-console": "^0.1.0",
+    "purescript-exceptions": "^0.3.0",
+    "purescript-free": "^0.9.1",
+    "purescript-functions": "^0.1.0",
     "purescript-transformers": "^0.8.1"
   }
 }
