@@ -19,7 +19,6 @@
   "dependencies": {
     "purescript-console": "^0.1.0",
     "purescript-exceptions": "^0.3.0",
-    "purescript-free": "^0.9.1",
     "purescript-functions": "^0.1.0",
     "purescript-transformers": "^0.8.1"
   }
