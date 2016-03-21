@@ -46,8 +46,8 @@ instance applicativePar :: Applicative (Par e) where
 -- | Returns the first value, or the first error if both error.
 instance altPar :: Alt (Par e) where
   alt (Par a1) (Par a2) =
-    let maybeKill va ve err =
-      do e <- takeVar ve
+    let maybeKill va ve err = do
+         e <- takeVar ve
          if e == 1 then killVar va err else return unit
          putVar ve (e + 1)
     in Par do
