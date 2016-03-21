@@ -1,10 +1,10 @@
 module Control.Monad.Aff.Class where
 
-import Prelude (class Monad, (<<<), id)
+import Prelude ((<<<), id)
 
 import Control.Monad.Aff (Aff())
 import Control.Monad.Cont.Trans (ContT())
-import Control.Monad.Eff.Class (MonadEff)
+import Control.Monad.Eff.Class (class MonadEff)
 import Control.Monad.Except.Trans (ExceptT())
 import Control.Monad.List.Trans (ListT())
 import Control.Monad.Maybe.Trans (MaybeT())
