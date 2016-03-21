@@ -6,16 +6,16 @@ module Control.Monad.Aff.Par
   , runPar
   ) where
 
-import Prelude
+import Prelude (class Applicative, class Apply, class Functor, class Semigroup, (<>), (>>=), ($), bind, (+), unit, return, (==), pure, (<*>), (<$>), append)
 
-import Control.Alt (Alt)
-import Control.Alternative (Alternative)
+import Control.Alt (class Alt)
+import Control.Alternative (class Alternative)
 import Control.Monad.Aff (attempt, cancelWith, forkAff)
 import Control.Monad.Aff.AVar (AffAVar(), makeVar, makeVar', takeVar, putVar, killVar)
-import Control.Plus (Plus, empty)
+import Control.Plus (class Plus, empty)
 
 import Data.Either (either)
-import Data.Monoid (Monoid, mempty)
+import Data.Monoid (class Monoid, mempty)
 
 newtype Par e a = Par (AffAVar e a)
 

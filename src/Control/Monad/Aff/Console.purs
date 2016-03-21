@@ -1,7 +1,7 @@
 module Control.Monad.Aff.Console where
 
-import Prelude
-import qualified Control.Monad.Eff.Console as C
+import Prelude (class Show, Unit, (<<<))
+import Control.Monad.Eff.Console as C
 
 import Control.Monad.Aff (Aff())
 import Control.Monad.Eff.Class (liftEff)

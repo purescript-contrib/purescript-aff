@@ -134,7 +134,7 @@ loop n = tailRecM go n
 all :: forall eff. Int -> Aff (console :: CONSOLE, avar :: AVAR | eff) Unit
 all n = do
   var <- makeVar' 0
-  forkAll $ replicate n (modifyVar (+ 1) var)
+  forkAll $ replicate n (modifyVar (_ + 1) var)
   count <- takeVar var
   log ("Forked " <> show count)
 
