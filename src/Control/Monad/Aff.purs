@@ -52,7 +52,7 @@ foreign import data Aff :: # ! -> * -> *
 -- | asynchronous computation.
 type PureAff a = forall e. Aff e a
 
--- | A canceler is asynchronous function that can be used to attempt the
+-- | A canceler is an asynchronous function that can be used to attempt the
 -- | cancelation of a computation. Returns a boolean flag indicating whether
 -- | or not the cancellation was successful. Many computations may be composite,
 -- | in such cases the flag indicates whether any part of the computation was
@@ -79,15 +79,20 @@ cancelWith aff c = runFn3 _cancelWith nonCanceler aff c
 -- | If you do need to handle exceptions, you can use `runAff` instead, or
 -- | you can handle the exception within the Aff computation, using
 -- | `catchError` (or any of the other mechanisms).
-launchAff :: forall e a. Aff e a -> Eff (err :: EXCEPTION | e) Unit
-launchAff = runAff throwException (const (pure unit)) <<< liftEx
+launchAff :: forall e a. Aff e a -> Eff (err :: EXCEPTION | e) (Canceler e)
+launchAff = lowerEx <<< runAff throwException (const (pure unit)) <<< liftEx
   where
   liftEx :: Aff e a -> Aff (err :: EXCEPTION | e) a
   liftEx = _unsafeInterleaveAff
+  lowerEx :: Eff (err :: EXCEPTION | e) (Canceler (err :: EXCEPTION | e)) -> Eff (err :: EXCEPTION | e) (Canceler e)
+  lowerEx = map (Canceler <<< map _unsafeInterleaveAff <<< cancel)
 
 -- | Runs the asynchronous computation. You must supply an error callback and a
 -- | success callback.
-runAff :: forall e a. (Error -> Eff e Unit) -> (a -> Eff e Unit) -> Aff e a -> Eff e Unit
+-- |
+-- | Returns a canceler that can be used to attempt cancellation of the
+-- | asynchronous computation.
+runAff :: forall e a. (Error -> Eff e Unit) -> (a -> Eff e Unit) -> Aff e a -> Eff e (Canceler e)
 runAff ex f aff = runFn3 _runAff ex f aff
 
 -- | Creates an asynchronous effect from a function that accepts error and
@@ -200,7 +205,7 @@ instance monadRecAff :: MonadRec (Aff e) where
   tailRecM f a = runFn3 _tailRecM isLeft f a
 
 instance monadContAff :: MonadCont (Aff e) where
-  callCC f = makeAff (\eb cb -> runAff eb cb (f \a -> makeAff (\_ _ -> cb a)))
+  callCC f = makeAff (\eb cb -> void $ runAff eb cb (f \a -> makeAff (\_ _ -> cb a)))
 
 instance semigroupCanceler :: Semigroup (Canceler e) where
   append (Canceler f1) (Canceler f2) = Canceler (\e -> (||) <$> f1 e <*> f2 e)
@@ -272,7 +277,7 @@ foreign import _bind :: forall e a b. Fn3 (Canceler e) (Aff e a) (a -> Aff e b) 
 
 foreign import _attempt :: forall e a. Fn3 (forall x y. x -> Either x y) (forall x y. y -> Either x y) (Aff e a) (Aff e (Either Error a))
 
-foreign import _runAff :: forall e a. Fn3 (Error -> Eff e Unit) (a -> Eff e Unit) (Aff e a) (Eff e Unit)
+foreign import _runAff :: forall e a. Fn3 (Error -> Eff e Unit) (a -> Eff e Unit) (Aff e a) (Eff e (Canceler e))
 
 foreign import _liftEff :: forall e a. Fn2 (Canceler e) (Eff e a) (Aff e a)
 
