@@ -86,6 +86,11 @@ test_parRace = do
                Par (later' 200 $ pure "Failure: Late bird got the worm"))
   log s
 
+test_parError :: TestAVar Unit
+test_parError = do
+  e <- attempt $ runPar (Par (throwError (error ("Oh noes!"))) *> pure unit)
+  either (const $ log "Success: Exception propagated") (const $ log "Failure: Exception missing") e
+
 test_parRaceKill1 :: TestAVar Unit
 test_parRaceKill1 = do
   s <- runPar (Par (later' 100 $ throwError (error ("Oh noes!"))) <|>
@@ -182,6 +187,9 @@ main = runAff throwException (const (pure unit)) $ do
 
   log "Testing finally"
   test_finally
+
+  log "Test Par (*>)"
+  test_parError
 
   log "Testing Par (<|>)"
   test_parRace

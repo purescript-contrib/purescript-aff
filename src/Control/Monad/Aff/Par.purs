@@ -11,10 +11,11 @@ import Prelude
 import Control.Alt (Alt)
 import Control.Alternative (Alternative)
 import Control.Monad.Aff (attempt, cancelWith, forkAff)
-import Control.Monad.Aff.AVar (AffAVar(), makeVar, makeVar', takeVar, putVar, killVar)
+import Control.Monad.Aff.AVar (AffAVar(), AVar(), makeVar, makeVar', takeVar, putVar, killVar)
+import Control.Monad.Eff.Exception (Error())
 import Control.Plus (Plus, empty)
 
-import Data.Either (either)
+import Data.Either (Either(), either)
 import Data.Monoid (Monoid, mempty)
 
 newtype Par e a = Par (AffAVar e a)
@@ -34,10 +35,12 @@ instance functorPar :: Functor (Par e) where
 
 instance applyPar :: Apply (Par e) where
   apply (Par ff) (Par fa) = Par do
+    let putOrKill :: forall b. AVar b -> Either Error b -> AffAVar e Unit
+        putOrKill v = either (killVar v) (putVar v)
     vf <- makeVar
     va <- makeVar
-    c1 <- forkAff (ff >>= putVar vf)
-    c2 <- forkAff (fa >>= putVar va)
+    c1 <- forkAff (attempt ff >>= putOrKill vf)
+    c2 <- forkAff (attempt fa >>= putOrKill va)
     (takeVar vf <*> takeVar va) `cancelWith` (c1 <> c2)
 
 instance applicativePar :: Applicative (Par e) where
