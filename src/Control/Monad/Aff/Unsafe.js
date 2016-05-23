@@ -1,8 +1,6 @@
 /* global exports */
 "use strict";
 
-// module Control.Monad.Aff.Unsafe
-
 exports.unsafeTrace = function (v) {
   return function(success, error) {
     console.log(v);
@@ -20,13 +18,13 @@ exports.unsafeTrace = function (v) {
         success(false);
 
         return nonCanceler;
-      }
+      };
     };
 
     return nonCanceler;
   };
-}
+};
 
 exports.unsafeInterleaveAff = function (aff) {
   return aff;
-}
+};

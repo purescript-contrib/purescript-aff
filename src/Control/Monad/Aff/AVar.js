@@ -1,8 +1,6 @@
 /* global exports */
 "use strict";
 
-// module Control.Monad.Aff.AVar
-
 exports._makeVar = function (nonCanceler) {
   return function(success, error) {
     try {
@@ -16,8 +14,8 @@ exports._makeVar = function (nonCanceler) {
     }
 
     return nonCanceler;
-  }
-}
+  };
+};
 
 exports._takeVar = function (nonCanceler, avar) {
   return function(success, error) {
@@ -32,8 +30,8 @@ exports._takeVar = function (nonCanceler, avar) {
     }
 
     return nonCanceler;
-  }
-}
+  };
+};
 
 exports._putVar = function (nonCanceler, avar, a) {
   return function(success, error) {
@@ -64,8 +62,8 @@ exports._putVar = function (nonCanceler, avar, a) {
     }
 
     return nonCanceler;
-  }
-}
+  };
+};
 
 exports._killVar = function (nonCanceler, avar, e) {
   return function(success, error) {
@@ -91,5 +89,5 @@ exports._killVar = function (nonCanceler, avar, e) {
     }
 
     return nonCanceler;
-  }
-}
+  };
+};
