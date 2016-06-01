@@ -123,13 +123,29 @@ test_cancelPar = do
   log (if v then "Success: Canceling composite of two Par succeeded"
                    else "Failure: Canceling composite of two Par failed")
 
-loop :: forall eff. Int -> Aff (console :: CONSOLE | eff) Unit
-loop n = tailRecM go n
+test_syncTailRecM :: TestAVar Unit
+test_syncTailRecM = do
+  v <- makeVar' false
+  _ <- forkAff $ tailRecM go { n: 1000000, v }
+  b <- takeVar v
+  log (if b then "Success: Synchronous tailRecM resolved synchronously"
+            else "Failure: Synchronous tailRecM resolved asynchronously")
   where
-  go 0 = do
-    log "Done!"
-    return (Right unit)
-  go n = return (Left (n - 1))
+  go { n = 0, v } = do
+    modifyVar (const true) v
+    pure (Right 0)
+  go { n, v } = pure (Left { n: n - 1, v })
+
+loopAndBounce :: forall eff. Int -> Aff (console :: CONSOLE | eff) Unit
+loopAndBounce n = do
+  res <- tailRecM go n
+  log $ "Done: " <> show res
+  where
+  go 0 = pure (Right 0)
+  go n | mod n 30000 == 0 = do
+    later' 10 (pure unit)
+    pure (Left (n - 1))
+  go n = pure (Left (n - 1))
 
 all :: forall eff. Int -> Aff (console :: CONSOLE, avar :: AVAR | eff) Unit
 all n = do
@@ -195,11 +211,14 @@ main = runAff throwException (const (pure unit)) $ do
   log "Testing cancel of Par (<|>)"
   test_cancelPar
 
+  log "Testing synchronous tailRecM"
+  test_syncTailRecM
+
   log "pre-delay"
   delay 1000
-
   log "post-delay"
-  loop 1000000
+
+  loopAndBounce 1000000
 
   all 100000
 
