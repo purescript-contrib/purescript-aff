@@ -293,3 +293,64 @@ exports._liftEff = function (nonCanceler, e) {
     return nonCanceler;
   };
 }
+
+exports._tailRecM = function (isLeft, f, a) {
+  return function(success, error) {
+    return function go(acc) {
+      var result, status, canceler;
+
+      // Observes synchronous effects using a flag.
+      //   status = 0 (unresolved status)
+      //   status = 1 (synchronous effect)
+      //   status = 2 (asynchronous effect)
+      while (true) {
+        status = 0;
+        canceler = f(acc)(function(v) {
+          // If the status is still unresolved, we have observed a
+          // synchronous effect. Otherwise, the status will be `2`.
+          if (status === 0) {
+            // Store the result for further synchronous processing.
+            result = v;
+            status = 1;
+          } else {
+            // When we have observed an asynchronous effect, we use normal
+            // recursion. This is safe because we will be on a new stack.
+            if (isLeft(v)) {
+              go(v.value0);
+            } else {
+              try {
+                success(v.value0);
+              } catch (err) {
+                error(err);
+              }
+            }
+          }
+        }, error);
+
+        // If the status has already resolved to `1` by our Aff handler, then
+        // we have observed a synchronous effect. Otherwise it will still be
+        // `0`.
+        if (status === 1) {
+          // When we have observed a synchronous effect, we merely swap out the
+          // accumulator and continue the loop, preserving stack.
+          if (isLeft(result)) {
+            acc = result.value0;
+            continue;
+          } else {
+            try {
+              success(result.value0);
+            } catch (err) {
+              error(err);
+            }
+          }
+        } else {
+          // If the status has not resolved yet, then we have observed an
+          // asynchronous effect.
+          status = 2;
+        }
+        return canceler;
+      }
+
+    }(a);
+  };
+};

@@ -33,7 +33,7 @@ import Control.Monad.Rec.Class (MonadRec, tailRecM)
 import Control.MonadPlus (MonadPlus)
 import Control.Plus (Plus)
 
-import Data.Either (Either(..), either)
+import Data.Either (Either(..), either, isLeft)
 import Data.Foldable (Foldable, foldl)
 import Data.Function (Fn2(), Fn3(), runFn2, runFn3)
 import Data.Monoid (Monoid, mempty)
@@ -191,14 +191,7 @@ instance alternativeAff :: Alternative (Aff e)
 instance monadPlusAff :: MonadPlus (Aff e)
 
 instance monadRecAff :: MonadRec (Aff e) where
-  tailRecM f a = go 0 f a
-    where
-    go size f a = do
-      e <- f a
-      case e of
-        Left a' | size < 100 -> go (size + 1) f a'
-                | otherwise -> later (tailRecM f a')
-        Right b -> pure b
+  tailRecM f a = runFn3 _tailRecM isLeft f a
 
 instance monadContAff :: MonadCont (Aff e) where
   callCC f = makeAff (\eb cb -> runAff eb cb (f \a -> makeAff (\_ _ -> cb a)))
@@ -234,3 +227,5 @@ foreign import _attempt :: forall e a. Fn3 (forall x y. x -> Either x y) (forall
 foreign import _runAff :: forall e a. Fn3 (Error -> Eff e Unit) (a -> Eff e Unit) (Aff e a) (Eff e Unit)
 
 foreign import _liftEff :: forall e a. Fn2 (Canceler e) (Eff e a) (Aff e a)
+
+foreign import _tailRecM :: forall e a b. Fn3 (Either a b -> Boolean) (a -> Aff e (Either a b)) a (Aff e b)
