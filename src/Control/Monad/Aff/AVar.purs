@@ -16,7 +16,7 @@ import Prelude
 import Control.Monad.Aff (Aff(), Canceler(), nonCanceler)
 import Control.Monad.Eff.Exception (Error())
 
-import Data.Function (Fn2(), Fn3(), runFn2, runFn3)
+import Data.Function.Uncurried (Fn2(), Fn3(), runFn2, runFn3)
 
 foreign import data AVAR :: !
 
@@ -33,7 +33,7 @@ makeVar' :: forall e a. a -> AffAVar e (AVar a)
 makeVar' a = do
   v <- makeVar
   putVar v a
-  return v
+  pure v
 
 -- | Takes the next value from the asynchronous avar.
 takeVar :: forall e a. AVar a -> AffAVar e a

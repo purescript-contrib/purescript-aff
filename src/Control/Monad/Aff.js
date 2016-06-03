@@ -1,8 +1,6 @@
 /* global exports */
 "use strict";
 
-// module Control.Monad.Aff
-
 exports._cancelWith = function (nonCanceler, aff, canceler1) {
   return function(success, error) {
     var canceler2 = aff(success, error);

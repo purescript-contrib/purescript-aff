@@ -7,16 +7,14 @@ module Control.Monad.Aff.Par
   ) where
 
 import Prelude
-
-import Control.Alt (Alt)
-import Control.Alternative (Alternative)
+import Control.Alt (class Alt)
+import Control.Alternative (class Alternative)
 import Control.Monad.Aff (attempt, cancelWith, forkAff)
-import Control.Monad.Aff.AVar (AffAVar(), AVar(), makeVar, makeVar', takeVar, putVar, killVar)
-import Control.Monad.Eff.Exception (Error())
-import Control.Plus (Plus, empty)
-
-import Data.Either (Either(), either)
-import Data.Monoid (Monoid, mempty)
+import Control.Monad.Aff.AVar (AffAVar, AVar, makeVar, makeVar', takeVar, putVar, killVar)
+import Control.Monad.Eff.Exception (Error)
+import Control.Plus (class Plus, empty)
+import Data.Either (Either, either)
+import Data.Monoid (class Monoid, mempty)
 
 newtype Par e a = Par (AffAVar e a)
 
@@ -51,7 +49,7 @@ instance altPar :: Alt (Par e) where
   alt (Par a1) (Par a2) =
     let maybeKill va ve err = do
          e <- takeVar ve
-         if e == 1 then killVar va err else return unit
+         if e == 1 then killVar va err else pure unit
          putVar ve (e + 1)
     in Par do
       va <- makeVar     -- the `a` value

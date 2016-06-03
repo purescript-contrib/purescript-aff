@@ -4,27 +4,30 @@ import Prelude
 
 import Control.Alt ((<|>))
 import Control.Apply ((*>))
-import Control.Monad.Aff (Aff(), runAff, later, later', forkAff, forkAll, Canceler(..), cancel, attempt, finally, apathize)
-import Control.Monad.Aff.AVar (AVAR(), makeVar, makeVar', putVar, modifyVar, takeVar, killVar)
+import Control.Monad.Aff (Aff, runAff, later, later', forkAff, forkAll, Canceler(..), cancel, attempt, finally, apathize)
+import Control.Monad.Aff.AVar (AVAR, makeVar, makeVar', putVar, modifyVar, takeVar, killVar)
 import Control.Monad.Aff.Console (log)
 import Control.Monad.Aff.Par (Par(..), runPar)
 import Control.Monad.Cont.Class (callCC)
-import Control.Monad.Eff (Eff())
-import Control.Monad.Eff.Console (CONSOLE())
-import Control.Monad.Eff.Exception (EXCEPTION(), throwException, error)
+import Control.Monad.Eff (Eff)
+import Control.Monad.Eff.Console (CONSOLE)
+import Control.Monad.Eff.Exception (EXCEPTION, throwException, error)
 import Control.Monad.Error.Class (throwError)
 import Control.Monad.Rec.Class (tailRecM)
 
-import Data.Array (replicate)
 import Data.Either (Either(..), either)
+import Data.Unfoldable (replicate)
 
 type Test a = forall e. Aff (console :: CONSOLE | e) a
 type TestAVar a = forall e. Aff (console :: CONSOLE, avar :: AVAR | e) a
 
+replicateArray :: forall a. Int -> a -> Array a
+replicateArray = replicate
+
 test_sequencing :: Int -> Test Unit
 test_sequencing 0 = log "Done"
 test_sequencing n = do
-  later' 100 (log (show (n / 10) ++ " seconds left"))
+  later' 100 (log (show (n / 10) <> " seconds left"))
   test_sequencing (n - 1)
 
 test_pure :: Test Unit
@@ -49,7 +52,7 @@ test_putTakeVar = do
   v <- makeVar
   forkAff (later $ putVar v 1.0)
   a <- takeVar v
-  log ("Success: Value " ++ show a)
+  log ("Success: Value " <> show a)
 
 test_killFirstForked :: Test Unit
 test_killFirstForked = do
@@ -136,7 +139,7 @@ test_syncTailRecM = do
   log (if b then "Success: Synchronous tailRecM resolved synchronously"
             else "Failure: Synchronous tailRecM resolved asynchronously")
   where
-  go { n = 0, v } = do
+  go { n: 0, v } = do
     modifyVar (const true) v
     pure (Right 0)
   go { n, v } = pure (Left { n: n - 1, v })
@@ -155,13 +158,13 @@ loopAndBounce n = do
 all :: forall eff. Int -> Aff (console :: CONSOLE, avar :: AVAR | eff) Unit
 all n = do
   var <- makeVar' 0
-  forkAll $ replicate n (modifyVar (+ 1) var)
+  forkAll $ replicateArray n (modifyVar (_ + 1) var)
   count <- takeVar var
   log ("Forked " <> show count)
 
 cancelAll :: forall eff. Int -> Aff (console :: CONSOLE, avar :: AVAR | eff) Unit
 cancelAll n = do
-  canceler <- forkAll $ replicate n (later' 100000 (log "oops"))
+  canceler <- forkAll $ replicateArray n (later' 100000 (log "oops"))
   canceled <- cancel canceler (error "bye")
   log ("Cancelled all: " <> show canceled)
 

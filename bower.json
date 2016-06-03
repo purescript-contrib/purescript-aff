@@ -17,9 +17,9 @@
     "package.json"
   ],
   "dependencies": {
-    "purescript-console": "^0.1.0",
-    "purescript-exceptions": "^0.3.0",
-    "purescript-functions": "^0.1.0",
-    "purescript-transformers": "^0.8.1"
+    "purescript-console": "^1.0.0",
+    "purescript-exceptions": "^1.0.0",
+    "purescript-functions": "^1.0.0",
+    "purescript-transformers": "^1.0.0"
   }
 }

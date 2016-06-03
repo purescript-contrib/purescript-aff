@@ -1,7 +1,7 @@
 module Control.Monad.Aff.Console where
 
 import Prelude
-import qualified Control.Monad.Eff.Console as C
+import Control.Monad.Eff.Console as C
 
 import Control.Monad.Aff (Aff())
 import Control.Monad.Eff.Class (liftEff)
@@ -11,7 +11,7 @@ import Control.Monad.Eff.Class (liftEff)
 log :: forall e. String -> Aff (console :: C.CONSOLE | e) Unit
 log = liftEff <<< C.log
 
--- | Prints any `Show`-able value to the console. This basically saves you
--- | from writing `liftEff $ print x` everywhere.
-print :: forall e a. (Show a) => a -> Aff (console :: C.CONSOLE | e) Unit
-print = liftEff <<< C.print
+-- | Logs any `Show`-able value to the console. This basically saves you
+-- | from writing `liftEff $ logShow x` everywhere.
+logShow :: forall e a. (Show a) => a -> Aff (console :: C.CONSOLE | e) Unit
+logShow = liftEff <<< C.logShow

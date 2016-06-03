@@ -21,22 +21,20 @@ module Control.Monad.Aff
   where
 
 import Prelude
-
-import Control.Alt (Alt)
-import Control.Alternative (Alternative)
-import Control.Monad.Cont.Class (MonadCont)
-import Control.Monad.Eff (Eff())
-import Control.Monad.Eff.Class (MonadEff)
-import Control.Monad.Eff.Exception (Error(), EXCEPTION(), throwException, error)
-import Control.Monad.Error.Class (MonadError, throwError)
-import Control.Monad.Rec.Class (MonadRec, tailRecM)
-import Control.MonadPlus (MonadPlus)
-import Control.Plus (Plus)
-
+import Control.Alt (class Alt)
+import Control.Alternative (class Alternative)
+import Control.Monad.Cont.Class (class MonadCont)
+import Control.Monad.Eff (Eff)
+import Control.Monad.Eff.Class (class MonadEff)
+import Control.Monad.Eff.Exception (Error, EXCEPTION, throwException, error)
+import Control.Monad.Error.Class (class MonadError, throwError)
+import Control.Monad.Rec.Class (class MonadRec)
+import Control.MonadPlus (class MonadZero, class MonadPlus)
+import Control.Plus (class Plus)
 import Data.Either (Either(..), either, isLeft)
-import Data.Foldable (Foldable, foldl)
-import Data.Function (Fn2(), Fn3(), runFn2, runFn3)
-import Data.Monoid (Monoid, mempty)
+import Data.Foldable (class Foldable, foldl)
+import Data.Function.Uncurried (Fn2, Fn3, runFn2, runFn3)
+import Data.Monoid (class Monoid, mempty)
 
 -- | An asynchronous computation with effects `e`. The computation either
 -- | errors or produces a value of type `a`.
@@ -187,6 +185,8 @@ instance plusAff :: Plus (Aff e) where
   empty = throwError $ error "Always fails"
 
 instance alternativeAff :: Alternative (Aff e)
+
+instance monadZero :: MonadZero (Aff e)
 
 instance monadPlusAff :: MonadPlus (Aff e)
 
