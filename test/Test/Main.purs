@@ -4,19 +4,19 @@ import Prelude
 
 import Control.Alt ((<|>))
 import Control.Apply ((*>))
-import Control.Monad.Aff (Aff, runAff, later, later', forkAff, forkAll, Canceler(..), cancel, attempt, finally, apathize)
+import Control.Monad.Aff (Aff, runAff, makeAff, later, later', forkAff, forkAll, Canceler(..), cancel, attempt, finally, apathize)
 import Control.Monad.Aff.AVar (AVAR, makeVar, makeVar', putVar, modifyVar, takeVar, killVar)
 import Control.Monad.Aff.Console (log)
 import Control.Monad.Aff.Par (Par(..), runPar)
 import Control.Monad.Cont.Class (callCC)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Console (CONSOLE)
-import Control.Monad.Eff.Exception (EXCEPTION, throwException, error)
+import Control.Monad.Eff.Exception (EXCEPTION, throwException, error, message)
 import Control.Monad.Error.Class (throwError)
 import Control.Monad.Rec.Class (tailRecM)
-
-import Data.Either (Either(..), either)
+import Data.Either (Either(..), either, fromLeft, fromRight)
 import Data.Unfoldable (replicate)
+import Partial.Unsafe (unsafePartial)
 
 type Test a = forall e. Aff (console :: CONSOLE | e) a
 type TestAVar a = forall e. Aff (console :: CONSOLE, avar :: AVAR | e) a
@@ -29,6 +29,21 @@ test_sequencing 0 = log "Done"
 test_sequencing n = do
   later' 100 (log (show (n / 10) <> " seconds left"))
   test_sequencing (n - 1)
+
+foreign import synchronousUnexpectedThrowError :: forall e. Eff e Unit
+
+test_makeAff :: Test Unit
+test_makeAff = unsafePartial do
+  s <- attempt $ makeAff \reject resolve -> resolve "ok"
+  log $ "makeAff success is " <> fromRight s
+
+  asyncF <- attempt $ makeAff \reject resolve -> reject (error "ok")
+  log $ "makeAff asynchronous failure is " <> message (fromLeft asyncF)
+
+  asyncF <- attempt $ makeAff \reject resolve -> synchronousUnexpectedThrowError
+  log $ "makeAff synchronous failure is " <> message (fromLeft asyncF)
+
+  log "Success: makeAff is ok"
 
 test_pure :: Test Unit
 test_pure = do
@@ -59,7 +74,6 @@ test_killFirstForked = do
   c <- forkAff (later' 100 $ pure "Failure: This should have been killed!")
   b <- c `cancel` (error "Just die")
   log (if b then "Success: Killed first forked" else "Failure: Couldn't kill first forked")
-
 
 test_killVar :: TestAVar Unit
 test_killVar = do
@@ -179,6 +193,9 @@ main = runAff throwException (const (pure unit)) $ do
 
   log "Testing pure"
   test_pure
+
+  log "Testing makeAff"
+  test_makeAff
 
   log "Testing attempt"
   test_attempt

@@ -21,5 +21,8 @@
     "purescript-exceptions": "^1.0.0",
     "purescript-functions": "^1.0.0",
     "purescript-transformers": "^1.0.0"
+  },
+  "devDependencies": {
+    "purescript-partial": "^1.1.2"
   }
 }
