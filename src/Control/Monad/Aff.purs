@@ -21,6 +21,7 @@ module Control.Monad.Aff
   where
 
 import Prelude
+
 import Control.Alt (class Alt)
 import Control.Alternative (class Alternative)
 import Control.Monad.Cont.Class (class MonadCont)
@@ -30,7 +31,9 @@ import Control.Monad.Eff.Exception (Error, EXCEPTION, throwException, error)
 import Control.Monad.Error.Class (class MonadError, throwError)
 import Control.Monad.Rec.Class (class MonadRec)
 import Control.MonadPlus (class MonadZero, class MonadPlus)
+import Control.Parallel.Class (class MonadRace, class MonadPar)
 import Control.Plus (class Plus)
+
 import Data.Either (Either(..), either, isLeft)
 import Data.Foldable (class Foldable, foldl)
 import Data.Function.Uncurried (Fn2, Fn3, runFn2, runFn3)
@@ -201,6 +204,56 @@ instance semigroupCanceler :: Semigroup (Canceler e) where
 
 instance monoidCanceler :: Monoid (Canceler e) where
   mempty = Canceler (const (pure true))
+
+instance monadParAff :: MonadPar (Aff e) where
+  par f ma mb = do
+    va <- _makeVar nonCanceler
+    vb <- _makeVar nonCanceler
+    c1 <- forkAff (putOrKill va =<< attempt ma)
+    c2 <- forkAff (putOrKill vb =<< attempt mb)
+    f <$> (takeVar va) <*> (takeVar vb)
+    where
+    putOrKill :: forall a. AVar a -> Either Error a -> Aff e Unit
+    putOrKill v = either (killVar v) (putVar v)
+
+instance monadRaceAff :: MonadRace (Aff e) where
+  stall = throwError $ error "Stalled"
+  race a1 a2 = do
+    va <- _makeVar nonCanceler -- the `a` value
+    ve <- _makeVar nonCanceler -- the error count (starts at 0)
+    putVar ve 0
+    c1 <- forkAff $ either (maybeKill va ve) (putVar va) =<< attempt a1
+    c2 <- forkAff $ either (maybeKill va ve) (putVar va) =<< attempt a2
+    takeVar va `cancelWith` (c1 <> c2)
+    where
+    maybeKill :: forall a. AVar a -> AVar Int -> Error -> Aff e Unit
+    maybeKill va ve err = do
+      e <- takeVar ve
+      if e == 1 then killVar va err else pure unit
+      putVar ve (e + 1)
+
+--------------------------------
+
+foreign import data AVar :: * -> *
+
+takeVar :: forall e a. AVar a -> Aff e a
+takeVar q = runFn2 _takeVar nonCanceler q
+
+putVar :: forall e a. AVar a -> a -> Aff e Unit
+putVar q a = runFn3 _putVar nonCanceler q a
+
+killVar :: forall e a. AVar a -> Error -> Aff e Unit
+killVar q e = runFn3 _killVar nonCanceler q e
+
+foreign import _makeVar :: forall e a. Canceler e -> Aff e (AVar a)
+
+foreign import _takeVar :: forall e a. Fn2 (Canceler e) (AVar a) (Aff e a)
+
+foreign import _putVar :: forall e a. Fn3 (Canceler e) (AVar a) a (Aff e Unit)
+
+foreign import _killVar :: forall e a. Fn3 (Canceler e) (AVar a) Error (Aff e Unit)
+
+--------------------------------
 
 foreign import _cancelWith :: forall e a. Fn3 (Canceler e) (Aff e a) (Canceler e) (Aff e a)
 

@@ -4,10 +4,10 @@ import Prelude
 
 import Control.Alt ((<|>))
 import Control.Apply ((*>))
+import Control.Parallel.Class (parallel, runParallel)
 import Control.Monad.Aff (Aff, runAff, makeAff, later, later', forkAff, forkAll, Canceler(..), cancel, attempt, finally, apathize)
 import Control.Monad.Aff.AVar (AVAR, makeVar, makeVar', putVar, modifyVar, takeVar, killVar)
 import Control.Monad.Aff.Console (log)
-import Control.Monad.Aff.Par (Par(..), runPar)
 import Control.Monad.Cont.Class (callCC)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Console (CONSOLE)
@@ -40,8 +40,8 @@ test_makeAff = unsafePartial do
   asyncF <- attempt $ makeAff \reject resolve -> reject (error "ok")
   log $ "makeAff asynchronous failure is " <> message (fromLeft asyncF)
 
-  asyncF <- attempt $ makeAff \reject resolve -> synchronousUnexpectedThrowError
-  log $ "makeAff synchronous failure is " <> message (fromLeft asyncF)
+  asyncF' <- attempt $ makeAff \reject resolve -> synchronousUnexpectedThrowError
+  log $ "makeAff synchronous failure is " <> message (fromLeft asyncF')
 
   log "Success: makeAff is ok"
 
@@ -99,25 +99,25 @@ test_finally = do
 
 test_parRace :: TestAVar Unit
 test_parRace = do
-  s <- runPar (Par (later' 100 $ pure "Success: Early bird got the worm") <|>
-               Par (later' 200 $ pure "Failure: Late bird got the worm"))
+  s <- runParallel (parallel (later' 100 $ pure "Success: Early bird got the worm") <|>
+               parallel (later' 200 $ pure "Failure: Late bird got the worm"))
   log s
 
 test_parError :: TestAVar Unit
 test_parError = do
-  e <- attempt $ runPar (Par (throwError (error ("Oh noes!"))) *> pure unit)
+  e <- attempt $ runParallel (parallel (throwError (error ("Oh noes!"))) *> pure unit)
   either (const $ log "Success: Exception propagated") (const $ log "Failure: Exception missing") e
 
 test_parRaceKill1 :: TestAVar Unit
 test_parRaceKill1 = do
-  s <- runPar (Par (later' 100 $ throwError (error ("Oh noes!"))) <|>
-               Par (later' 200 $ pure "Success: Early error was ignored in favor of late success"))
+  s <- runParallel (parallel (later' 100 $ throwError (error ("Oh noes!"))) <|>
+               parallel (later' 200 $ pure "Success: Early error was ignored in favor of late success"))
   log s
 
 test_parRaceKill2 :: TestAVar Unit
 test_parRaceKill2 = do
-  e <- attempt $ runPar (Par (later' 100 $ throwError (error ("Oh noes!"))) <|>
-                         Par (later' 200 $ throwError (error ("Oh noes!"))))
+  e <- attempt $ runParallel (parallel (later' 100 $ throwError (error ("Oh noes!"))) <|>
+                         parallel (later' 200 $ throwError (error ("Oh noes!"))))
   either (const $ log "Success: Killing both kills it dead") (const $ log "Failure: It's alive!!!") e
 
 test_semigroupCanceler :: Test Unit
@@ -137,13 +137,13 @@ test_cancelLater = do
   v <- cancel c (error "Cause")
   log (if v then "Success: Canceled later" else "Failure: Did not cancel later")
 
-test_cancelPar :: TestAVar Unit
-test_cancelPar = do
-  c  <- forkAff <<< runPar $ Par (later' 100 $ log "Failure: #1 should not get through") <|>
-                             Par (later' 100 $ log "Failure: #2 should not get through")
+test_cancelParallel :: TestAVar Unit
+test_cancelParallel = do
+  c  <- forkAff <<< runParallel $ parallel (later' 100 $ log "Failure: #1 should not get through") <|>
+                             parallel (later' 100 $ log "Failure: #2 should not get through")
   v  <- c `cancel` (error "Must cancel")
-  log (if v then "Success: Canceling composite of two Par succeeded"
-                   else "Failure: Canceling composite of two Par failed")
+  log (if v then "Success: Canceling composite of two Parallel succeeded"
+                   else "Failure: Canceling composite of two Parallel failed")
 
 test_syncTailRecM :: TestAVar Unit
 test_syncTailRecM = do
@@ -224,20 +224,20 @@ main = runAff throwException (const (pure unit)) $ do
   log "Testing finally"
   test_finally
 
-  log "Test Par (*>)"
+  log "Test Parallel (*>)"
   test_parError
 
-  log "Testing Par (<|>)"
+  log "Testing Parallel (<|>)"
   test_parRace
 
-  log "Testing Par (<|>) - kill one"
+  log "Testing Parallel (<|>) - kill one"
   test_parRaceKill1
 
-  log "Testing Par (<|>) - kill two"
+  log "Testing Parallel (<|>) - kill two"
   test_parRaceKill2
 
-  log "Testing cancel of Par (<|>)"
-  test_cancelPar
+  log "Testing cancel of Parallel (<|>)"
+  test_cancelParallel
 
   log "Testing synchronous tailRecM"
   test_syncTailRecM
