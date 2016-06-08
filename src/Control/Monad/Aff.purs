@@ -24,6 +24,7 @@ import Prelude
 
 import Control.Alt (class Alt)
 import Control.Alternative (class Alternative)
+import Control.Monad.Aff.Internal (AVBox, AVar, _killVar, _putVar, _takeVar, _makeVar)
 import Control.Monad.Cont.Class (class MonadCont)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Class (class MonadEff)
@@ -38,6 +39,8 @@ import Data.Either (Either(..), either, isLeft)
 import Data.Foldable (class Foldable, foldl)
 import Data.Function.Uncurried (Fn2, Fn3, runFn2, runFn3)
 import Data.Monoid (class Monoid, mempty)
+
+import Unsafe.Coerce (unsafeCoerce)
 
 -- | An asynchronous computation with effects `e`. The computation either
 -- | errors or produces a value of type `a`.
@@ -57,7 +60,7 @@ type PureAff a = forall e. Aff e a
 newtype Canceler e = Canceler (Error -> Aff e Boolean)
 
 -- | Unwraps the canceler function from the newtype that wraps it.
-cancel :: forall e. Canceler e -> Error ->  Aff e Boolean
+cancel :: forall e. Canceler e -> Error -> Aff e Boolean
 cancel (Canceler f) = f
 
 -- | This function allows you to attach a custom canceler to an asynchronous
@@ -207,8 +210,8 @@ instance monoidCanceler :: Monoid (Canceler e) where
 
 instance monadParAff :: MonadPar (Aff e) where
   par f ma mb = do
-    va <- _makeVar nonCanceler
-    vb <- _makeVar nonCanceler
+    va <- makeVar
+    vb <- makeVar
     c1 <- forkAff (putOrKill va =<< attempt ma)
     c2 <- forkAff (putOrKill vb =<< attempt mb)
     f <$> (takeVar va) <*> (takeVar vb)
@@ -219,8 +222,8 @@ instance monadParAff :: MonadPar (Aff e) where
 instance monadRaceAff :: MonadRace (Aff e) where
   stall = throwError $ error "Stalled"
   race a1 a2 = do
-    va <- _makeVar nonCanceler -- the `a` value
-    ve <- _makeVar nonCanceler -- the error count (starts at 0)
+    va <- makeVar -- the `a` value
+    ve <- makeVar -- the error count (starts at 0)
     putVar ve 0
     c1 <- forkAff $ either (maybeKill va ve) (putVar va) =<< attempt a1
     c2 <- forkAff $ either (maybeKill va ve) (putVar va) =<< attempt a2
@@ -232,28 +235,20 @@ instance monadRaceAff :: MonadRace (Aff e) where
       if e == 1 then killVar va err else pure unit
       putVar ve (e + 1)
 
---------------------------------
-
-foreign import data AVar :: * -> *
+makeVar :: forall e a. Aff e (AVar a)
+makeVar = fromAVBox $ _makeVar nonCanceler
 
 takeVar :: forall e a. AVar a -> Aff e a
-takeVar q = runFn2 _takeVar nonCanceler q
+takeVar q = fromAVBox $ runFn2 _takeVar nonCanceler q
 
 putVar :: forall e a. AVar a -> a -> Aff e Unit
-putVar q a = runFn3 _putVar nonCanceler q a
+putVar q a = fromAVBox $ runFn3 _putVar nonCanceler q a
 
 killVar :: forall e a. AVar a -> Error -> Aff e Unit
-killVar q e = runFn3 _killVar nonCanceler q e
+killVar q e = fromAVBox $ runFn3 _killVar nonCanceler q e
 
-foreign import _makeVar :: forall e a. Canceler e -> Aff e (AVar a)
-
-foreign import _takeVar :: forall e a. Fn2 (Canceler e) (AVar a) (Aff e a)
-
-foreign import _putVar :: forall e a. Fn3 (Canceler e) (AVar a) a (Aff e Unit)
-
-foreign import _killVar :: forall e a. Fn3 (Canceler e) (AVar a) Error (Aff e Unit)
-
---------------------------------
+fromAVBox :: forall a e. AVBox a -> Aff e a
+fromAVBox = unsafeCoerce
 
 foreign import _cancelWith :: forall e a. Fn3 (Canceler e) (Aff e a) (Canceler e) (Aff e a)
 

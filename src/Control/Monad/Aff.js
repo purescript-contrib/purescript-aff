@@ -320,11 +320,3 @@ exports._tailRecM = function (isLeft, f, a) {
     }(a);
   };
 };
-
-
-var avar = require("../Control.Monad.Aff.AVar/foreign.js");
-
-exports._makeVar = avar._makeVar;
-exports._takeVar = avar._takeVar;
-exports._putVar = avar._putVar;
-exports._killVar = avar._killVar;
