@@ -33,6 +33,20 @@ exports._takeVar = function (nonCanceler, avar) {
   };
 };
 
+exports._peekVar = function (nonCanceler, avar) {
+  return function(success, error) {
+    if (avar.error !== undefined) {
+      error(avar.error);
+    } else if (avar.producers.length > 0) {
+      var producer = avar.producers[0];
+      producer(success, error);
+    } else {
+      avar.consumers.push({peek: true, success: success, error: error});
+    }
+    return nonCanceler;
+  };
+};
+
 exports._putVar = function (nonCanceler, avar, a) {
   return function(success, error) {
     if (avar.error !== undefined) {
@@ -48,15 +62,17 @@ exports._putVar = function (nonCanceler, avar, a) {
 
       success({});
     } else {
-      var consumer = avar.consumers.shift();
 
-      try {
-        consumer.success(a);
-      } catch (err) {
-        error(err);
-
-        return;
-      }
+      var consumer;
+      do {
+        consumer = avar.consumers.shift();
+        try {
+          consumer.success(a);
+        } catch (err) {
+          error(err);
+          return;
+        }
+      } while (consumer.peek === true);
 
       success({});
     }
