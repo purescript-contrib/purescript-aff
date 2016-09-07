@@ -1,8 +1,8 @@
-/* global exports */
+/* global console */
 "use strict";
 
 exports.unsafeTrace = function (v) {
-  return function(success, error) {
+  return function (success, error) {
     console.log(v);
 
     try {
@@ -13,8 +13,8 @@ exports.unsafeTrace = function (v) {
 
     var nonCanceler;
 
-    nonCanceler = function(e) {
-      return function(sucess, error) {
+    nonCanceler = function () {
+      return function (success) {
         success(false);
 
         return nonCanceler;
