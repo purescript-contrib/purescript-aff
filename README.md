@@ -225,3 +225,7 @@ A parallel computation can be canceled if both of its individual components can 
 # API Docs
 
 API documentation is [published on Pursuit](http://pursuit.purescript.org/packages/purescript-aff).
+
+# See also
+
+[A good overview of Aff](https://github.com/degoes-consulting/lambdaconf-2015/blob/master/speakers/jdegoes/async-purescript/presentation.pdf) was provided during LambdaConf 2015 conference
