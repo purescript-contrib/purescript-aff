@@ -1,5 +1,5 @@
 module Control.Monad.Aff
-  ( Aff()
+  ( Aff
   , Canceler(..)
   , PureAff(..)
   , apathize
@@ -17,8 +17,8 @@ module Control.Monad.Aff
   , makeAff'
   , nonCanceler
   , runAff
-  )
-  where
+  , ParAff(..)
+  ) where
 
 import Prelude
 
@@ -30,15 +30,16 @@ import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Class (class MonadEff)
 import Control.Monad.Eff.Exception (Error, EXCEPTION, throwException, error)
 import Control.Monad.Error.Class (class MonadError, throwError)
-import Control.Monad.Rec.Class (class MonadRec)
+import Control.Monad.Rec.Class (class MonadRec, Step(..))
 import Control.MonadPlus (class MonadZero, class MonadPlus)
-import Control.Parallel.Class (class MonadRace, class MonadPar)
-import Control.Plus (class Plus)
+import Control.Parallel (class Parallel)
+import Control.Plus (class Plus, empty)
 
-import Data.Either (Either(..), either, isLeft)
+import Data.Either (Either(..), either)
 import Data.Foldable (class Foldable, foldl)
 import Data.Function.Uncurried (Fn2, Fn3, runFn2, runFn3)
 import Data.Monoid (class Monoid, mempty)
+import Data.Newtype (class Newtype)
 
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -202,7 +203,10 @@ instance monadZero :: MonadZero (Aff e)
 instance monadPlusAff :: MonadPlus (Aff e)
 
 instance monadRecAff :: MonadRec (Aff e) where
-  tailRecM f a = runFn3 _tailRecM isLeft f a
+  tailRecM f a = runFn3 _tailRecM isLoop f a
+    where
+    isLoop (Loop _) = true
+    isLoop _ = false
 
 instance monadContAff :: MonadCont (Aff e) where
   callCC f = makeAff (\eb cb -> void $ runAff eb cb (f \a -> makeAff (\_ _ -> cb a)))
@@ -213,20 +217,34 @@ instance semigroupCanceler :: Semigroup (Canceler e) where
 instance monoidCanceler :: Monoid (Canceler e) where
   mempty = Canceler (const (pure true))
 
-instance monadParAff :: MonadPar (Aff e) where
-  par f ma mb = do
+newtype ParAff e a = ParAff (Aff e a)
+
+derive instance newtypeParAff :: Newtype (ParAff e a) _
+
+instance semigroupParAff :: (Semigroup a) => Semigroup (ParAff e a) where
+  append a b = append <$> a <*> b
+
+instance monoidParAff :: (Monoid a) => Monoid (ParAff e a) where
+  mempty = pure mempty
+
+derive newtype instance functorParAff :: Functor (ParAff e)
+
+instance applyParAff :: Apply (ParAff e) where
+  apply (ParAff ff) (ParAff fa) = ParAff do
     va <- makeVar
     vb <- makeVar
-    c1 <- forkAff (putOrKill va =<< attempt ma)
-    c2 <- forkAff (putOrKill vb =<< attempt mb)
-    f <$> (takeVar va) <*> (takeVar vb)
+    c1 <- forkAff (putOrKill va =<< attempt ff)
+    c2 <- forkAff (putOrKill vb =<< attempt fa)
+    (takeVar va <*> takeVar vb) `cancelWith` (c1 <> c2)
     where
     putOrKill :: forall a. AVar a -> Either Error a -> Aff e Unit
     putOrKill v = either (killVar v) (putVar v)
 
-instance monadRaceAff :: MonadRace (Aff e) where
-  stall = throwError $ error "Stalled"
-  race a1 a2 = do
+derive newtype instance applicativeParAff :: Applicative (ParAff e)
+
+-- | Returns the first value, or the first error if both error.
+instance altParAff :: Alt (ParAff e) where
+  alt (ParAff a1) (ParAff a2) = ParAff do
     va <- makeVar -- the `a` value
     ve <- makeVar -- the error count (starts at 0)
     putVar ve 0
@@ -237,8 +255,17 @@ instance monadRaceAff :: MonadRace (Aff e) where
     maybeKill :: forall a. AVar a -> AVar Int -> Error -> Aff e Unit
     maybeKill va ve err = do
       e <- takeVar ve
-      if e == 1 then killVar va err else pure unit
+      when (e == 1) $ killVar va err
       putVar ve (e + 1)
+
+instance plusParAff :: Plus (ParAff e) where
+  empty = ParAff empty
+
+instance alternativeParAff :: Alternative (ParAff e)
+
+instance parallelParAff :: Parallel (ParAff e) (Aff e) where
+  parallel = ParAff
+  sequential (ParAff ma) = ma
 
 makeVar :: forall e a. Aff e (AVar a)
 makeVar = fromAVBox $ _makeVar nonCanceler
@@ -281,4 +308,4 @@ foreign import _runAff :: forall e a. Fn3 (Error -> Eff e Unit) (a -> Eff e Unit
 
 foreign import _liftEff :: forall e a. Fn2 (Canceler e) (Eff e a) (Aff e a)
 
-foreign import _tailRecM :: forall e a b. Fn3 (Either a b -> Boolean) (a -> Aff e (Either a b)) a (Aff e b)
+foreign import _tailRecM :: forall e a b. Fn3 (Step a b -> Boolean) (a -> Aff e (Step a b)) a (Aff e b)
