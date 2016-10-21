@@ -6,7 +6,7 @@ import Control.Alt ((<|>))
 import Control.Apply ((*>))
 import Control.Parallel.Class (parallel, runParallel)
 import Control.Monad.Aff (Aff, runAff, makeAff, launchAff, later, later', forkAff, forkAll, Canceler(..), cancel, attempt, finally, apathize)
-import Control.Monad.Aff.AVar (AVAR, makeVar, makeVar', putVar, modifyVar, takeVar, killVar)
+import Control.Monad.Aff.AVar (AVAR, makeVar, makeVar', putVar, modifyVar, takeVar, peekVar, killVar)
 import Control.Monad.Aff.Console (CONSOLE, log)
 import Control.Monad.Cont.Class (callCC)
 import Control.Monad.Eff (Eff)
@@ -68,6 +68,23 @@ test_putTakeVar = do
   forkAff (later $ putVar v 1.0)
   a <- takeVar v
   log ("Success: Value " <> show a)
+
+test_peekVar :: TestAVar Unit
+test_peekVar = do
+  v <- makeVar
+  forkAff (later $ putVar v 1.0)
+  a1 <- peekVar v
+  a2 <- takeVar v
+  when (a1 /= a2) do
+    throwError (error "Something horrible went wrong - peeked var is not equal to taken var")
+  log ("Success: Peeked value not consumed")
+
+  w <- makeVar
+  putVar w true
+  b <- peekVar w
+  when (not b) do
+    throwError (error "Something horrible went wrong - peeked var is not true")
+  log ("Success: Peeked value read from written var")
 
 test_killFirstForked :: Test Unit
 test_killFirstForked = do
@@ -236,6 +253,9 @@ main = do
 
     log "Testing AVar - putVar, takeVar"
     test_putTakeVar
+
+    log "Testing AVar - peekVar"
+    test_peekVar
 
     log "Testing AVar killVar"
     test_killVar
