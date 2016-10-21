@@ -17,12 +17,12 @@
     "package.json"
   ],
   "dependencies": {
-    "purescript-console": "^1.0.0",
-    "purescript-exceptions": "^1.0.0",
-    "purescript-functions": "^1.0.0",
-    "purescript-parallel": "^1.0.0",
-    "purescript-transformers": "^1.0.0",
-    "purescript-unsafe-coerce": "^1.0.0"
+    "purescript-console": "^2.0.0",
+    "purescript-exceptions": "^2.0.0",
+    "purescript-functions": "^2.0.0",
+    "purescript-parallel": "^2.0.0",
+    "purescript-transformers": "^2.0.1",
+    "purescript-unsafe-coerce": "^2.0.0"
   },
   "devDependencies": {
     "purescript-partial": "^1.1.2"

@@ -3,8 +3,6 @@ module Test.Main where
 import Prelude
 
 import Control.Alt ((<|>))
-import Control.Apply ((*>))
-import Control.Parallel.Class (parallel, runParallel)
 import Control.Monad.Aff (Aff, runAff, makeAff, launchAff, later, later', forkAff, forkAll, Canceler(..), cancel, attempt, finally, apathize)
 import Control.Monad.Aff.AVar (AVAR, makeVar, makeVar', putVar, modifyVar, takeVar, peekVar, killVar)
 import Control.Monad.Aff.Console (CONSOLE, log)
@@ -13,8 +11,9 @@ import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Console (log) as Eff
 import Control.Monad.Eff.Exception (EXCEPTION, throwException, error, message, try)
 import Control.Monad.Error.Class (throwError)
-import Control.Monad.Rec.Class (tailRecM)
-import Data.Either (Either(..), either, fromLeft, fromRight)
+import Control.Monad.Rec.Class (Step(..), tailRecM)
+import Control.Parallel (parallel, sequential)
+import Data.Either (either, fromLeft, fromRight)
 import Data.Unfoldable (replicate)
 import Partial.Unsafe (unsafePartial)
 
@@ -116,24 +115,24 @@ test_finally = do
 
 test_parRace :: TestAVar Unit
 test_parRace = do
-  s <- runParallel (parallel (later' 100 $ pure "Success: Early bird got the worm") <|>
+  s <- sequential (parallel (later' 100 $ pure "Success: Early bird got the worm") <|>
                parallel (later' 200 $ pure "Failure: Late bird got the worm"))
   log s
 
 test_parError :: TestAVar Unit
 test_parError = do
-  e <- attempt $ runParallel (parallel (throwError (error ("Oh noes!"))) *> pure unit)
+  e <- attempt $ sequential (parallel (throwError (error ("Oh noes!"))) *> pure unit)
   either (const $ log "Success: Exception propagated") (const $ log "Failure: Exception missing") e
 
 test_parRaceKill1 :: TestAVar Unit
 test_parRaceKill1 = do
-  s <- runParallel (parallel (later' 100 $ throwError (error ("Oh noes!"))) <|>
+  s <- sequential (parallel (later' 100 $ throwError (error ("Oh noes!"))) <|>
                parallel (later' 200 $ pure "Success: Early error was ignored in favor of late success"))
   log s
 
 test_parRaceKill2 :: TestAVar Unit
 test_parRaceKill2 = do
-  e <- attempt $ runParallel (parallel (later' 100 $ throwError (error ("Oh noes!"))) <|>
+  e <- attempt $ sequential (parallel (later' 100 $ throwError (error ("Oh noes!"))) <|>
                          parallel (later' 200 $ throwError (error ("Oh noes!"))))
   either (const $ log "Success: Killing both kills it dead") (const $ log "Failure: It's alive!!!") e
 
@@ -168,7 +167,7 @@ test_cancelRunLater = do
 
 test_cancelParallel :: TestAVar Unit
 test_cancelParallel = do
-  c  <- forkAff <<< runParallel $ parallel (later' 100 $ log "Failure: #1 should not get through") <|>
+  c  <- forkAff <<< sequential $ parallel (later' 100 $ log "Failure: #1 should not get through") <|>
                              parallel (later' 100 $ log "Failure: #2 should not get through")
   v  <- c `cancel` (error "Must cancel")
   log (if v then "Success: Canceling composite of two Parallel succeeded"
@@ -184,19 +183,19 @@ test_syncTailRecM = do
   where
   go { n: 0, v } = do
     modifyVar (const true) v
-    pure (Right 0)
-  go { n, v } = pure (Left { n: n - 1, v })
+    pure (Done 0)
+  go { n, v } = pure (Loop { n: n - 1, v })
 
 loopAndBounce :: forall eff. Int -> Aff (console :: CONSOLE | eff) Unit
 loopAndBounce n = do
   res <- tailRecM go n
   log $ "Done: " <> show res
   where
-  go 0 = pure (Right 0)
+  go 0 = pure (Done 0)
   go n | mod n 30000 == 0 = do
     later' 10 (pure unit)
-    pure (Left (n - 1))
-  go n = pure (Left (n - 1))
+    pure (Loop (n - 1))
+  go n = pure (Loop (n - 1))
 
 all :: forall eff. Int -> Aff (console :: CONSOLE, avar :: AVAR | eff) Unit
 all n = do
