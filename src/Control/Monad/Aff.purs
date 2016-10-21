@@ -25,7 +25,6 @@ import Prelude
 import Control.Alt (class Alt)
 import Control.Alternative (class Alternative)
 import Control.Monad.Aff.Internal (AVBox, AVar, _killVar, _putVar, _takeVar, _makeVar)
-import Control.Monad.Cont.Class (class MonadCont)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Class (class MonadEff)
 import Control.Monad.Eff.Exception (Error, EXCEPTION, throwException, error)
@@ -207,9 +206,6 @@ instance monadRecAff :: MonadRec (Aff e) where
     where
     isLoop (Loop _) = true
     isLoop _ = false
-
-instance monadContAff :: MonadCont (Aff e) where
-  callCC f = makeAff (\eb cb -> void $ runAff eb cb (f \a -> makeAff (\_ _ -> cb a)))
 
 instance semigroupCanceler :: Semigroup (Canceler e) where
   append (Canceler f1) (Canceler f2) = Canceler (\e -> (||) <$> f1 e <*> f2 e)

@@ -6,7 +6,6 @@ import Control.Alt ((<|>))
 import Control.Monad.Aff (Aff, runAff, makeAff, launchAff, later, later', forkAff, forkAll, Canceler(..), cancel, attempt, finally, apathize)
 import Control.Monad.Aff.AVar (AVAR, makeVar, makeVar', putVar, modifyVar, takeVar, peekVar, killVar)
 import Control.Monad.Aff.Console (CONSOLE, log)
-import Control.Monad.Cont.Class (callCC)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Console (log) as Eff
 import Control.Monad.Eff.Exception (EXCEPTION, throwException, error, message, try)
@@ -211,8 +210,7 @@ cancelAll n = do
   log ("Cancelled all: " <> show canceled)
 
 delay :: forall eff. Int -> Aff eff Unit
-delay n = callCC \cont ->
-  later' n (cont unit)
+delay n = later' n (pure unit)
 
 main :: Eff (console :: CONSOLE, avar :: AVAR, err :: EXCEPTION) Unit
 main = do
