@@ -236,7 +236,8 @@ instance applyParAff :: Apply (ParAff e) where
     putOrKill :: forall a. AVar a -> Either Error a -> Aff e Unit
     putOrKill v = either (killVar v) (putVar v)
 
-derive newtype instance applicativeParAff :: Applicative (ParAff e)
+instance applicativeParAff :: Applicative (ParAff e) where
+  pure = ParAff <<< pure
 
 -- | Returns the first value, or the first error if both error.
 instance altParAff :: Alt (ParAff e) where
