@@ -1,8 +1,7 @@
 # purescript-aff
 
-[![Latest release](http://img.shields.io/bower/v/purescript-aff.svg)](https://github.com/slamdata/purescript-aff/releases)
-[![Build Status](https://travis-ci.org/slamdata/purescript-aff.svg?branch=master)](https://travis-ci.org/slamdata/purescript-aff)
-[![Dependency Status](https://www.versioneye.com/user/projects/56e00cb7df573d0048dafe47/badge.svg?style=flat)](https://www.versioneye.com/user/projects/56e00cb7df573d0048dafe47)
+[![Latest release](http://img.shields.io/github/release/slamdata/purescript-aff.svg)](https://github.com/slamdata/purescript-aff/releases)
+[![Build status](https://travis-ci.org/slamdata/purescript-aff.svg?branch=master)](https://travis-ci.org/slamdata/purescript-aff)
 
 An asynchronous effect monad for PureScript.
 
