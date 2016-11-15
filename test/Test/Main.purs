@@ -191,10 +191,10 @@ loopAndBounce n = do
   log $ "Done: " <> show res
   where
   go 0 = pure (Done 0)
-  go n | mod n 30000 == 0 = do
+  go k | mod k 30000 == 0 = do
     later' 10 (pure unit)
-    pure (Loop (n - 1))
-  go n = pure (Loop (n - 1))
+    pure (Loop (k - 1))
+  go k = pure (Loop (k - 1))
 
 all :: forall eff. Int -> Aff (console :: CONSOLE, avar :: AVAR | eff) Unit
 all n = do
