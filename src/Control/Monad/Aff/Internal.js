@@ -46,34 +46,41 @@ exports._peekVar = function (nonCanceler, avar) {
   };
 };
 
+/* jshint loopfunc: true */
 exports._putVar = function (nonCanceler, avar, a) {
   return function (success, error) {
     if (avar.error !== undefined) {
       error(avar.error);
-    } else if (avar.consumers.length === 0) {
-      avar.producers.push(function (success, error) {
-        try {
-          success(a);
-        } catch (err) {
-          error(err);
-        }
-      });
-
-      success({});
     } else {
-
-      var consumer;
+      var wasPeek;
       do {
-        consumer = avar.consumers.shift();
-        try {
-          consumer.success(a);
-        } catch (err) {
-          error(err);
-          return;
-        }
-      } while (consumer.peek === true);
+        wasPeek = false;
 
-      success({});
+        if (avar.consumers.length === 0) {
+          avar.producers.push(function (success, error) {
+            try {
+              success(a);
+            } catch (err) {
+              error(err);
+            }
+          });
+
+          success({});
+        } else {
+          var consumer = avar.consumers.shift();
+          try {
+            consumer.success(a);
+          } catch (err) {
+            error(err);
+            return;
+          }
+          if (consumer.peek === true) {
+            wasPeek = true;
+          }
+
+          success({});
+        }
+      } while (wasPeek);
     }
 
     return nonCanceler;
