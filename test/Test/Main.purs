@@ -84,6 +84,18 @@ test_peekVar = do
     throwError (error "Something horrible went wrong - peeked var is not true")
   log ("Success: Peeked value read from written var")
 
+  x <- makeVar
+  result <- makeVar
+  forkAff do
+    c <- peekVar x
+    putVar result (c == 2.0)
+  later (putVar x 2.0)
+
+  r <- takeVar result
+  when (not r) do
+    throwError (error "Something horrible went wrong - peeked var is not equal to put var")
+  log "Success: peek on empty var waited until it was written"
+
 test_killFirstForked :: Test Unit
 test_killFirstForked = do
   c <- forkAff (later' 100 $ pure "Failure: This should have been killed!")
