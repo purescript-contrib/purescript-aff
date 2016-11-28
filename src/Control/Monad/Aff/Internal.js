@@ -78,13 +78,11 @@ exports._putVar = function (nonCanceler, avar, a) {
         });
       }
 
-      if (consumers.length) {
-        for (var i = 0; i < consumers.length; i++) {
-          try {
-            consumers[i].success(a);
-          } catch (err) {
-            consumers[i].error(err);
-          }
+      for (var i = 0; i < consumers.length; i++) {
+        try {
+          consumers[i].success(a);
+        } catch (err) {
+          consumers[i].error(err);
         }
       }
 
