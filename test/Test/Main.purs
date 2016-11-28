@@ -84,6 +84,21 @@ test_peekVar = do
     throwError (error "Something horrible went wrong - peeked var is not true")
   log ("Success: Peeked value read from written var")
 
+  x <- makeVar
+  res <- makeVar' 1
+  forkAff do
+    c <- peekVar x
+    putVar x 1000
+    d <- peekVar x
+    modifyVar (_ + (c + d)) res
+  putVar x 10
+  count <- takeVar res
+  e <- takeVar x
+  f <- takeVar x
+  when (not (count == 21 && e == 10 && f == 1000)) do
+    throwError (error "Something horrible went wrong - peeked consumers/producer ordering")
+  log "Success: peekVar consumer/producer order maintained"
+
 test_killFirstForked :: Test Unit
 test_killFirstForked = do
   c <- forkAff (later' 100 $ pure "Failure: This should have been killed!")

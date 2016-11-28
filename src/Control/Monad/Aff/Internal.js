@@ -25,7 +25,7 @@ exports._takeVar = function (nonCanceler, avar) {
 
       producer(success, error);
     } else {
-      avar.consumers.push({ success: success, error: error });
+      avar.consumers.push({ peek: false, success: success, error: error });
     }
 
     return nonCanceler;
@@ -50,28 +50,43 @@ exports._putVar = function (nonCanceler, avar, a) {
   return function (success, error) {
     if (avar.error !== undefined) {
       error(avar.error);
-    } else if (avar.consumers.length === 0) {
-      avar.producers.push(function (success, error) {
-        try {
-          success(a);
-        } catch (err) {
-          error(err);
-        }
-      });
-
-      success({});
     } else {
-
+      var shouldQueue = true;
+      var consumers = [];
       var consumer;
-      do {
+
+      while (true) {
         consumer = avar.consumers.shift();
-        try {
-          consumer.success(a);
-        } catch (err) {
-          error(err);
-          return;
+        if (consumer) {
+          consumers.push(consumer);
+          if (consumer.peek) {
+            continue;
+          } else {
+            shouldQueue = false;
+          }
         }
-      } while (consumer.peek === true);
+        break;
+      }
+
+      if (shouldQueue) {
+        avar.producers.push(function (success, error) {
+          try {
+            success(a);
+          } catch (err) {
+            error(err);
+          }
+        });
+      }
+
+      if (consumers.length) {
+        for (var i = 0; i < consumers.length; i++) {
+          try {
+            consumers[i].success(a);
+          } catch (err) {
+            consumers[i].error(err);
+          }
+        }
+      }
 
       success({});
     }
