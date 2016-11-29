@@ -82,16 +82,12 @@ exports._forkAll = function (nonCanceler, foldl, affs) {
   var voidF = function () {};
 
   return function (success, error) {
-    try {
-      var cancelers = foldl(function (acc) {
-        return function (aff) {
-          acc.push(aff(voidF, voidF));
-          return acc;
-        };
-      })([])(affs);
-    } catch (err) {
-      error(err);
-    }
+    var cancelers = foldl(function (acc) {
+      return function (aff) {
+        acc.push(aff(voidF, voidF));
+        return acc;
+      };
+    })([])(affs);
 
     var canceler = function (e) {
       return function (success, error) {
@@ -147,7 +143,7 @@ exports._makeAff = function (cb) {
 };
 
 exports._pure = function (nonCanceler, v) {
-  return function (success) {
+  return function (success, error) {
     success(v);
     return nonCanceler;
   };
@@ -162,18 +158,9 @@ exports._throwError = function (nonCanceler, e) {
 
 exports._fmap = function (f, aff) {
   return function (success, error) {
-    try {
-      return aff(function (v) {
-        try {
-          var v2 = f(v);
-        } catch (err) {
-          error(err);
-        }
-        success(v2);
-      }, error);
-    } catch (err) {
-      error(err);
-    }
+    return aff(function (v) {
+      success(f(v));
+    }, error);
   };
 };
 
@@ -223,16 +210,12 @@ exports._bind = function (alwaysCanceler, aff, f) {
 };
 
 exports._attempt = function (Left, Right, aff) {
-  return function (success) {
-    try {
-      return aff(function (v) {
-        success(Right(v));
-      }, function (e) {
-        success(Left(e));
-      });
-    } catch (err) {
-      success(Left(err));
-    }
+  return function (success, error) {
+    return aff(function (v) {
+      success(Right(v));
+    }, function (e) {
+      success(Left(e));
+    });
   };
 };
 
@@ -284,11 +267,7 @@ exports._tailRecM = function (isLeft, f, a) {
           if (isLeft(v)) {
             go(v.value0);
           } else {
-            try {
-              success(v.value0);
-            } catch (err) {
-              error(err);
-            }
+            success(v.value0);
           }
         }
       };
@@ -307,11 +286,7 @@ exports._tailRecM = function (isLeft, f, a) {
             acc = result.value0;
             continue;
           } else {
-            try {
-              success(result.value0);
-            } catch (err) {
-              error(err);
-            }
+            success(result.value0);
           }
         } else {
           // If the status has not resolved yet, then we have observed an
