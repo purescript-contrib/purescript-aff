@@ -221,11 +221,36 @@ exports._attempt = function (Left, Right, aff) {
 
 exports._runAff = function (errorT, successT, aff) {
   return function () {
-    return aff(function (v) {
-      successT(v)();
+    var res;
+    var success;
+    var status = 0;
+    var canceler = aff(function (v) {
+      if (status === 2) {
+        successT(v)();
+      } else {
+        status = 1;
+        success = true;
+        res = v;
+      }
     }, function (e) {
-      errorT(e)();
+      if (status === 2) {
+        errorT(e)();
+      } else {
+        status = 1;
+        success = false;
+        res = e;
+      }
     });
+    if (status === 1) {
+      if (success) {
+        successT(res)();
+      } else {
+        errorT(res)();
+      }
+    } else {
+      status = 2;
+    }
+    return canceler;
   };
 };
 
