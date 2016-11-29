@@ -13,11 +13,23 @@ import Control.Monad.Error.Class (throwError)
 import Control.Monad.Rec.Class (Step(..), tailRecM)
 import Control.Parallel (parallel, sequential)
 import Data.Either (either, fromLeft, fromRight)
+import Data.Maybe (Maybe(..))
 import Data.Unfoldable (replicate)
 import Partial.Unsafe (unsafePartial)
 
 type Test a = forall e. Aff (console :: CONSOLE | e) a
 type TestAVar a = forall e. Aff (console :: CONSOLE, avar :: AVAR | e) a
+
+timeout :: Int → TestAVar Unit → TestAVar Unit
+timeout ms aff = do
+  exn <- makeVar
+  clr1 <- forkAff (later' ms (putVar exn (Just "Timed out")))
+  clr2 <- forkAff (aff *> putVar exn Nothing)
+  res ← takeVar exn
+  log (show res)
+  case res of
+    Nothing -> void (clr1 `cancel` error "Done")
+    Just e -> void (clr2 `cancel` error "Done") *> throwError (error e)
 
 replicateArray :: forall a. Int -> a -> Array a
 replicateArray = replicate
@@ -69,35 +81,38 @@ test_putTakeVar = do
 
 test_peekVar :: TestAVar Unit
 test_peekVar = do
-  v <- makeVar
-  forkAff (later $ putVar v 1.0)
-  a1 <- peekVar v
-  a2 <- takeVar v
-  when (a1 /= a2) do
-    throwError (error "Something horrible went wrong - peeked var is not equal to taken var")
-  log ("Success: Peeked value not consumed")
+  timeout 1000 do
+    v <- makeVar
+    forkAff (later $ putVar v 1.0)
+    a1 <- peekVar v
+    a2 <- takeVar v
+    when (a1 /= a2) do
+      throwError (error "Something horrible went wrong - peeked var is not equal to taken var")
+    log ("Success: Peeked value not consumed")
 
-  w <- makeVar
-  putVar w true
-  b <- peekVar w
-  when (not b) do
-    throwError (error "Something horrible went wrong - peeked var is not true")
-  log ("Success: Peeked value read from written var")
+  timeout 1000 do
+    w <- makeVar
+    putVar w true
+    b <- peekVar w
+    when (not b) do
+      throwError (error "Something horrible went wrong - peeked var is not true")
+    log ("Success: Peeked value read from written var")
 
-  x <- makeVar
-  res <- makeVar' 1
-  forkAff do
-    c <- peekVar x
-    putVar x 1000
-    d <- peekVar x
-    modifyVar (_ + (c + d)) res
-  putVar x 10
-  count <- takeVar res
-  e <- takeVar x
-  f <- takeVar x
-  when (not (count == 21 && e == 10 && f == 1000)) do
-    throwError (error "Something horrible went wrong - peeked consumers/producer ordering")
-  log "Success: peekVar consumer/producer order maintained"
+  timeout 1000 do
+    x <- makeVar
+    res <- makeVar' 1
+    forkAff do
+      c <- peekVar x
+      putVar x 1000
+      d <- peekVar x
+      modifyVar (_ + (c + d)) res
+    putVar x 10
+    count <- takeVar res
+    e <- takeVar x
+    f <- takeVar x
+    when (not (count == 21 && e == 10 && f == 1000)) do
+      throwError (error "Something horrible went wrong - peeked consumers/producer ordering")
+    log "Success: peekVar consumer/producer order maintained"
 
 test_killFirstForked :: Test Unit
 test_killFirstForked = do
