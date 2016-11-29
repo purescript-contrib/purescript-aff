@@ -1,7 +1,7 @@
 "use strict";
 
 exports._makeVar = function (nonCanceler) {
-  return function (success, error) {
+  return function (success) {
     success({
       consumers: [],
       producers: [],
@@ -61,7 +61,7 @@ exports._putVar = function (nonCanceler, avar, a) {
       }
 
       if (shouldQueue) {
-        avar.producers.push(function (success, error) {
+        avar.producers.push(function (success) {
           success(a);
           return nonCanceler;
         });
@@ -77,7 +77,6 @@ exports._putVar = function (nonCanceler, avar, a) {
     return nonCanceler;
   };
 };
-
 
 exports._killVar = function (nonCanceler, avar, e) {
   return function (success, error) {

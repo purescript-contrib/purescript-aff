@@ -81,7 +81,7 @@ exports._forkAff = function (nonCanceler, aff) {
 exports._forkAll = function (nonCanceler, foldl, affs) {
   var voidF = function () {};
 
-  return function (success, error) {
+  return function (success) {
     var cancelers = foldl(function (acc) {
       return function (aff) {
         acc.push(aff(voidF, voidF));
@@ -143,7 +143,7 @@ exports._makeAff = function (cb) {
 };
 
 exports._pure = function (nonCanceler, v) {
-  return function (success, error) {
+  return function (success) {
     success(v);
     return nonCanceler;
   };
@@ -210,7 +210,7 @@ exports._bind = function (alwaysCanceler, aff, f) {
 };
 
 exports._attempt = function (Left, Right, aff) {
-  return function (success, error) {
+  return function (success) {
     return aff(function (v) {
       success(Right(v));
     }, function (e) {
@@ -220,36 +220,44 @@ exports._attempt = function (Left, Right, aff) {
 };
 
 exports._runAff = function (errorT, successT, aff) {
+  // If errorT or successT throw, and an Aff is comprised only of synchronous
+  // effects, then it's possible for makeAff/liftEff to accidentally catch
+  // it, which may end up rerunning the Aff depending on error recovery
+  // behavior. To mitigate this, we observe synchronicity using mutation. If
+  // an Aff is observed to be synchronous, we let the stack reset and run the
+  // handlers outside of the normal callback flow.
   return function () {
-    var res;
-    var success;
     var status = 0;
+    var result, success;
+
     var canceler = aff(function (v) {
       if (status === 2) {
         successT(v)();
       } else {
         status = 1;
+        result = v;
         success = true;
-        res = v;
       }
     }, function (e) {
       if (status === 2) {
         errorT(e)();
       } else {
         status = 1;
+        result = e;
         success = false;
-        res = e;
       }
     });
+
     if (status === 1) {
       if (success) {
-        successT(res)();
+        successT(result)();
       } else {
-        errorT(res)();
+        errorT(result)();
       }
     } else {
       status = 2;
     }
+
     return canceler;
   };
 };
