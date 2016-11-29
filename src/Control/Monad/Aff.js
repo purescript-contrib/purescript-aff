@@ -81,17 +81,13 @@ exports._forkAff = function (nonCanceler, aff) {
 exports._forkAll = function (nonCanceler, foldl, affs) {
   var voidF = function () {};
 
-  return function (success, error) {
-    try {
-      var cancelers = foldl(function (acc) {
-        return function (aff) {
-          acc.push(aff(voidF, voidF));
-          return acc;
-        };
-      })([])(affs);
-    } catch (err) {
-      error(err);
-    }
+  return function (success) {
+    var cancelers = foldl(function (acc) {
+      return function (aff) {
+        acc.push(aff(voidF, voidF));
+        return acc;
+      };
+    })([])(affs);
 
     var canceler = function (e) {
       return function (success, error) {
@@ -162,18 +158,9 @@ exports._throwError = function (nonCanceler, e) {
 
 exports._fmap = function (f, aff) {
   return function (success, error) {
-    try {
-      return aff(function (v) {
-        try {
-          var v2 = f(v);
-        } catch (err) {
-          error(err);
-        }
-        success(v2);
-      }, error);
-    } catch (err) {
-      error(err);
-    }
+    return aff(function (v) {
+      success(f(v));
+    }, error);
   };
 };
 
@@ -224,25 +211,54 @@ exports._bind = function (alwaysCanceler, aff, f) {
 
 exports._attempt = function (Left, Right, aff) {
   return function (success) {
-    try {
-      return aff(function (v) {
-        success(Right(v));
-      }, function (e) {
-        success(Left(e));
-      });
-    } catch (err) {
-      success(Left(err));
-    }
+    return aff(function (v) {
+      success(Right(v));
+    }, function (e) {
+      success(Left(e));
+    });
   };
 };
 
 exports._runAff = function (errorT, successT, aff) {
+  // If errorT or successT throw, and an Aff is comprised only of synchronous
+  // effects, then it's possible for makeAff/liftEff to accidentally catch
+  // it, which may end up rerunning the Aff depending on error recovery
+  // behavior. To mitigate this, we observe synchronicity using mutation. If
+  // an Aff is observed to be synchronous, we let the stack reset and run the
+  // handlers outside of the normal callback flow.
   return function () {
-    return aff(function (v) {
-      successT(v)();
+    var status = 0;
+    var result, success;
+
+    var canceler = aff(function (v) {
+      if (status === 2) {
+        successT(v)();
+      } else {
+        status = 1;
+        result = v;
+        success = true;
+      }
     }, function (e) {
-      errorT(e)();
+      if (status === 2) {
+        errorT(e)();
+      } else {
+        status = 1;
+        result = e;
+        success = false;
+      }
     });
+
+    if (status === 1) {
+      if (success) {
+        successT(result)();
+      } else {
+        errorT(result)();
+      }
+    } else {
+      status = 2;
+    }
+
+    return canceler;
   };
 };
 
@@ -284,11 +300,7 @@ exports._tailRecM = function (isLeft, f, a) {
           if (isLeft(v)) {
             go(v.value0);
           } else {
-            try {
-              success(v.value0);
-            } catch (err) {
-              error(err);
-            }
+            success(v.value0);
           }
         }
       };
@@ -307,11 +319,7 @@ exports._tailRecM = function (isLeft, f, a) {
             acc = result.value0;
             continue;
           } else {
-            try {
-              success(result.value0);
-            } catch (err) {
-              error(err);
-            }
+            success(result.value0);
           }
         } else {
           // If the status has not resolved yet, then we have observed an

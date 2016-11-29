@@ -1,17 +1,12 @@
 "use strict";
 
 exports._makeVar = function (nonCanceler) {
-  return function (success, error) {
-    try {
-      success({
-        consumers: [],
-        producers: [],
-        error: undefined
-      });
-    } catch (err) {
-      error(err);
-    }
-
+  return function (success) {
+    success({
+      consumers: [],
+      producers: [],
+      error: undefined
+    });
     return nonCanceler;
   };
 };
@@ -21,11 +16,9 @@ exports._takeVar = function (nonCanceler, avar) {
     if (avar.error !== undefined) {
       error(avar.error);
     } else if (avar.producers.length > 0) {
-      var producer = avar.producers.shift();
-
-      producer(success, error);
+      avar.producers.shift()(success, error);
     } else {
-      avar.consumers.push({ success: success, error: error });
+      avar.consumers.push({ peek: false, success: success, error: error });
     }
 
     return nonCanceler;
@@ -37,8 +30,7 @@ exports._peekVar = function (nonCanceler, avar) {
     if (avar.error !== undefined) {
       error(avar.error);
     } else if (avar.producers.length > 0) {
-      var producer = avar.producers[0];
-      producer(success, error);
+      avar.producers[0](success, error);
     } else {
       avar.consumers.push({ peek: true, success: success, error: error });
     }
@@ -50,28 +42,34 @@ exports._putVar = function (nonCanceler, avar, a) {
   return function (success, error) {
     if (avar.error !== undefined) {
       error(avar.error);
-    } else if (avar.consumers.length === 0) {
-      avar.producers.push(function (success, error) {
-        try {
-          success(a);
-        } catch (err) {
-          error(err);
-        }
-      });
-
-      success({});
     } else {
-
+      var shouldQueue = true;
+      var consumers = [];
       var consumer;
-      do {
+
+      while (true) {
         consumer = avar.consumers.shift();
-        try {
-          consumer.success(a);
-        } catch (err) {
-          error(err);
-          return;
+        if (consumer) {
+          consumers.push(consumer);
+          if (consumer.peek) {
+            continue;
+          } else {
+            shouldQueue = false;
+          }
         }
-      } while (consumer.peek === true);
+        break;
+      }
+
+      if (shouldQueue) {
+        avar.producers.push(function (success) {
+          success(a);
+          return nonCanceler;
+        });
+      }
+
+      for (var i = 0; i < consumers.length; i++) {
+        consumers[i].success(a);
+      }
 
       success({});
     }
@@ -85,22 +83,11 @@ exports._killVar = function (nonCanceler, avar, e) {
     if (avar.error !== undefined) {
       error(avar.error);
     } else {
-      var errors = [];
-
       avar.error = e;
-
-      while (avar.consumers.length > 0) {
-        var consumer = avar.consumers.shift();
-
-        try {
-          consumer.error(e);
-        } catch (err) {
-          errors.push(err);
-        }
+      while (avar.consumers.length) {
+        avar.consumers.shift().error(e);
       }
-
-      if (errors.length > 0) error(errors[0]);
-      else success({});
+      success({});
     }
 
     return nonCanceler;
