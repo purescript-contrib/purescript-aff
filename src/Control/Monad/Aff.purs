@@ -39,6 +39,7 @@ import Data.Foldable (class Foldable, foldl)
 import Data.Function.Uncurried (Fn2, Fn3, runFn2, runFn3)
 import Data.Monoid (class Monoid, mempty)
 import Data.Newtype (class Newtype)
+import Data.Tuple (Tuple(..), fst, snd)
 
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -244,11 +245,18 @@ instance altParAff :: Alt (ParAff e) where
   alt (ParAff a1) (ParAff a2) = ParAff do
     va <- makeVar -- the `a` value
     ve <- makeVar -- the error count (starts at 0)
+    cs <- makeVar -- the cancelers
     putVar ve 0
-    c1 <- forkAff $ either (maybeKill va ve) (putVar va) =<< attempt a1
-    c2 <- forkAff $ either (maybeKill va ve) (putVar va) =<< attempt a2
+    c1 <- forkAff $ either (maybeKill va ve) (done cs snd va) =<< attempt a1
+    c2 <- forkAff $ either (maybeKill va ve) (done cs fst va) =<< attempt a2
+    putVar cs (Tuple c1 c2)
     takeVar va `cancelWith` (c1 <> c2)
     where
+    done :: forall a. AVar (Tuple (Canceler e) (Canceler e)) -> (forall x. Tuple x x -> x) -> AVar a -> a -> Aff e Unit
+    done cs get va x = do
+      putVar va x
+      c <- get <$> takeVar cs
+      void $ cancel c (error "Alt early exit")
     maybeKill :: forall a. AVar a -> AVar Int -> Error -> Aff e Unit
     maybeKill va ve err = do
       e <- takeVar ve
