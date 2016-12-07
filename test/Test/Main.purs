@@ -202,6 +202,26 @@ test_cancelParallel = do
   log (if v then "Success: Canceling composite of two Parallel succeeded"
                    else "Failure: Canceling composite of two Parallel failed")
 
+test_cancelRaceLeft :: TestAVar Unit
+test_cancelRaceLeft = do
+  var <- makeVar
+  c  <- sequential
+    $ parallel (later' 250 $ putVar var true)
+    <|> parallel (later' 100 $ pure unit)
+  later' 500 $ putVar var false
+  l <- takeVar var
+  when l $ throwError (error "Failure: left side ran even though it lost the race")
+
+test_cancelRaceRight :: TestAVar Unit
+test_cancelRaceRight = do
+  var <- makeVar
+  c  <- sequential
+    $ parallel (later' 100 $ pure unit)
+    <|> parallel (later' 250 $ putVar var true)
+  later' 500 $ putVar var false
+  l <- takeVar var
+  when l $ throwError (error "Failure: right side ran even though it lost the race")
+
 test_syncTailRecM :: TestAVar Unit
 test_syncTailRecM = do
   v <- makeVar' false
@@ -304,6 +324,12 @@ main = do
 
     log "Testing cancel of Parallel (<|>)"
     test_cancelParallel
+
+    log "Testing cancel of left branch in parallel (<|>)"
+    test_cancelRaceLeft
+
+    log "Testing cancel of right branch in parallel (<|>)"
+    test_cancelRaceRight
 
     log "Testing synchronous tailRecM"
     test_syncTailRecM
