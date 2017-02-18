@@ -121,7 +121,7 @@ later' n aff = runFn3 _setTimeout nonCanceler n aff
 finally :: forall e a b. Aff e a -> Aff e b -> Aff e a
 finally aff1 aff2 = do
   x <- attempt aff1
-  aff2
+  _ <- aff2
   either throwError pure x
 
 -- | Forks the specified asynchronous computation so subsequent computations
