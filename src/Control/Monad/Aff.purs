@@ -25,10 +25,10 @@ import Prelude
 import Control.Alt (class Alt)
 import Control.Alternative (class Alternative)
 import Control.Monad.Aff.Internal (AVBox, AVar, _killVar, _putVar, _takeVar, _makeVar)
-import Control.Monad.Eff (Eff)
+import Control.Monad.Eff (Eff, kind Effect)
 import Control.Monad.Eff.Class (class MonadEff)
 import Control.Monad.Eff.Exception (Error, EXCEPTION, throwException, error)
-import Control.Monad.Error.Class (class MonadError, throwError)
+import Control.Monad.Error.Class (class MonadThrow, class MonadError, throwError)
 import Control.Monad.Rec.Class (class MonadRec, Step(..))
 import Control.MonadPlus (class MonadZero, class MonadPlus)
 import Control.Parallel (class Parallel)
@@ -47,7 +47,7 @@ import Unsafe.Coerce (unsafeCoerce)
 -- | errors or produces a value of type `a`.
 -- |
 -- | This is moral equivalent of `ErrorT (ContT Unit (Eff e)) a`.
-foreign import data Aff :: # ! -> * -> *
+foreign import data Aff :: # Effect -> Type -> Type
 
 -- | A pure asynchronous computation, having no effects other than
 -- | asynchronous computation.
@@ -80,12 +80,12 @@ cancelWith aff c = runFn3 _cancelWith nonCanceler aff c
 -- | If you do need to handle exceptions, you can use `runAff` instead, or
 -- | you can handle the exception within the Aff computation, using
 -- | `catchError` (or any of the other mechanisms).
-launchAff :: forall e a. Aff e a -> Eff (err :: EXCEPTION | e) (Canceler e)
+launchAff :: forall e a. Aff e a -> Eff (exception :: EXCEPTION | e) (Canceler e)
 launchAff = lowerEx <<< runAff throwException (const (pure unit)) <<< liftEx
   where
-  liftEx :: Aff e a -> Aff (err :: EXCEPTION | e) a
+  liftEx :: Aff e a -> Aff (exception :: EXCEPTION | e) a
   liftEx = _unsafeInterleaveAff
-  lowerEx :: Eff (err :: EXCEPTION | e) (Canceler (err :: EXCEPTION | e)) -> Eff (err :: EXCEPTION | e) (Canceler e)
+  lowerEx :: Eff (exception :: EXCEPTION | e) (Canceler (exception :: EXCEPTION | e)) -> Eff (exception :: EXCEPTION | e) (Canceler e)
   lowerEx = map (Canceler <<< map _unsafeInterleaveAff <<< cancel)
 
 -- | Runs the asynchronous computation. You must supply an error callback and a
@@ -149,7 +149,7 @@ apathize :: forall e a. Aff e a -> Aff e Unit
 apathize a = const unit <$> attempt a
 
 -- | Lifts a synchronous computation and makes explicit any failure from exceptions.
-liftEff' :: forall e a. Eff (err :: EXCEPTION | e) a -> Aff e (Either Error a)
+liftEff' :: forall e a. Eff (exception :: EXCEPTION | e) a -> Aff e (Either Error a)
 liftEff' eff = attempt (_unsafeInterleaveAff (runFn2 _liftEff nonCanceler eff))
 
 -- | A constant canceller that always returns false.
@@ -183,11 +183,14 @@ instance monadAff :: Monad (Aff e)
 instance monadEffAff :: MonadEff e (Aff e) where
   liftEff eff = runFn2 _liftEff nonCanceler eff
 
--- | Allows users to catch and throw errors on the error channel of the
+-- | Allows users to throw errors on the error channel of the
 -- | asynchronous computation. See documentation in `purescript-transformers`.
-instance monadErrorAff :: MonadError Error (Aff e) where
+instance monadThrowAff :: MonadThrow Error (Aff e) where
   throwError e = runFn2 _throwError nonCanceler e
 
+-- | Allows users to catch errors on the error channel of the
+-- | asynchronous computation. See documentation in `purescript-transformers`.
+instance monadErrorAff :: MonadError Error (Aff e) where
   catchError aff ex = attempt aff >>= either ex pure
 
 instance altAff :: Alt (Aff e) where

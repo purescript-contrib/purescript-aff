@@ -14,9 +14,9 @@ import Control.Monad.Eff.Exception (Error)
 
 import Data.Function.Uncurried (Fn2, Fn3)
 
-foreign import data AVar :: * -> *
+foreign import data AVar :: Type -> Type
 
-foreign import data AVBox :: * -> *
+foreign import data AVBox :: Type -> Type
 
 foreign import _makeVar :: forall c a. c -> AVBox (AVar a)
 

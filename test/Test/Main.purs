@@ -75,7 +75,7 @@ test_apathize = do
 test_putTakeVar :: TestAVar Unit
 test_putTakeVar = do
   v <- makeVar
-  forkAff (later $ putVar v 1.0)
+  _ <- forkAff (later $ putVar v 1.0)
   a <- takeVar v
   log ("Success: Value " <> show a)
 
@@ -83,7 +83,7 @@ test_peekVar :: TestAVar Unit
 test_peekVar = do
   timeout 1000 do
     v <- makeVar
-    forkAff (later $ putVar v 1.0)
+    _ <- forkAff (later $ putVar v 1.0)
     a1 <- peekVar v
     a2 <- takeVar v
     when (a1 /= a2) do
@@ -101,7 +101,7 @@ test_peekVar = do
   timeout 1000 do
     x <- makeVar
     res <- makeVar' 1
-    forkAff do
+    _ <- forkAff do
       c <- peekVar x
       putVar x 1000
       d <- peekVar x
@@ -176,13 +176,13 @@ test_semigroupCanceler =
 
 test_cancelLater :: TestAVar Unit
 test_cancelLater = do
-  c <- forkAff $ (do pure "Binding"
+  c <- forkAff $ (do _ <- pure "Binding"
                      _ <- later' 100 $ log ("Failure: Later was not canceled!")
                      pure "Binding")
   v <- cancel c (error "Cause")
   log (if v then "Success: Canceled later" else "Failure: Did not cancel later")
 
-test_cancelLaunchLater :: forall e. Eff (console :: CONSOLE, err :: EXCEPTION | e) Unit
+test_cancelLaunchLater :: forall e. Eff (console :: CONSOLE, exception :: EXCEPTION | e) Unit
 test_cancelLaunchLater = do
   c <- launchAff $ later' 100 $ log ("Failure: Later was not canceled!")
   void $ launchAff $ (do v <- cancel c (error "Cause")
@@ -249,7 +249,7 @@ loopAndBounce n = do
 all :: forall eff. Int -> Aff (console :: CONSOLE, avar :: AVAR | eff) Unit
 all n = do
   var <- makeVar' 0
-  forkAll $ replicateArray n (modifyVar (_ + 1) var)
+  _ <- forkAll $ replicateArray n (modifyVar (_ + 1) var)
   count <- takeVar var
   log ("Forked " <> show count)
 
@@ -262,7 +262,7 @@ cancelAll n = do
 delay :: forall eff. Int -> Aff eff Unit
 delay n = later' n (pure unit)
 
-main :: Eff (console :: CONSOLE, avar :: AVAR, err :: EXCEPTION) Unit
+main :: Eff (console :: CONSOLE, avar :: AVAR, exception :: EXCEPTION) Unit
 main = do
   Eff.log "Testing kill of later launched in separate Aff"
   test_cancelLaunchLater
