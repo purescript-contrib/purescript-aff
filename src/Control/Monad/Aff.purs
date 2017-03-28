@@ -9,8 +9,7 @@ module Control.Monad.Aff
   , finally
   , forkAff
   , forkAll
-  , later
-  , later'
+  , delay
   , launchAff
   , liftEff'
   , makeAff
@@ -39,6 +38,7 @@ import Data.Foldable (class Foldable, foldl)
 import Data.Function.Uncurried (Fn2, Fn3, runFn2, runFn3)
 import Data.Monoid (class Monoid, mempty)
 import Data.Newtype (class Newtype)
+import Data.Time.Duration (Milliseconds(..))
 import Data.Tuple (Tuple(..), fst, snd)
 
 import Unsafe.Coerce (unsafeCoerce)
@@ -108,14 +108,9 @@ makeAff h = makeAff' (\e a -> const nonCanceler <$> h e a)
 makeAff' :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> Eff e (Canceler e)) -> Aff e a
 makeAff' h = _makeAff h
 
--- | Runs the asynchronous computation off the current execution context.
-later :: forall e a. Aff e a -> Aff e a
-later = later' 0
-
--- | Runs the specified asynchronous computation later, by the specified
--- | number of milliseconds.
-later' :: forall e a. Int -> Aff e a -> Aff e a
-later' n aff = runFn3 _setTimeout nonCanceler n aff
+-- | Pauses execuation of the current computation for the specified number of milliseconds.
+delay :: forall e. Milliseconds -> Aff e Unit
+delay (Milliseconds n) = runFn2 _delay nonCanceler n
 
 -- | Compute `aff1`, followed by `aff2` regardless of whether `aff1` terminated successfully.
 finally :: forall e a b. Aff e a -> Aff e b -> Aff e a
@@ -292,7 +287,7 @@ fromAVBox = unsafeCoerce
 
 foreign import _cancelWith :: forall e a. Fn3 (Canceler e) (Aff e a) (Canceler e) (Aff e a)
 
-foreign import _setTimeout :: forall e a. Fn3 (Canceler e) Int (Aff e a) (Aff e a)
+foreign import _delay :: forall e a. Fn2 (Canceler e) Number (Aff e a)
 
 foreign import _unsafeInterleaveAff :: forall e1 e2 a. Aff e1 a -> Aff e2 a
 
