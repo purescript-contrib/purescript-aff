@@ -36,29 +36,29 @@ exports._cancelWith = function (nonCanceler, aff, canceler1) {
   };
 };
 
-exports._setTimeout = function (nonCanceler, millis, aff) {
+exports._delay = function (nonCanceler, millis) {
   var set = setTimeout;
   var clear = clearTimeout;
   if (millis <= 0 && typeof setImmediate === "function") {
     set = setImmediate;
     clear = clearImmediate;
   }
-  return function (success, error) {
-    var canceler;
-
-    var timeout = set(function () {
-      canceler = aff(success, error);
+  return function (success) {
+    var timedOut = false;
+    var timer = set(function () {
+      timedOut = true;
+      success();
     }, millis);
 
-    return function (e) {
-      return function (s, f) {
-        if (canceler !== undefined) {
-          return canceler(e)(s, f);
+    return function () {
+      return function (s) {
+        if (timedOut) {
+          s(false);
         } else {
-          clear(timeout);
+          clear(timer);
           s(true);
-          return nonCanceler;
         }
+        return nonCanceler;
       };
     };
   };

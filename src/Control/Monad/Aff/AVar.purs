@@ -17,13 +17,14 @@ import Prelude
 import Control.Monad.Aff (Aff, nonCanceler)
 import Control.Monad.Aff.Internal (AVar) as Exports
 import Control.Monad.Aff.Internal (AVBox, AVar, _killVar, _putVar, _takeVar, _peekVar, _makeVar)
+import Control.Monad.Eff (kind Effect)
 import Control.Monad.Eff.Exception (Error())
 
 import Data.Function.Uncurried (runFn3, runFn2)
 
 import Unsafe.Coerce (unsafeCoerce)
 
-foreign import data AVAR :: !
+foreign import data AVAR :: Effect
 
 type AffAVar e a = Aff (avar :: AVAR | e) a
 
