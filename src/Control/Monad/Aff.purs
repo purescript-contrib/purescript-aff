@@ -29,7 +29,7 @@ import Control.Monad.Eff.Class (class MonadEff)
 import Control.Monad.Eff.Exception (Error, EXCEPTION, throwException, error)
 import Control.Monad.Error.Class (class MonadThrow, class MonadError, throwError)
 import Control.Monad.Rec.Class (class MonadRec, Step(..))
-import Control.MonadPlus (class MonadZero, class MonadPlus)
+import Control.MonadZero (class MonadZero)
 import Control.Parallel (class Parallel)
 import Control.Plus (class Plus, empty)
 
@@ -197,8 +197,6 @@ instance plusAff :: Plus (Aff e) where
 instance alternativeAff :: Alternative (Aff e)
 
 instance monadZero :: MonadZero (Aff e)
-
-instance monadPlusAff :: MonadPlus (Aff e)
 
 instance monadRecAff :: MonadRec (Aff e) where
   tailRecM f a = runFn3 _tailRecM isLoop f a
