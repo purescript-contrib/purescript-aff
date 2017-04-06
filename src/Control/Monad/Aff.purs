@@ -196,7 +196,7 @@ instance plusAff :: Plus (Aff e) where
 
 instance alternativeAff :: Alternative (Aff e)
 
-instance monadZero :: MonadZero (Aff e)
+instance monadZeroAff :: MonadZero (Aff e)
 
 instance monadPlusAff :: MonadPlus (Aff e)
 
