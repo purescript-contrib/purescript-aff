@@ -4,7 +4,7 @@ import Prelude
 
 import Control.Alt ((<|>))
 import Control.Monad.Aff (Aff, runAff, makeAff, launchAff, delay, forkAff, forkAll, Canceler(..), cancel, attempt, finally, apathize)
-import Control.Monad.Aff.AVar (AVAR, makeVar, makeVar', putVar, modifyVar, takeVar, peekVar, killVar)
+import Control.Monad.Aff.AVar (AVAR, makeVar, makeVar', putVar, modifyVar, takeVar, peekVar, killVar, tryTakeVar, tryPeekVar)
 import Control.Monad.Aff.Console (CONSOLE, log)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Console (log) as Eff
@@ -128,6 +128,42 @@ test_killVar = do
   killVar v (error "DOA")
   e <- attempt $ takeVar v
   either (const $ log "Success: Killed queue dead") (const $ log "Failure: Oh noes, queue survived!") e
+
+test_tryTakeVar :: TestAVar Unit
+test_tryTakeVar = do
+  timeout (Milliseconds 1000.0) do
+    v <- makeVar
+    x <- tryTakeVar v
+    case x of
+      Nothing -> log $ "Success: trying take an empty var"
+      Just _  -> throwError $ error $ "Failure: Oh noes, take an empty var should return Nothing"
+
+  timeout (Milliseconds 1000.0) do
+    v <- makeVar
+    b <- tryTakeVar v
+    putVar v 1.0
+    a <- tryTakeVar v
+    when (a /= Just 1.0 || a == b) do
+      throwError $ error ("Failure: Oh noes, tryTakeVar should take var if it available, value: " <> show a)
+    log $ "Success: value taken by tryTakeVar " <> show a
+
+test_tryPeekVar :: TestAVar Unit
+test_tryPeekVar = do
+  timeout (Milliseconds 1000.0) do
+    v <- makeVar
+    x <- tryPeekVar v
+    case x of
+      Nothing -> log $ "Success: try peek var return immediately"
+      Just _  -> throwError $ error $ "Failure: tryPeekVar return Just when peek an empty var"
+
+  timeout (Milliseconds 1000.0) do
+    v <- makeVar
+    putVar v 100.0
+    a <- tryPeekVar v
+    b <- takeVar v
+    when (a /= Just b) do
+      throwError (error "Something horrible went wrong - peeked var is not equal to taken var")
+    log ("Success: Try Peeked value not consumed")
 
 test_finally :: TestAVar Unit
 test_finally = do
@@ -310,6 +346,12 @@ main = do
 
     log "Testing AVar killVar"
     test_killVar
+
+    log "Testing AVar - tryTakeVar"
+    test_tryTakeVar
+
+    log "Testing AVar - tryPeekVar"
+    test_tryPeekVar
 
     log "Testing finally"
     test_finally

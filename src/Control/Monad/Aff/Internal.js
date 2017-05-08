@@ -25,6 +25,21 @@ exports._takeVar = function (nonCanceler, avar) {
   };
 };
 
+exports._tryTakeVar = function (nothing, just, nonCanceler, avar) {
+  return function (success, error) {
+    if (avar.error !== undefined) {
+      error(avar.error);
+    } else if (avar.producers.length > 0) {
+      avar.producers.shift()(function (x) {
+        return success(just(x));
+      }, error);
+    } else {
+      success(nothing);
+    }
+    return nonCanceler;
+  };
+};
+
 exports._peekVar = function (nonCanceler, avar) {
   return function (success, error) {
     if (avar.error !== undefined) {
@@ -33,6 +48,21 @@ exports._peekVar = function (nonCanceler, avar) {
       avar.producers[0](success, error);
     } else {
       avar.consumers.push({ peek: true, success: success, error: error });
+    }
+    return nonCanceler;
+  };
+};
+
+exports._tryPeekVar = function (nothing, just, nonCanceler, avar) {
+  return function (success, error) {
+    if (avar.error !== undefined) {
+      error(avar.error);
+    } else if (avar.producers.length > 0) {
+      avar.producers[0](function (x) {
+        return success(just(x));
+      }, error);
+    } else {
+      success(nothing);
     }
     return nonCanceler;
   };
