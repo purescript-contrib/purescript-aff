@@ -31,8 +31,7 @@ exports._tryTakeVar = function (nothing, just, nonCanceler, avar) {
       error(avar.error);
     } else if (avar.producers.length > 0) {
       avar.producers.shift()(function (x) {
-        success(just(x));
-        return nonCanceler;
+        return success(just(x));
       }, error);
     } else {
       success(nothing);
@@ -60,8 +59,7 @@ exports._tryPeekVar = function (nothing, just, nonCanceler, avar) {
       error(avar.error);
     } else if (avar.producers.length > 0) {
       avar.producers[0](function (x) {
-        success(just(x));
-        return nonCanceler;
+        return success(just(x));
       }, error);
     } else {
       success(nothing);
