@@ -9,6 +9,8 @@ module Control.Monad.Aff.AVar
   , putVar
   , modifyVar
   , killVar
+  , tryTakeVar
+  , tryPeekVar
   , module Exports
   ) where
 
@@ -16,11 +18,12 @@ import Prelude
 
 import Control.Monad.Aff (Aff, nonCanceler)
 import Control.Monad.Aff.Internal (AVar) as Exports
-import Control.Monad.Aff.Internal (AVBox, AVar, _killVar, _putVar, _takeVar, _peekVar, _makeVar)
+import Control.Monad.Aff.Internal (AVBox, AVar, _killVar, _putVar, _takeVar, _peekVar, _makeVar, _tryTakeVar, _tryPeekVar)
 import Control.Monad.Eff (kind Effect)
 import Control.Monad.Eff.Exception (Error())
 
-import Data.Function.Uncurried (runFn3, runFn2)
+import Data.Function.Uncurried (runFn4, runFn3, runFn2)
+import Data.Maybe (Maybe(..))
 
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -43,9 +46,19 @@ makeVar' a = do
 takeVar :: forall e a. AVar a -> AffAVar e a
 takeVar q = fromAVBox $ runFn2 _takeVar nonCanceler q
 
+-- | A variant of `takeVar` which return immediately if the asynchronous avar
+-- | was empty. Nothing if the avar empty and `Just a` if the avar have contents `a`.
+tryTakeVar :: forall e a. AVar a -> AffAVar e (Maybe a)
+tryTakeVar q = fromAVBox $ runFn4 _tryTakeVar Nothing Just nonCanceler q
+
 -- | Reads a value from the asynchronous var but does not consume it.
 peekVar :: forall e a. AVar a -> AffAVar e a
 peekVar q = fromAVBox $ runFn2 _peekVar nonCanceler q
+
+-- | A variant of `peekVar` which return immediately when the asynchronous avar
+-- | was empty. Nothing if the avar empty and `Just a` if the avar have contents `a`.
+tryPeekVar :: forall e a. AVar a -> AffAVar e (Maybe a)
+tryPeekVar q = fromAVBox $ runFn4 _tryPeekVar Nothing Just nonCanceler q
 
 -- | Puts a new value into the asynchronous avar. If the avar has
 -- | been killed, this will result in an error.
