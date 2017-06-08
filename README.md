@@ -5,7 +5,7 @@
 
 An asynchronous effect monad for PureScript.
 
-The moral equivalent of `ErrorT (ContT Unit (Eff e)) a`, for effects `e`.
+The moral equivalent of `ExceptT Error (ContT Unit (Eff e)) a`, for effects `e`.
 
 `Aff` lets you say goodbye to monad transformers and callback hell!
 
