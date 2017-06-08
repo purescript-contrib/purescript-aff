@@ -4,7 +4,7 @@ exports._makeVar = function (nonCanceler) {
   return function (success) {
     success({
       consumers: [],
-      producers: [],
+      queued: [],
       error: undefined
     });
     return nonCanceler;
@@ -15,8 +15,8 @@ exports._takeVar = function (nonCanceler, avar) {
   return function (success, error) {
     if (avar.error !== undefined) {
       error(avar.error);
-    } else if (avar.producers.length > 0) {
-      avar.producers.shift()(success, error);
+    } else if (avar.queued.length > 0) {
+      success(avar.queued.shift());
     } else {
       avar.consumers.push({ peek: false, success: success, error: error });
     }
@@ -44,8 +44,8 @@ exports._peekVar = function (nonCanceler, avar) {
   return function (success, error) {
     if (avar.error !== undefined) {
       error(avar.error);
-    } else if (avar.producers.length > 0) {
-      avar.producers[0](success, error);
+    } else if (avar.queued.length > 0) {
+      success(avar.queued[0]);
     } else {
       avar.consumers.push({ peek: true, success: success, error: error });
     }
@@ -91,17 +91,14 @@ exports._putVar = function (nonCanceler, avar, a) {
       }
 
       if (shouldQueue) {
-        avar.producers.push(function (success) {
-          success(a);
-          return nonCanceler;
-        });
+        avar.queued.push(a);
       }
 
       for (var i = 0; i < consumers.length; i++) {
         consumers[i].success(a);
       }
 
-      success({});
+      success();
     }
 
     return nonCanceler;
@@ -117,7 +114,7 @@ exports._killVar = function (nonCanceler, avar, e) {
       while (avar.consumers.length) {
         avar.consumers.shift().error(e);
       }
-      success({});
+      success();
     }
 
     return nonCanceler;
