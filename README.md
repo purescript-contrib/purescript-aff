@@ -189,7 +189,9 @@ The `Control.Monad.Aff.AVar` module contains asynchronous variables, which are v
 
 ```purescript
 do v <- makeVar
-   forkAff (later $ putVar v 1.0)
+   forkAff do
+     delay (Milliseconds 50.0)
+     putVar v 1.0
    a <- takeVar v
    liftEff $ log ("Succeeded with " ++ show a)
 ```
