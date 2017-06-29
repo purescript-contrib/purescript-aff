@@ -5,6 +5,7 @@ import Prelude
 import Control.Monad.Aff (Aff)
 import Control.Monad.Cont.Trans (ContT)
 import Control.Monad.Eff.Class (class MonadEff)
+import Control.Monad.Eff.Exception (EXCEPTION)
 import Control.Monad.Except.Trans (ExceptT)
 import Control.Monad.List.Trans (ListT)
 import Control.Monad.Maybe.Trans (MaybeT)
@@ -16,7 +17,7 @@ import Control.Monad.Writer.Trans (WriterT)
 
 import Data.Monoid (class Monoid)
 
-class MonadEff eff m <= MonadAff eff m | m -> eff where
+class MonadEff (exception ∷ EXCEPTION | eff) m <= MonadAff eff m | m -> eff where
   liftAff :: forall a. Aff eff a -> m a
 
 instance monadAffAff :: MonadAff e (Aff e) where

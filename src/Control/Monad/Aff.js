@@ -1,334 +1,441 @@
-/* globals setTimeout, clearTimeout, setImmediate, clearImmediate */
 "use strict";
 
-exports._cancelWith = function (nonCanceler, aff, canceler1) {
-  return function (success, error) {
-    var canceler2 = aff(success, error);
+/*
 
-    return function (e) {
-      return function (success, error) {
-        var cancellations = 0;
-        var result = false;
-        var errored = false;
+An awkward approximation. We elide evidence we would otherwise need in PS for
+efficiency sake.
 
-        var s = function (bool) {
-          cancellations = cancellations + 1;
-          result = result || bool;
+data Aff eff a
+  = Pure a
+  | Throw Error
+  | Sync (Eff eff (Either Error a))
+  | Async ((Either Error a -> Eff eff Unit) -> Eff eff (Canceler eff))
+  | forall b. Attempt (Aff eff b) ?(Either Error b -> a)
+  | forall b. Bracket (Aff eff b) (b -> Aff eff Unit) (b -> Aff eff a)
 
-          if (cancellations === 2 && !errored) {
-            success(result);
-          }
-        };
+*/
+var PURE      = "Pure";
+var THROW     = "Throw";
+var SYNC      = "Sync";
+var ASYNC     = "Async";
+var BIND      = "Bind";
+var ATTEMPT   = "Attempt";
+var BRACKET   = "Bracket";
 
-        var f = function (err) {
-          if (!errored) {
-            errored = true;
-            error(err);
-          }
-        };
+// These are constructors used to implement the recover stack. We still use the
+// Aff constructor so that property offsets can always inline.
+var CONS      = "Cons";      // Cons-list
+var RECOVER   = "Recover";   // Continue with `Either Error a` (via attempt)
+var RESUME    = "Resume";    // Continue indiscriminately
+var FINALIZED = "Finalized"; // Marker for finalization
 
-        canceler2(e)(s, f);
-        canceler1(e)(s, f);
+function Aff (tag, _1, _2, _3) {
+  this.tag = tag;
+  this._1  = _1;
+  this._2  = _2;
+  this._3  = _3;
+}
 
-        return nonCanceler;
-      };
-    };
-  };
+var finalized = new Aff(FINALIZED);
+
+exports._pure = function (a) {
+  return new Aff(PURE, a);
 };
 
-exports._delay = function (nonCanceler, millis) {
-  var set = setTimeout;
-  var clear = clearTimeout;
-  if (millis <= 0 && typeof setImmediate === "function") {
-    set = setImmediate;
-    clear = clearImmediate;
-  }
-  return function (success) {
-    var timedOut = false;
-    var timer = set(function () {
-      timedOut = true;
-      success();
-    }, millis);
-
-    return function () {
-      return function (s) {
-        if (timedOut) {
-          s(false);
-        } else {
-          clear(timer);
-          s(true);
-        }
-        return nonCanceler;
-      };
-    };
-  };
+exports._throwError = function (error) {
+  return new Aff(THROW, error);
 };
 
-exports._unsafeInterleaveAff = function (aff) {
-  return aff;
+exports._unsafeSync = function (eff) {
+  return new Aff(SYNC, eff);
 };
 
-exports._forkAff = function (nonCanceler, aff) {
-  var voidF = function () {};
-
-  return function (success) {
-    var canceler = aff(voidF, voidF);
-    success(canceler);
-    return nonCanceler;
-  };
+exports._unsafeAsync = function (k) {
+  return new Aff(ASYNC, k);
 };
 
-exports._forkAll = function (nonCanceler, foldl, affs) {
-  var voidF = function () {};
-
-  return function (success) {
-    var cancelers = foldl(function (acc) {
-      return function (aff) {
-        acc.push(aff(voidF, voidF));
-        return acc;
-      };
-    })([])(affs);
-
-    var canceler = function (e) {
-      return function (success, error) {
-        var cancellations = 0;
-        var result        = false;
-        var errored       = false;
-
-        var s = function (bool) {
-          cancellations = cancellations + 1;
-          result        = result || bool;
-
-          if (cancellations === cancelers.length && !errored) {
-            success(result);
-          }
-        };
-
-        var f = function (err) {
-          if (!errored) {
-            errored = true;
-            error(err);
-          }
-        };
-
-        for (var i = 0; i < cancelers.length; i++) {
-          cancelers[i](e)(s, f);
-        }
-
-        return nonCanceler;
-      };
-    };
-
-    success(canceler);
-    return nonCanceler;
-  };
-};
-
-exports._makeAff = function (cb) {
-  return function (success, error) {
-    try {
-      return cb(function (e) {
-        return function () {
-          error(e);
-        };
-      })(function (v) {
-        return function () {
-          success(v);
-        };
-      })();
-    } catch (err) {
-      error(err);
-    }
-  };
-};
-
-exports._pure = function (nonCanceler, v) {
-  return function (success) {
-    success(v);
-    return nonCanceler;
-  };
-};
-
-exports._throwError = function (nonCanceler, e) {
-  return function (success, error) {
-    error(e);
-    return nonCanceler;
-  };
-};
-
-exports._fmap = function (f, aff) {
-  return function (success, error) {
-    return aff(function (v) {
-      success(f(v));
-    }, error);
-  };
-};
-
-exports._bind = function (alwaysCanceler, aff, f) {
-  return function (success, error) {
-    var canceler1, canceler2;
-
-    var isCanceled    = false;
-    var requestCancel = false;
-
-    var onCanceler = function () {};
-
-    canceler1 = aff(function (v) {
-      if (requestCancel) {
-        isCanceled = true;
-
-        return alwaysCanceler;
-      } else {
-        canceler2 = f(v)(success, error);
-
-        onCanceler(canceler2);
-
-        return canceler2;
-      }
-    }, error);
-
-    return function (e) {
-      return function (s, f) {
-        requestCancel = true;
-
-        if (canceler2 !== undefined) {
-          return canceler2(e)(s, f);
-        } else {
-          return canceler1(e)(function (bool) {
-            if (bool || isCanceled) {
-              s(true);
-            } else {
-              onCanceler = function (canceler) {
-                canceler(e)(s, f);
-              };
-            }
-          }, f);
-        }
-      };
-    };
-  };
-};
-
-exports._attempt = function (Left, Right, aff) {
-  return function (success) {
-    return aff(function (v) {
-      success(Right(v));
-    }, function (e) {
-      success(Left(e));
-    });
-  };
-};
-
-exports._runAff = function (errorT, successT, aff) {
-  // If errorT or successT throw, and an Aff is comprised only of synchronous
-  // effects, then it's possible for makeAff/liftEff to accidentally catch
-  // it, which may end up rerunning the Aff depending on error recovery
-  // behavior. To mitigate this, we observe synchronicity using mutation. If
-  // an Aff is observed to be synchronous, we let the stack reset and run the
-  // handlers outside of the normal callback flow.
-  return function () {
-    var status = 0;
-    var result, success;
-
-    var canceler = aff(function (v) {
-      if (status === 2) {
-        successT(v)();
-      } else {
-        status = 1;
-        result = v;
-        success = true;
-      }
-    }, function (e) {
-      if (status === 2) {
-        errorT(e)();
-      } else {
-        status = 1;
-        result = e;
-        success = false;
-      }
-    });
-
-    if (status === 1) {
-      if (success) {
-        successT(result)();
-      } else {
-        errorT(result)();
-      }
+exports._map = function (f) {
+  return function (aff) {
+    if (aff.tag === PURE) {
+      return new Aff(PURE, f(aff._1));
     } else {
-      status = 2;
+      return new Aff(BIND, aff, function (value) {
+        return new Aff(PURE, f(value));
+      });
     }
-
-    return canceler;
   };
 };
 
-exports._liftEff = function (nonCanceler, e) {
-  return function (success, error) {
-    var result;
+exports._bind = function (aff) {
+  return function (k) {
+    return new Aff(BIND, aff, k);
+  };
+};
+
+exports._attempt = function (aff) {
+  return new Aff(ATTEMPT, aff);
+};
+
+exports._bracket = function (acquire) {
+  return function (release) {
+    return function (k) {
+      return new Aff(BRACKET, acquire, release, k);
+    };
+  };
+};
+
+exports._liftEff = function (left, right, eff) {
+  return new Aff(SYNC, function () {
     try {
-      result = e();
-    } catch (err) {
-      error(err);
-      return nonCanceler;
+      return right(eff());
+    } catch (error) {
+      return left(error);
+    }
+  });
+};
+
+// Thread state machine
+var BLOCKED   = 0; // No effect is running.
+var PENDING   = 1; // An async effect is running.
+var RETURN    = 2; // The current stack has returned.
+var CONTINUE  = 3; // Run the next effect.
+var BINDSTEP  = 4; //
+var COMPLETED = 5; // The entire thread has completed.
+
+exports._drainAff = function (isLeft, fromLeft, fromRight, left, right, aff) {
+  return function () {
+    // Monotonically increasing tick, increased on each asynchronous turn.
+    var runTick = 0;
+
+    // The current branch of the state machine.
+    var status = CONTINUE;
+
+    // The current point of interest for the state machine branch.
+    var step      = aff;  // Successful step
+    var fail      = null; // Failure step
+    var interrupt = null; // Asynchronous interrupt
+
+    // Stack of continuations for the current thread.
+    var bhead = null;
+    var btail = null;
+
+    // Stack of attempts and finalizers for error recovery. This holds a union
+    // of an arbitrary Aff finalizer or a Cons list of bind continuations.
+    var attempts = null;
+
+    // A special state is needed for Bracket, because it cannot be killed. When
+    // we enter a bracket acquisition or finalizer, we increment the counter,
+    // and then decrement once complete.
+    var bracket = 0;
+
+    // Each join gets a new id so they can be revoked.
+    var joinId = 0;
+    var joins  = {};
+
+    // Temporary bindings for the various branches.
+    var tmp, result, attempt, canceler;
+
+    // Each invocation of `run` requires a tick. When an asynchronous effect is
+    // resolved, we must check that the local tick coincides with the thread
+    // tick before resuming. This prevents multiple async continuations from
+    // accidentally resuming the same thread. A common example may be invoking
+    // the provided callback in `makeAff` more than once, but it may also be an
+    // async effect resuming after the thread was already cancelled.
+    function run (localRunTick) {
+      while (1) {
+        tmp    = status;
+        status = BLOCKED;
+
+        switch (tmp) {
+        case BINDSTEP:
+          status = CONTINUE;
+          step   = bhead(step);
+          if (btail === null) {
+            bhead = null;
+          } else {
+            bhead = btail._1;
+            btail = btail._2;
+          }
+          break;
+
+        case CONTINUE:
+          switch (step.tag) {
+          case BIND:
+            if (bhead) {
+              btail = new Aff(CONS, bhead, btail);
+            }
+            bhead  = step._2;
+            status = CONTINUE;
+            step   = step._1;
+            break;
+
+          case PURE:
+            if (bhead === null) {
+              status = RETURN;
+              step   = right(step._1);
+            } else {
+              status = BINDSTEP;
+              step   = step._1;
+            }
+            break;
+
+          case THROW:
+            bhead  = null;
+            btail  = null;
+            status = RETURN;
+            fail   = left(step._1);
+            break;
+
+          case SYNC:
+            result = step._1();
+            if (isLeft(result)) {
+              status = RETURN;
+              fail   = result;
+            } else if (bhead === null) {
+              status = RETURN;
+              step   = result;
+            } else {
+              status = BINDSTEP;
+              step   = fromRight(result);
+            }
+            break;
+
+          case ASYNC:
+            canceler = step._1(function (result) {
+              return function () {
+                if (runTick !== localRunTick) {
+                  return;
+                }
+                tmp = status;
+                if (isLeft(result)) {
+                  status = RETURN;
+                  fail   = result;
+                } else if (bhead === null) {
+                  status = RETURN;
+                  step   = result;
+                } else {
+                  status = BINDSTEP;
+                  step   = fromRight(result);
+                }
+                // We only need to invoke `run` if the subsequent block has
+                // switch the status to PENDING. Otherwise the callback was
+                // resolved synchronously, and the current loop can continue
+                // normally.
+                if (tmp === PENDING) {
+                  run(++runTick);
+                } else {
+                  localRunTick = ++runTick;
+                }
+              };
+            })();
+            // If the callback was resolved synchronously, the status will have
+            // switched to CONTINUE, and we should not move on to PENDING.
+            if (status === BLOCKED) {
+              status = PENDING;
+              step   = canceler;
+            }
+            break;
+
+          // Enqueue the current stack of binds and continue
+          case ATTEMPT:
+            attempts = new Aff(CONS, new Aff(RECOVER, bhead, btail), attempts);
+            bhead    = null;
+            btail    = null;
+            status   = CONTINUE;
+            step     = step._1;
+            break;
+          }
+          break;
+
+          // When we evaluate a Bracket, we also enqueue the instruction so we
+          // can fullfill it later once we return from the acquisition.
+          case BRACKET:
+            bracket++;
+            attempts = new Aff(CONS, step, new Aff(CONS, new Aff(RESUME, bhead, btail), attempts));
+            bhead    = null;
+            btail    = null;
+            status   = CONTINUE;
+            step     = step._1;
+          break;
+
+        case RETURN:
+          // If the current stack has returned, and we have no other stacks to
+          // resume or finalizers to run, the thread has halted and we can
+          // invoke all join callbacks. Otherwise we need to resume.
+          if (attempts === null) {
+            runTick++; // Increment the counter to prevent reentry after completion.
+            status = COMPLETED;
+            step   = interrupt || fail || step;
+            for (var k in joins) {
+              runJoin(step, joins[k]);
+            }
+            joins = null;
+          } else {
+            attempt = attempts._1;
+            switch (attempt.tag) {
+            // We cannot recover from an interrupt. If we are able to recover
+            // we should step directly (since the return value is an Either).
+            case RECOVER:
+              attempts = attempts._2;
+              if (interrupt === null) {
+                bhead  = attempt._1;
+                btail  = attempt._2;
+                status = BINDSTEP;
+                step   = fail || step;
+                fail   = null;
+              }
+              break;
+
+            // We cannot resume from an interrupt or exception.
+            case RESUME:
+              attempts = attempts._2;
+              if (interrupt === null && fail === null) {
+                bhead  = attempt._1;
+                btail  = attempt._2;
+                status = BINDSTEP;
+                step   = fromRight(step);
+              }
+              break;
+
+            // If we have a bracket, we should enqueue the finalizer branch,
+            // and continue with the success branch only if the thread has
+            // not been interrupted. If the bracket acquisition failed, we
+            // should not run either.
+            case BRACKET:
+              bracket--;
+              if (fail === null) {
+                result   = fromRight(step);
+                attempts = new Aff(CONS, attempt._2(result), attempts._2);
+                if (interrupt === null) {
+                  status = CONTINUE;
+                  step   = attempt._3(result);
+                }
+              } else {
+                attempts = attempts._2;
+              }
+              break;
+
+            case FINALIZED:
+              bracket--;
+              attempts = attempts._2;
+              break;
+
+            // Otherwise we need to run a finalizer, which cannot be interrupted.
+            // We insert a FINALIZED marker to know when we can release it.
+            default:
+              bracket++;
+              attempts._1 = finalized;
+              status      = CONTINUE;
+              step        = attempt;
+            }
+          }
+          break;
+
+        case COMPLETED:
+          status = COMPLETED;
+          // If we have an unhandled exception, we need to throw it in
+          // a fresh stack.
+          if (isLeft(step)) {
+            setTimeout(function() {
+              throw fromLeft(step);
+            }, 0);
+          }
+          return;
+        case BLOCKED: return;
+        case PENDING: return;
+        }
+
+        tmp       = null;
+        result    = null;
+        attempt   = null;
+        canceler  = null;
+      }
     }
 
-    success(result);
-    return nonCanceler;
-  };
-};
-
-exports._tailRecM = function (isLeft, f, a) {
-  return function (success, error) {
-    return function go (acc) {
-      var result, status, canceler;
-
-      // Observes synchronous effects using a flag.
-      //   status = 0 (unresolved status)
-      //   status = 1 (synchronous effect)
-      //   status = 2 (asynchronous effect)
-
-      var csuccess = function (v) {
-        // If the status is still unresolved, we have observed a
-        // synchronous effect. Otherwise, the status will be `2`.
-        if (status === 0) {
-          // Store the result for further synchronous processing.
-          result = v;
-          status = 1;
-        } else {
-          // When we have observed an asynchronous effect, we use normal
-          // recursion. This is safe because we will be on a new stack.
-          if (isLeft(v)) {
-            go(v.value0);
-          } else {
-            success(v.value0);
-          }
-        }
+    function addJoinCallback (cb) {
+      var jid    = joinId++;
+      joins[jid] = cb;
+      return function (error) {
+        return new Aff(SYNC, function () {
+          delete joins[jid];
+          return right({});
+        });
       };
+    }
 
-      while (true) {
-        status = 0;
-        canceler = f(acc)(csuccess, error);
+    function pureCanceler (error) {
+      return new Aff(PURE, {});
+    }
 
-        // If the status has already resolved to `1` by our Aff handler, then
-        // we have observed a synchronous effect. Otherwise it will still be
-        // `0`.
-        if (status === 1) {
-          // When we have observed a synchronous effect, we merely swap out the
-          // accumulator and continue the loop, preserving stack.
-          if (isLeft(result)) {
-            acc = result.value0;
-            continue;
-          } else {
-            success(result.value0);
+    function kill (error) {
+      return new Aff(ASYNC, function (cb) {
+        return function () {
+          // Shadow the canceler binding because it can potentially be
+          // clobbered if we call `run`.
+          var canceler;
+          switch (status) {
+          case COMPLETED:
+            canceler = pureCanceler;
+            cb(right({}))();
+            break;
+          case PENDING:
+            canceler = addJoinCallback(cb);
+            if (interrupt === null) {
+              interrupt = left(error);
+            }
+            // If we can interrupt the pending action, enqueue the canceler as
+            // a non-interruptible finalizer.
+            if (bracket === 0) {
+              attempts = new Aff(CONS, step(error), attempts);
+              bhead    = null;
+              btail    = null;
+              status   = RETURN;
+              run(runTick++);
+            }
+            break;
+          default:
+            canceler = addJoinCallback(cb);
+            if (interrupt === null) {
+              interrupt = left(error);
+            }
+            if (bracket === 0) {
+              bhead  = null;
+              btail  = null;
+              status = RETURN;
+            }
           }
-        } else {
-          // If the status has not resolved yet, then we have observed an
-          // asynchronous effect.
-          status = 2;
-        }
-        return canceler;
-      }
+          return canceler;
+        };
+      });
+    }
 
-    }(a);
+    function join () {
+      return new Aff(ASYNC, function (cb) {
+        return function () {
+          if (status === COMPLETED) {
+            cb(step)();
+            return pureCanceler;
+          }
+          return addJoinCallback(cb);
+        };
+      });
+    }
+
+    run(runTick);
+
+    return {
+      kill: kill,
+      join: join()
+    };
   };
 };
+
+function runJoin (result, cb) {
+  try {
+    cb(result)();
+  } catch (error) {
+    setTimeout(function () {
+      throw error;
+    }, 0)
+  }
+}
