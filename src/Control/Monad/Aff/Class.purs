@@ -2,7 +2,7 @@ module Control.Monad.Aff.Class where
 
 import Prelude
 
-import Control.Monad.Aff (Aff)
+import Control.Monad.Aff (Aff, ASYNC)
 import Control.Monad.Cont.Trans (ContT)
 import Control.Monad.Eff.Class (class MonadEff)
 import Control.Monad.Eff.Exception (EXCEPTION)
@@ -17,32 +17,32 @@ import Control.Monad.Writer.Trans (WriterT)
 
 import Data.Monoid (class Monoid)
 
-class MonadEff (exception ∷ EXCEPTION | eff) m <= MonadAff eff m | m -> eff where
+class MonadEff (exception ∷ EXCEPTION, async ∷ ASYNC | eff) m ⇐ MonadAff eff m | m → eff where
   liftAff :: forall a. Aff eff a -> m a
 
-instance monadAffAff :: MonadAff e (Aff e) where
+instance monadAffAff ∷ MonadAff e (Aff e) where
   liftAff = id
 
-instance monadAffContT :: MonadAff eff m => MonadAff eff (ContT r m) where
+instance monadAffContT ∷ MonadAff eff m ⇒ MonadAff eff (ContT r m) where
   liftAff = lift <<< liftAff
 
-instance monadAffExceptT :: MonadAff eff m => MonadAff eff (ExceptT e m) where
+instance monadAffExceptT ∷ MonadAff eff m ⇒ MonadAff eff (ExceptT e m) where
   liftAff = lift <<< liftAff
 
-instance monadAffListT :: MonadAff eff m => MonadAff eff (ListT m) where
+instance monadAffListT ∷ MonadAff eff m ⇒ MonadAff eff (ListT m) where
   liftAff = lift <<< liftAff
 
-instance monadAffMaybe :: MonadAff eff m => MonadAff eff (MaybeT m) where
+instance monadAffMaybe ∷ MonadAff eff m ⇒ MonadAff eff (MaybeT m) where
   liftAff = lift <<< liftAff
 
-instance monadAffReader :: MonadAff eff m => MonadAff eff (ReaderT r m) where
+instance monadAffReader ∷ MonadAff eff m ⇒ MonadAff eff (ReaderT r m) where
   liftAff = lift <<< liftAff
 
-instance monadAffRWS :: (MonadAff eff m, Monoid w) => MonadAff eff (RWST r w s m) where
+instance monadAffRWS ∷ (MonadAff eff m, Monoid w) ⇒ MonadAff eff (RWST r w s m) where
   liftAff = lift <<< liftAff
 
-instance monadAffState :: MonadAff eff m => MonadAff eff (StateT s m) where
+instance monadAffState ∷ MonadAff eff m ⇒ MonadAff eff (StateT s m) where
   liftAff = lift <<< liftAff
 
-instance monadAffWriter :: (MonadAff eff m, Monoid w) => MonadAff eff (WriterT w m) where
+instance monadAffWriter ∷ (MonadAff eff m, Monoid w) ⇒ MonadAff eff (WriterT w m) where
   liftAff = lift <<< liftAff

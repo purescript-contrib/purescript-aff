@@ -3,6 +3,7 @@ module Test.Bench where
 import Prelude
 import Control.Monad.Aff as Aff
 import Control.Monad.Eff (Eff, runPure)
+import Control.Monad.Eff.Unsafe (unsafeCoerceEff)
 import Control.Monad.Eff.Console as Console
 import Control.Monad.Rec.Class (Step(..), tailRecM)
 import Performance.Minibench (bench)
@@ -52,11 +53,11 @@ fib1 n = if n <= 1 then pure n else do
 main ∷ Eff (console ∷ Console.CONSOLE) Unit
 main = do
   Console.log "\nAff tailRecM:"
-  bench \_ → runPure (void $ Aff.launchAff $ loop1 10000)
+  bench \_ → runPure $ unsafeCoerceEff $ void $ Aff.launchAff $ loop1 10000
 
   Console.log "\nAff loop:"
-  bench \_ → runPure (void $ Aff.launchAff $ loop2 10000)
+  bench \_ → runPure $ unsafeCoerceEff $ void $ Aff.launchAff $ loop2 10000
 
   Console.log "\nAff fib:"
-  bench \_ → runPure (void $ Aff.launchAff $ fib1 100)
+  bench \_ → runPure $ unsafeCoerceEff $ void $ Aff.launchAff $ fib1 100
 
