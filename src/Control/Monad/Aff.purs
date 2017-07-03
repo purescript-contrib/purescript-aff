@@ -12,13 +12,13 @@ import Control.Monad.Aff.Internal (Aff, AffModality, ParAff, Thread, Canceler(..
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Class (liftEff)
 import Control.Monad.Eff.Exception (Error)
-import Data.Either (Either(..))
+import Data.Either (Either)
 
 runAff ∷ ∀ eff a. (Either Error a → Eff (AffModality eff) Unit) → Aff eff a → Eff (async ∷ ASYNC | eff) Unit
 runAff k aff = void $ launchAff $ liftEff <<< k =<< attempt aff
 
 forkAff ∷ ∀ eff a. Aff eff a → Aff eff (Thread eff a)
-forkAff = unsafeLiftEff <<< map Right <<< unsafeLaunchAff
+forkAff = unsafeLiftEff <<< unsafeLaunchAff
 
 killThread ∷ ∀ eff a. Error → Thread eff a → Aff eff Unit
 killThread e (Thread t) = t.kill e

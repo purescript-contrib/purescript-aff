@@ -8,7 +8,7 @@ efficiency sake.
 data Aff eff a
   = Pure a
   | Throw Error
-  | Sync (Eff eff (Either Error a))
+  | Sync (Eff eff a)
   | Async ((Either Error a -> Eff eff Unit) -> Eff eff (Canceler eff))
   | forall b. Attempt (Aff eff b) ?(Either Error b -> a)
   | forall b. Bracket (Aff eff b) (b -> Aff eff Unit) (b -> Aff eff a)
@@ -84,16 +84,6 @@ exports.bracket = function (acquire) {
       return new Aff(BRACKET, acquire, release, k);
     };
   };
-};
-
-exports._liftEff = function (left, right, eff) {
-  return new Aff(SYNC, function () {
-    try {
-      return right(eff());
-    } catch (error) {
-      return left(error);
-    }
-  });
 };
 
 exports._makeAff = function (left, right, aff) {
@@ -229,7 +219,7 @@ exports._launchAff = function (isLeft, fromLeft, fromRight, left, right, aff) {
 
           case SYNC:
             status = BLOCKED;
-            result = step._1();
+            result = runSync(step._1);
             if (isLeft(result)) {
               status = RETURN;
               fail   = result;
@@ -402,6 +392,14 @@ exports._launchAff = function (isLeft, fromLeft, fromRight, left, right, aff) {
         result    = null;
         attempt   = null;
         canceler  = null;
+      }
+    }
+
+    function runSync (eff) {
+      try {
+        return right(eff());
+      } catch (error) {
+        return left(error)
       }
     }
 

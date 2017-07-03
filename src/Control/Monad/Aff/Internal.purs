@@ -39,7 +39,7 @@ import Data.Monoid (class Monoid, mempty)
 import Data.Newtype (class Newtype)
 import Data.Time.Duration (Milliseconds(..))
 import Partial.Unsafe (unsafeCrashWith)
-import Type.Row.Effect.Equality (class EffectRowEquals, effTo)
+import Type.Row.Effect.Equality (class EffectRowEquals)
 import Unsafe.Coerce (unsafeCoerce)
 
 foreign import data Aff ∷ # Effect → Type → Type
@@ -100,7 +100,10 @@ instance monadErrorAff ∷ MonadError Error (Aff eff) where
       Right r  → pure r
 
 instance monadEffAff ∷ EffectRowEquals eff1 (exception ∷ EXCEPTION, async ∷ ASYNC | eff2) ⇒ MonadEff eff1 (Aff eff2) where
-  liftEff eff = Fn.runFn3 _liftEff Left Right (effTo eff)
+  liftEff eff = unsafeLiftEff (coerceEff eff)
+    where
+    coerceEff ∷ Eff eff1 ~> Eff eff2
+    coerceEff = unsafeCoerce
 
 newtype ParAff eff a = ParAff (Aff eff a)
 
@@ -116,7 +119,7 @@ instance applyParAff ∷ Apply (ParAff eff) where
       Thread t3 ← unsafeLaunchAff do
         f ← attempt t1.join
         a ← attempt t2.join
-        unsafeLiftEff (Right <$> k (f <*> a))
+        unsafeLiftEff (k (f <*> a))
       pure $ Canceler \err →
         parSequence_
           [ t3.kill err
@@ -142,18 +145,15 @@ instance altParAff ∷ Alt (ParAff eff) where
       Thread t2 ← unsafeLaunchAff a2
 
       let
-        lift ∷ ∀ a. Eff eff a → Aff eff a
-        lift = unsafeLiftEff <<< map Right
-
         earlyError =
           error "Alt ParAff: early exit"
 
         runK t r = do
-          res ← lift $ unsafeRunRef $ readRef ref
+          res ← unsafeLiftEff $ unsafeRunRef $ readRef ref
           case res, r of
-            Nothing, Left _ → lift $ unsafeRunRef $ writeRef ref (Just r)
-            Nothing, Right _ → t.kill earlyError *> lift (k r)
-            Just r', _ → t.kill earlyError *> lift (k r')
+            Nothing, Left _ → unsafeLiftEff $ unsafeRunRef $ writeRef ref (Just r)
+            Nothing, Right _ → t.kill earlyError *> unsafeLiftEff (k r)
+            Just r', _ → t.kill earlyError *> unsafeLiftEff (k r')
 
       Thread t3 ← unsafeLaunchAff $ runK t2 =<< attempt t1.join
       Thread t4 ← unsafeLaunchAff $ runK t1 =<< attempt t2.join
@@ -216,16 +216,8 @@ foreign import _bind ∷ ∀ eff a b. Aff eff a → (a → Aff eff b) → Aff ef
 foreign import _delay ∷ ∀ a eff. Fn.Fn2 (Unit → Either a Unit) Number (Aff eff Unit)
 foreign import attempt ∷ ∀ eff a. Aff eff a → Aff eff (Either Error a)
 foreign import bracket ∷ ∀ eff a b. Aff eff a → (a → Aff eff Unit) → (a → Aff eff b) → Aff eff b
-foreign import unsafeLiftEff ∷ ∀ eff a. Eff eff (Either Error a) → Aff eff a
+foreign import unsafeLiftEff ∷ ∀ eff a. Eff eff a → Aff eff a
 foreign import unsafeMakeAff ∷ ∀ eff a. ((Either Error a → Eff eff Unit) → Eff eff (Canceler eff)) → Aff eff a
-
-foreign import _liftEff
-  ∷ ∀ eff a
-  . Fn.Fn3
-      (Error → Either Error a)
-      (a → Either Error a)
-      (Eff (AffModality eff) a)
-      (Aff eff a)
 
 foreign import _makeAff
   ∷ ∀ eff a
