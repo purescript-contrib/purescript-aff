@@ -59,5 +59,5 @@ main = do
   bench \_ → runPure $ unsafeCoerceEff $ void $ Aff.launchAff $ loop2 10000
 
   Console.log "\nAff fib:"
-  bench \_ → runPure $ unsafeCoerceEff $ void $ Aff.launchAff $ fib1 100
+  bench \_ → runPure $ unsafeCoerceEff $ void $ Aff.launchAff $ fib1 20
 

@@ -1,6 +1,5 @@
 module Control.Monad.Aff.Internal
   ( Aff
-  , AffModality
   , ParAff(..)
   , Thread(..)
   , Canceler(..)
@@ -12,8 +11,6 @@ module Control.Monad.Aff.Internal
   , bracket
   , delay
   , unsafeLaunchAff
-  , unsafeLiftEff
-  , unsafeMakeAff
   ) where
 
 import Prelude
@@ -21,8 +18,8 @@ import Control.Alt (class Alt)
 import Control.Alternative (class Alternative)
 import Control.Apply (lift2)
 import Control.Monad.Eff (Eff, kind Effect)
-import Control.Monad.Eff.Class (class MonadEff)
-import Control.Monad.Eff.Exception (EXCEPTION, Error, error)
+import Control.Monad.Eff.Class (class MonadEff, liftEff)
+import Control.Monad.Eff.Exception (Error, error)
 import Control.Monad.Eff.Ref (newRef, readRef, writeRef)
 import Control.Monad.Eff.Ref.Unsafe (unsafeRunRef)
 import Control.Monad.Error.Class (class MonadError, class MonadThrow, throwError)
@@ -39,18 +36,11 @@ import Data.Monoid (class Monoid, mempty)
 import Data.Newtype (class Newtype)
 import Data.Time.Duration (Milliseconds(..))
 import Partial.Unsafe (unsafeCrashWith)
-import Type.Row.Effect.Equality (class EffectRowEquals)
 import Unsafe.Coerce (unsafeCoerce)
 
 foreign import data Aff ∷ # Effect → Type → Type
 
 foreign import data ASYNC ∷ Effect
-
-type AffModality eff =
-  ( exception ∷ EXCEPTION
-  , async ∷ ASYNC
-  | eff
-  )
 
 instance functorAff ∷ Functor (Aff eff) where map = _map
 instance applyAff ∷ Apply (Aff eff) where apply = ap
@@ -99,11 +89,8 @@ instance monadErrorAff ∷ MonadError Error (Aff eff) where
       Left err → k err
       Right r  → pure r
 
-instance monadEffAff ∷ EffectRowEquals eff1 (exception ∷ EXCEPTION, async ∷ ASYNC | eff2) ⇒ MonadEff eff1 (Aff eff2) where
-  liftEff eff = unsafeLiftEff (coerceEff eff)
-    where
-    coerceEff ∷ Eff eff1 ~> Eff eff2
-    coerceEff = unsafeCoerce
+instance monadEffAff ∷ MonadEff eff (Aff eff) where
+  liftEff = _liftEff
 
 newtype ParAff eff a = ParAff (Aff eff a)
 
@@ -111,7 +98,7 @@ derive instance newtypeParAff ∷ Newtype (ParAff eff a) _
 derive newtype instance functorParAff ∷ Functor (ParAff eff)
 
 instance applyParAff ∷ Apply (ParAff eff) where
-  apply (ParAff ff) (ParAff fa) = ParAff (unsafeMakeAff go)
+  apply (ParAff ff) (ParAff fa) = ParAff (makeAff go)
     where
     go k = do
       Thread t1 ← unsafeLaunchAff ff
@@ -119,7 +106,7 @@ instance applyParAff ∷ Apply (ParAff eff) where
       Thread t3 ← unsafeLaunchAff do
         f ← attempt t1.join
         a ← attempt t2.join
-        unsafeLiftEff (k (f <*> a))
+        liftEff (k (f <*> a))
       pure $ Canceler \err →
         parSequence_
           [ t3.kill err
@@ -137,7 +124,7 @@ instance monoidParAff ∷ Monoid a ⇒ Monoid (ParAff eff a) where
   mempty = pure mempty
 
 instance altParAff ∷ Alt (ParAff eff) where
-  alt (ParAff a1) (ParAff a2) = ParAff (unsafeMakeAff go)
+  alt (ParAff a1) (ParAff a2) = ParAff (makeAff go)
     where
     go k = do
       ref ← unsafeRunRef $ newRef Nothing
@@ -149,11 +136,11 @@ instance altParAff ∷ Alt (ParAff eff) where
           error "Alt ParAff: early exit"
 
         runK t r = do
-          res ← unsafeLiftEff $ unsafeRunRef $ readRef ref
+          res ← liftEff $ unsafeRunRef $ readRef ref
           case res, r of
-            Nothing, Left _ → unsafeLiftEff $ unsafeRunRef $ writeRef ref (Just r)
-            Nothing, Right _ → t.kill earlyError *> unsafeLiftEff (k r)
-            Just r', _ → t.kill earlyError *> unsafeLiftEff (k r')
+            Nothing, Left _ → liftEff $ unsafeRunRef $ writeRef ref (Just r)
+            Nothing, Right _ → t.kill earlyError *> liftEff (k r)
+            Just r', _ → t.kill earlyError *> liftEff (k r')
 
       Thread t3 ← unsafeLaunchAff $ runK t2 =<< attempt t1.join
       Thread t4 ← unsafeLaunchAff $ runK t1 =<< attempt t2.join
@@ -203,9 +190,6 @@ launchAff aff = Fn.runFn6 _launchAff isLeft unsafeFromLeft unsafeFromRight Left 
 unsafeLaunchAff ∷ ∀ eff a. Aff eff a → Eff eff (Thread eff a)
 unsafeLaunchAff = unsafeCoerce launchAff
 
-makeAff ∷ ∀ eff a. ((Either Error a → Eff (AffModality eff) Unit) → Eff (AffModality eff) (Canceler eff)) → Aff eff a
-makeAff k = Fn.runFn3 _makeAff Left Right k
-
 delay ∷ ∀ eff. Milliseconds → Aff eff Unit
 delay (Milliseconds n) = Fn.runFn2 _delay Right n
 
@@ -214,18 +198,10 @@ foreign import _throwError ∷ ∀ eff a. Error → Aff eff a
 foreign import _map ∷ ∀ eff a b. (a → b) → Aff eff a → Aff eff b
 foreign import _bind ∷ ∀ eff a b. Aff eff a → (a → Aff eff b) → Aff eff b
 foreign import _delay ∷ ∀ a eff. Fn.Fn2 (Unit → Either a Unit) Number (Aff eff Unit)
+foreign import _liftEff ∷ ∀ eff a. Eff eff a → Aff eff a
 foreign import attempt ∷ ∀ eff a. Aff eff a → Aff eff (Either Error a)
 foreign import bracket ∷ ∀ eff a b. Aff eff a → (a → Aff eff Unit) → (a → Aff eff b) → Aff eff b
-foreign import unsafeLiftEff ∷ ∀ eff a. Eff eff a → Aff eff a
-foreign import unsafeMakeAff ∷ ∀ eff a. ((Either Error a → Eff eff Unit) → Eff eff (Canceler eff)) → Aff eff a
-
-foreign import _makeAff
-  ∷ ∀ eff a
-  . Fn.Fn3
-      (Error → Either Error a)
-      (a → Either Error a)
-      ((Either Error a → Eff (AffModality eff) Unit) → Eff (AffModality eff) (Canceler eff))
-      (Aff eff a)
+foreign import makeAff ∷ ∀ eff a. ((Either Error a → Eff eff Unit) → Eff eff (Canceler eff)) → Aff eff a
 
 foreign import _launchAff
   ∷ ∀ eff a

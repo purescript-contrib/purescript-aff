@@ -2,10 +2,9 @@ module Control.Monad.Aff.Class where
 
 import Prelude
 
-import Control.Monad.Aff (Aff, ASYNC)
+import Control.Monad.Aff (Aff)
 import Control.Monad.Cont.Trans (ContT)
 import Control.Monad.Eff.Class (class MonadEff)
-import Control.Monad.Eff.Exception (EXCEPTION)
 import Control.Monad.Except.Trans (ExceptT)
 import Control.Monad.List.Trans (ListT)
 import Control.Monad.Maybe.Trans (MaybeT)
@@ -17,8 +16,8 @@ import Control.Monad.Writer.Trans (WriterT)
 
 import Data.Monoid (class Monoid)
 
-class MonadEff (exception ∷ EXCEPTION, async ∷ ASYNC | eff) m ⇐ MonadAff eff m | m → eff where
-  liftAff :: forall a. Aff eff a -> m a
+class MonadEff eff m ⇐ MonadAff eff m | m → eff where
+  liftAff ∷ ∀ a. Aff eff a → m a
 
 instance monadAffAff ∷ MonadAff e (Aff e) where
   liftAff = id

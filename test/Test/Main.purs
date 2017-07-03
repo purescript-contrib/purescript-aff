@@ -18,7 +18,7 @@ import Data.Traversable (traverse)
 import Data.Time.Duration (Milliseconds(..))
 import Test.Assert (assert', ASSERT)
 
-type TestEffects eff = (assert ∷ ASSERT, console ∷ CONSOLE, ref ∷ REF | eff)
+type TestEffects eff = (assert ∷ ASSERT, console ∷ CONSOLE, ref ∷ REF, exception ∷ EXCEPTION | eff)
 type TestEff eff = Eff (TestEffects (async ∷ ASYNC | eff))
 type TestAff eff = Aff (TestEffects eff)
 
@@ -34,10 +34,10 @@ writeRef r = liftEff <<< Ref.writeRef r
 modifyRef ∷ ∀ m eff a. MonadEff (ref ∷ REF | eff) m ⇒ Ref a → (a → a) → m Unit
 modifyRef r = liftEff <<< Ref.modifyRef r
 
-assertEff ∷ ∀ eff. String → Either Error Boolean → TestEff (exception ∷ EXCEPTION | eff) Unit
+assertEff ∷ ∀ eff. String → Either Error Boolean → Eff (TestEffects eff) Unit
 assertEff s = case _ of
   Left err → do
-    Console.error ("[Error] " <> s)
+    Console.log ("[Error] " <> s)
     throwException err
   Right r → do
     assert' s r

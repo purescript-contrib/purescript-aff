@@ -66,11 +66,11 @@ exports._bind = function (aff) {
   };
 };
 
-exports.unsafeLiftEff = function (eff) {
+exports._liftEff = function (eff) {
   return new Aff(SYNC, eff);
 };
 
-exports.unsafeMakeAff = function (k) {
+exports.makeAff = function (k) {
   return new Aff(ASYNC, k);
 };
 
@@ -84,19 +84,6 @@ exports.bracket = function (acquire) {
       return new Aff(BRACKET, acquire, release, k);
     };
   };
-};
-
-exports._makeAff = function (left, right, aff) {
-  return new Aff(ASYNC, function (k) {
-    return function () {
-      try {
-        return aff(k)();
-      } catch (error) {
-        k(left(error))();
-        return nonCanceler;
-      }
-    };
-  });
 };
 
 exports._delay = function () {
@@ -219,7 +206,7 @@ exports._launchAff = function (isLeft, fromLeft, fromRight, left, right, aff) {
 
           case SYNC:
             status = BLOCKED;
-            result = runSync(step._1);
+            result = runSync(left, right, step._1);
             if (isLeft(result)) {
               status = RETURN;
               fail   = result;
@@ -234,7 +221,7 @@ exports._launchAff = function (isLeft, fromLeft, fromRight, left, right, aff) {
 
           case ASYNC:
             status   = BLOCKED;
-            canceler = step._1(function (result) {
+            canceler = runAsync(left, step._1, function (result) {
               return function () {
                 if (runTick !== localRunTick) {
                   return;
@@ -260,7 +247,7 @@ exports._launchAff = function (isLeft, fromLeft, fromRight, left, right, aff) {
                   localRunTick = ++runTick;
                 }
               };
-            })();
+            });
             // If the callback was resolved synchronously, the status will have
             // switched to CONTINUE, and we should not move on to PENDING.
             if (status === BLOCKED) {
@@ -395,14 +382,6 @@ exports._launchAff = function (isLeft, fromLeft, fromRight, left, right, aff) {
       }
     }
 
-    function runSync (eff) {
-      try {
-        return right(eff());
-      } catch (error) {
-        return left(error)
-      }
-    }
-
     function addJoinCallback (cb) {
       var jid    = joinId++;
       joins[jid] = cb;
@@ -490,5 +469,22 @@ function runJoin (result, cb) {
     setTimeout(function () {
       throw error;
     }, 0)
+  }
+}
+
+function runSync (left, right, eff) {
+  try {
+    return right(eff());
+  } catch (error) {
+    return left(error)
+  }
+}
+
+function runAsync (left, eff, k) {
+  try {
+    return eff(k)();
+  } catch (error) {
+    k(left(error))();
+    return nonCanceler;
   }
 }
