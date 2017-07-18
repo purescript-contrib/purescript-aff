@@ -10,17 +10,17 @@ data Aff eff a
   | Throw Error
   | Sync (Eff eff a)
   | Async ((Either Error a -> Eff eff Unit) -> Eff eff (Canceler eff))
-  | forall b. Attempt (Aff eff b) ?(Either Error b -> a)
+  | forall b. Catch (Error -> a) (Aff eff b) ?(b -> a)
   | forall b. Bracket (Aff eff b) (b -> Aff eff Unit) (b -> Aff eff a)
 
 */
-var PURE      = "Pure";
-var THROW     = "Throw";
-var SYNC      = "Sync";
-var ASYNC     = "Async";
-var BIND      = "Bind";
-var ATTEMPT   = "Attempt";
-var BRACKET   = "Bracket";
+var PURE    = "Pure";
+var THROW   = "Throw";
+var SYNC    = "Sync";
+var ASYNC   = "Async";
+var BIND    = "Bind";
+var CATCH   = "Catch";
+var BRACKET = "Bracket";
 
 // These are constructors used to implement the recover stack. We still use the
 // Aff constructor so that property offsets can always inline.
@@ -48,6 +48,12 @@ exports._throwError = function (error) {
   return new Aff(THROW, error);
 };
 
+exports._catchError = function (aff) {
+  return function (k) {
+    return new Aff(CATCH, aff, k);
+  };
+};
+
 exports._map = function (f) {
   return function (aff) {
     if (aff.tag === PURE) {
@@ -72,10 +78,6 @@ exports._liftEff = function (eff) {
 
 exports.makeAff = function (k) {
   return new Aff(ASYNC, k);
-};
-
-exports.attempt = function (aff) {
-  return new Aff(ATTEMPT, aff);
 };
 
 exports.bracket = function (acquire) {
@@ -257,8 +259,8 @@ exports._launchAff = function (isLeft, fromLeft, fromRight, left, right, aff) {
             break;
 
           // Enqueue the current stack of binds and continue
-          case ATTEMPT:
-            attempts = new Aff(CONS, new Aff(RECOVER, bhead, btail), attempts);
+          case CATCH:
+            attempts = new Aff(CONS, new Aff(RECOVER, step._2, bhead, btail), attempts);
             bhead    = null;
             btail    = null;
             status   = CONTINUE;
@@ -293,16 +295,22 @@ exports._launchAff = function (isLeft, fromLeft, fromRight, left, right, aff) {
           } else {
             attempt = attempts._1;
             switch (attempt.tag) {
-            // We cannot recover from an interrupt. If we are able to recover
-            // we should step directly (since the return value is an Either).
+            // We cannot recover from an interrupt. Otherwise we should
+            // continue stepping, or run the exception handler if an exception
+            // was raised.
             case RECOVER:
               attempts = attempts._2;
               if (interrupt === null) {
-                bhead  = attempt._1;
-                btail  = attempt._2;
-                status = BINDSTEP;
-                step   = fail || step;
-                fail   = null;
+                bhead  = attempt._2;
+                btail  = attempt._3;
+                if (fail === null) {
+                  status = BINDSTEP;
+                  step   = fromRight(step);
+                } else {
+                  status = CONTINUE;
+                  step   = attempt._1(fromLeft(fail));
+                  fail   = null;
+                }
               }
               break;
 
@@ -356,7 +364,7 @@ exports._launchAff = function (isLeft, fromLeft, fromRight, left, right, aff) {
           tmp = false;
           for (var k in joins) {
             tmp = true;
-            runJoin(step, joins[k]);
+            runEff(joins[k](step));
           }
           joins = tmp;
           // If we have an unhandled exception, and no other thread has joined
@@ -462,13 +470,13 @@ exports._launchAff = function (isLeft, fromLeft, fromRight, left, right, aff) {
   };
 };
 
-function runJoin (result, cb) {
+function runEff (eff) {
   try {
-    cb(result)();
+    eff();
   } catch (error) {
     setTimeout(function () {
       throw error;
-    }, 0)
+    }, 0);
   }
 }
 
@@ -476,7 +484,7 @@ function runSync (left, right, eff) {
   try {
     return right(eff());
   } catch (error) {
-    return left(error)
+    return left(error);
   }
 }
 

@@ -7,7 +7,6 @@ module Control.Monad.Aff.Internal
   , nonCanceler
   , makeAff
   , launchAff
-  , attempt
   , bracket
   , delay
   , unsafeLaunchAff
@@ -22,7 +21,7 @@ import Control.Monad.Eff.Class (class MonadEff, liftEff)
 import Control.Monad.Eff.Exception (Error, error)
 import Control.Monad.Eff.Ref (newRef, readRef, writeRef)
 import Control.Monad.Eff.Ref.Unsafe (unsafeRunRef)
-import Control.Monad.Error.Class (class MonadError, class MonadThrow, throwError)
+import Control.Monad.Error.Class (class MonadError, class MonadThrow, throwError, catchError, try)
 import Control.Monad.Rec.Class (class MonadRec, Step(..))
 import Control.MonadPlus (class MonadPlus)
 import Control.MonadZero (class MonadZero)
@@ -55,11 +54,7 @@ instance monoidAff ∷ Monoid a ⇒ Monoid (Aff eff a) where
   mempty = pure mempty
 
 instance altAff ∷ Alt (Aff eff) where
-  alt a1 a2 = do
-    res ← attempt a1
-    case res of
-      Left err → a2
-      Right r  → pure r
+  alt a1 a2 = catchError a1 (const a2)
 
 instance plusAff ∷ Plus (Aff eff) where
   empty = throwError (error "Always fails")
@@ -83,11 +78,7 @@ instance monadThrowAff ∷ MonadThrow Error (Aff eff) where
   throwError = _throwError
 
 instance monadErrorAff ∷ MonadError Error (Aff eff) where
-  catchError aff k = do
-    res ← attempt aff
-    case res of
-      Left err → k err
-      Right r  → pure r
+  catchError = _catchError
 
 instance monadEffAff ∷ MonadEff eff (Aff eff) where
   liftEff = _liftEff
@@ -104,8 +95,8 @@ instance applyParAff ∷ Apply (ParAff eff) where
       Thread t1 ← unsafeLaunchAff ff
       Thread t2 ← unsafeLaunchAff fa
       Thread t3 ← unsafeLaunchAff do
-        f ← attempt t1.join
-        a ← attempt t2.join
+        f ← try t1.join
+        a ← try t2.join
         liftEff (k (f <*> a))
       pure $ Canceler \err →
         parSequence_
@@ -142,8 +133,8 @@ instance altParAff ∷ Alt (ParAff eff) where
             Nothing, Right _ → t.kill earlyError *> liftEff (k r)
             Just r', _ → t.kill earlyError *> liftEff (k r')
 
-      Thread t3 ← unsafeLaunchAff $ runK t2 =<< attempt t1.join
-      Thread t4 ← unsafeLaunchAff $ runK t1 =<< attempt t2.join
+      Thread t3 ← unsafeLaunchAff $ runK t2 =<< try t1.join
+      Thread t4 ← unsafeLaunchAff $ runK t1 =<< try t2.join
 
       pure $ Canceler \err →
         parSequence_
@@ -195,11 +186,11 @@ delay (Milliseconds n) = Fn.runFn2 _delay Right n
 
 foreign import _pure ∷ ∀ eff a. a → Aff eff a
 foreign import _throwError ∷ ∀ eff a. Error → Aff eff a
+foreign import _catchError ∷ ∀ eff a. Aff eff a → (Error → Aff eff a) → Aff eff a
 foreign import _map ∷ ∀ eff a b. (a → b) → Aff eff a → Aff eff b
 foreign import _bind ∷ ∀ eff a b. Aff eff a → (a → Aff eff b) → Aff eff b
 foreign import _delay ∷ ∀ a eff. Fn.Fn2 (Unit → Either a Unit) Number (Aff eff Unit)
 foreign import _liftEff ∷ ∀ eff a. Eff eff a → Aff eff a
-foreign import attempt ∷ ∀ eff a. Aff eff a → Aff eff (Either Error a)
 foreign import bracket ∷ ∀ eff a b. Aff eff a → (a → Aff eff Unit) → (a → Aff eff b) → Aff eff b
 foreign import makeAff ∷ ∀ eff a. ((Either Error a → Eff eff Unit) → Eff eff (Canceler eff)) → Aff eff a
 

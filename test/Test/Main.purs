@@ -1,7 +1,7 @@
 module Test.Main where
 
 import Prelude
-import Control.Monad.Aff (Aff, Canceler(..), ASYNC, nonCanceler, runAff, launchAff, makeAff, attempt, bracket, delay, forkAff, joinThread, killThread)
+import Control.Monad.Aff (Aff, Canceler(..), ASYNC, nonCanceler, runAff, launchAff, makeAff, try, bracket, delay, forkAff, joinThread, killThread)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Class (class MonadEff, liftEff)
 import Control.Monad.Eff.Console (CONSOLE)
@@ -50,10 +50,10 @@ runAssertEq ∷ ∀ eff a. Eq a ⇒ String → a → TestAff eff a → TestEff e
 runAssertEq s a = runAff (assertEff s <<< map (eq a))
 
 assertEq ∷ ∀ eff a. Eq a ⇒ String → a → TestAff eff a → TestAff eff Unit
-assertEq s a aff = liftEff <<< assertEff s <<< map (eq a) =<< attempt aff
+assertEq s a aff = liftEff <<< assertEff s <<< map (eq a) =<< try aff
 
 assert ∷ ∀ eff. String → TestAff eff Boolean → TestAff eff Unit
-assert s aff = liftEff <<< assertEff s =<< attempt aff
+assert s aff = liftEff <<< assertEff s =<< try aff
 
 test_pure ∷ ∀ eff. TestEff eff Unit
 test_pure = runAssertEq "pure" 42 (pure 42)
@@ -65,16 +65,16 @@ test_bind = runAssertEq "bind" 44 do
   n3 ← pure (n2 + 1)
   pure n3
 
-test_attempt ∷ ∀ eff. TestEff eff Unit
-test_attempt = runAssert "attempt" do
-  n ← attempt (pure 42)
+test_try ∷ ∀ eff. TestEff eff Unit
+test_try = runAssert "try" do
+  n ← try (pure 42)
   case n of
     Right 42 → pure true
     _ → pure false
 
 test_throw ∷ ∀ eff. TestEff eff Unit
-test_throw = runAssert "attempt/throw" do
-  n ← attempt (throwError (error "Nope."))
+test_throw = runAssert "try/throw" do
+  n ← try (throwError (error "Nope."))
   pure (isLeft n)
 
 test_liftEff ∷ ∀ eff. TestEff eff Unit
@@ -115,12 +115,12 @@ test_join_throw = assert "join/throw" do
   thread ← forkAff do
     delay (Milliseconds 10.0)
     throwError (error "Nope.")
-  isLeft <$> attempt (joinThread thread)
+  isLeft <$> try (joinThread thread)
 
 test_join_throw_sync ∷ ∀ eff. TestAff eff Unit
 test_join_throw_sync = assert "join/throw/sync" do
   thread ← forkAff (throwError (error "Nope."))
-  isLeft <$> attempt (joinThread thread)
+  isLeft <$> try (joinThread thread)
 
 test_multi_join ∷ ∀ eff. TestAff eff Unit
 test_multi_join = assert "join/multi" do
@@ -212,7 +212,7 @@ test_kill ∷ ∀ eff. TestAff eff Unit
 test_kill = assert "kill" do
   thread ← forkAff $ makeAff \_ → pure nonCanceler
   killThread (error "Nope") thread
-  isLeft <$> attempt (joinThread thread)
+  isLeft <$> try (joinThread thread)
 
 test_kill_canceler ∷ ∀ eff. TestAff eff Unit
 test_kill_canceler = assert "kill/canceler" do
@@ -221,7 +221,7 @@ test_kill_canceler = assert "kill/canceler" do
     n ← makeAff \_ → pure (Canceler \_ → liftEff (writeRef ref 42))
     writeRef ref 2
   killThread (error "Nope") thread
-  res ← attempt (joinThread thread)
+  res ← try (joinThread thread)
   n ← readRef ref
   pure (n == 42 && (lmap message res) == Left "Nope")
 
@@ -238,7 +238,7 @@ test_kill_bracket = assert "kill/bracket" do
       (\_ → action "b")
       (\_ → action "c")
   killThread (error "Nope") thread
-  _ ← attempt (joinThread thread)
+  _ ← try (joinThread thread)
   eq "ab" <$> readRef ref
 
 test_kill_bracket_nested ∷ ∀ eff. TestAff eff Unit
@@ -260,7 +260,7 @@ test_kill_bracket_nested = assert "kill/bracket/nested" do
       (\s → void $ bracketAction (s <> "/release"))
       (\s → bracketAction (s <> "/run"))
   killThread (error "Nope") thread
-  _ ← attempt (joinThread thread)
+  _ ← try (joinThread thread)
   readRef ref <#> eq
     [ "foo/bar"
     , "foo/bar/run"
@@ -274,7 +274,7 @@ main ∷ TestEff () Unit
 main = do
   test_pure
   test_bind
-  test_attempt
+  test_try
   test_throw
   test_liftEff
 
