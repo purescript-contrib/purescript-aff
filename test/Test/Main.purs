@@ -1,6 +1,7 @@
 module Test.Main where
 
 import Prelude
+import Control.Alt ((<|>))
 import Control.Monad.Aff (Aff, Canceler(..), ASYNC, nonCanceler, runAff, launchAff, makeAff, try, bracket, delay, forkAff, joinThread, killThread)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Class (class MonadEff, liftEff)
@@ -10,6 +11,7 @@ import Control.Monad.Eff.Exception (Error, EXCEPTION, throwException, error, mes
 import Control.Monad.Eff.Ref (REF, Ref)
 import Control.Monad.Eff.Ref as Ref
 import Control.Monad.Error.Class (throwError)
+import Control.Parallel (parallel, sequential)
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..), isLeft)
 import Data.Foldable (sum)
@@ -40,7 +42,7 @@ assertEff s = case _ of
     Console.log ("[Error] " <> s)
     throwException err
   Right r → do
-    assert' s r
+    assert' ("Assertion failure " <> s) r
     Console.log ("[OK] " <> s)
 
 runAssert ∷ ∀ eff. String → TestAff eff Boolean → TestEff eff Unit
@@ -270,6 +272,80 @@ test_kill_bracket_nested = assert "kill/bracket/nested" do
     , "foo/bar/run/release/bar/release"
     ]
 
+test_parallel ∷ ∀ eff. TestAff eff Unit
+test_parallel = assert "parallel" do
+  ref ← newRef ""
+  let
+    action s = do
+      delay (Milliseconds 10.0)
+      modifyRef ref (_ <> s)
+      pure s
+  t1 ← forkAff $ sequential $
+    { a: _, b: _ }
+      <$> parallel (action "foo")
+      <*> parallel (action "bar")
+  delay (Milliseconds 10.0)
+  r1 ← readRef ref
+  r2 ← joinThread t1
+  pure (r1 == "foobar" && r2.a == "foo" && r2.b == "bar")
+
+test_kill_parallel ∷ ∀ eff. TestAff eff Unit
+test_kill_parallel = assert "kill/parallel" do
+  ref ← newRef ""
+  let
+    action s = do
+      bracket
+        (pure unit)
+        (\_ → modifyRef ref (_ <> "killed" <> s))
+        (\_ → do
+          delay (Milliseconds 10.0)
+          modifyRef ref (_ <> s))
+  t1 ← forkAff $ sequential $
+    parallel (action "foo") *> parallel (action "bar")
+  t2 ← forkAff do
+    delay (Milliseconds 5.0)
+    killThread (error "Nope") t1
+    modifyRef ref (_ <> "done")
+  _ ← try $ joinThread t1
+  _ ← try $ joinThread t2
+  eq "killedfookilledbardone" <$> readRef ref
+
+test_parallel_alt ∷ ∀ eff. TestAff eff Unit
+test_parallel_alt = assert "parallel/alt" do
+  ref ← newRef ""
+  let
+    action n s = do
+      delay (Milliseconds n)
+      modifyRef ref (_ <> s)
+      pure s
+  t1 ← forkAff $ sequential $
+    parallel (action 10.0 "foo") <|> parallel (action 5.0 "bar")
+  delay (Milliseconds 10.0)
+  r1 ← readRef ref
+  r2 ← joinThread t1
+  pure (r1 == "bar" && r2 == "bar")
+
+test_kill_parallel_alt ∷ ∀ eff. TestAff eff Unit
+test_kill_parallel_alt = assert "kill/parallel/alt" do
+  ref ← newRef ""
+  let
+    action n s = do
+      bracket
+        (pure unit)
+        (\_ → modifyRef ref (_ <> "killed" <> s))
+        (\_ → do
+          delay (Milliseconds n)
+          modifyRef ref (_ <> s))
+  t1 ← forkAff $ sequential $
+    parallel (action 10.0 "foo") <|> parallel (action 20.0 "bar")
+  t2 ← forkAff do
+    delay (Milliseconds 5.0)
+    killThread (error "Nope") t1
+    modifyRef ref (_ <> "done")
+  _ ← try $ joinThread t1
+  _ ← try $ joinThread t2
+  eq "killedfookilledbardone" <$> readRef ref
+
 main ∷ TestEff () Unit
 main = do
   test_pure
@@ -292,3 +368,7 @@ main = do
     test_kill_canceler
     test_kill_bracket
     test_kill_bracket_nested
+    test_parallel
+    test_kill_parallel
+    test_parallel_alt
+    test_kill_parallel_alt

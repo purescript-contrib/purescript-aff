@@ -10,6 +10,8 @@ module Control.Monad.Aff.Internal
   , bracket
   , delay
   , unsafeLaunchAff
+  , killThread
+  , joinThread
   ) where
 
 import Prelude
@@ -89,21 +91,31 @@ derive instance newtypeParAff ∷ Newtype (ParAff eff a) _
 derive newtype instance functorParAff ∷ Functor (ParAff eff)
 
 instance applyParAff ∷ Apply (ParAff eff) where
-  apply (ParAff ff) (ParAff fa) = ParAff (makeAff go)
-    where
-    go k = do
-      Thread t1 ← unsafeLaunchAff ff
-      Thread t2 ← unsafeLaunchAff fa
-      Thread t3 ← unsafeLaunchAff do
-        f ← try t1.join
-        a ← try t2.join
-        liftEff (k (f <*> a))
-      pure $ Canceler \err →
-        parSequence_
-          [ t3.kill err
-          , t1.kill err
-          , t2.kill err
-          ]
+  apply (ParAff ff) (ParAff fa) = ParAff $ makeAff \k → do
+    ref1 ← unsafeRunRef $ newRef Nothing
+    ref2 ← unsafeRunRef $ newRef Nothing
+
+    t1 ← unsafeLaunchAff do
+      f ← try ff
+      liftEff do
+        ma ← unsafeRunRef $ readRef ref2
+        case ma of
+          Nothing → unsafeRunRef $ writeRef ref1 (Just f)
+          Just a  → k (f <*> a)
+
+    t2 ← unsafeLaunchAff do
+      a ← try fa
+      liftEff do
+        mf ← unsafeRunRef $ readRef ref1
+        case mf of
+          Nothing → unsafeRunRef $ writeRef ref2 (Just a)
+          Just f  → k (f <*> a)
+
+    pure $ Canceler \err →
+      parSequence_
+        [ killThread err t1
+        , killThread err t2
+        ]
 
 instance applicativeParAff ∷ Applicative (ParAff eff) where
   pure = ParAff <<< pure
@@ -114,34 +126,41 @@ instance semigroupParAff ∷ Semigroup a ⇒ Semigroup (ParAff eff a) where
 instance monoidParAff ∷ Monoid a ⇒ Monoid (ParAff eff a) where
   mempty = pure mempty
 
+data AltStatus a
+  = Pending
+  | Completed a
+
 instance altParAff ∷ Alt (ParAff eff) where
-  alt (ParAff a1) (ParAff a2) = ParAff (makeAff go)
+  alt = runAlt
     where
-    go k = do
+    runAlt ∷ ∀ a. ParAff eff a → ParAff eff a → ParAff eff a
+    runAlt (ParAff a1) (ParAff a2) = ParAff $ makeAff \k → do
       ref ← unsafeRunRef $ newRef Nothing
-      Thread t1 ← unsafeLaunchAff a1
-      Thread t2 ← unsafeLaunchAff a2
+      t1 ← unsafeLaunchAff a1
+      t2 ← unsafeLaunchAff a2
 
       let
-        earlyError =
-          error "Alt ParAff: early exit"
+        completed ∷ Thread eff a → Either Error a → Aff eff Unit
+        completed t res = do
+          val ← liftEff $ unsafeRunRef $ readRef ref
+          case val, res of
+            _, Right _ → do
+              killThread (error "Alt ParAff: early exit") t
+              liftEff (k res)
+            Nothing, _ →
+              liftEff $ unsafeRunRef $ writeRef ref (Just res)
+            Just res', _ →
+              liftEff (k res')
 
-        runK t r = do
-          res ← liftEff $ unsafeRunRef $ readRef ref
-          case res, r of
-            Nothing, Left _ → liftEff $ unsafeRunRef $ writeRef ref (Just r)
-            Nothing, Right _ → t.kill earlyError *> liftEff (k r)
-            Just r', _ → t.kill earlyError *> liftEff (k r')
-
-      Thread t3 ← unsafeLaunchAff $ runK t2 =<< try t1.join
-      Thread t4 ← unsafeLaunchAff $ runK t1 =<< try t2.join
+      t3 ← unsafeLaunchAff $ completed t2 =<< try (joinThread t1)
+      t4 ← unsafeLaunchAff $ completed t1 =<< try (joinThread t2)
 
       pure $ Canceler \err →
         parSequence_
-          [ t3.kill earlyError
-          , t4.kill earlyError
-          , t1.kill earlyError
-          , t2.kill earlyError
+          [ killThread err t3
+          , killThread err t4
+          , killThread err t1
+          , killThread err t2
           ]
 
 instance plusParAff ∷ Plus (ParAff e) where
@@ -161,6 +180,12 @@ newtype Thread eff a = Thread
 instance functorThread ∷ Functor (Thread eff) where
   map f (Thread { kill, join }) = Thread { kill, join: f <$> join }
 
+killThread ∷ ∀ eff a. Error → Thread eff a → Aff eff Unit
+killThread e (Thread t) = t.kill e
+
+joinThread ∷ ∀ eff a. Thread eff a → Aff eff a
+joinThread (Thread t) = t.join
+
 newtype Canceler eff = Canceler (Error → Aff eff Unit)
 
 derive instance newtypeCanceler ∷ Newtype (Canceler eff) _
@@ -173,7 +198,7 @@ instance monoidCanceler ∷ Monoid (Canceler eff) where
   mempty = nonCanceler
 
 nonCanceler ∷ ∀ eff. Canceler eff
-nonCanceler = Canceler k where k _ = pure unit
+nonCanceler = Canceler (const (pure unit))
 
 launchAff ∷ ∀ eff a. Aff eff a → Eff (async ∷ ASYNC | eff) (Thread eff a)
 launchAff aff = Fn.runFn6 _launchAff isLeft unsafeFromLeft unsafeFromRight Left Right aff
@@ -207,8 +232,8 @@ foreign import _launchAff
 
 unsafeFromLeft ∷ ∀ x y. Either x y → x
 unsafeFromLeft = case _ of
-  Left a → a
-  Right  _ → unsafeCrashWith "unsafeFromLeft: Right"
+  Left a  → a
+  Right _ → unsafeCrashWith "unsafeFromLeft: Right"
 
 unsafeFromRight ∷ ∀ x y. Either x y → y
 unsafeFromRight = case _ of

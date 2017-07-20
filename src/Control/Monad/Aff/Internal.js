@@ -396,7 +396,6 @@ exports._launchAff = function (isLeft, fromLeft, fromRight, left, right, aff) {
       return function (error) {
         return new Aff(SYNC, function () {
           delete joins[jid];
-          return right();
         });
       };
     }
@@ -429,7 +428,7 @@ exports._launchAff = function (isLeft, fromLeft, fromRight, left, right, aff) {
               status   = RETURN;
               step     = null;
               fail     = null;
-              run(runTick++);
+              run(++runTick);
             }
             break;
           default:

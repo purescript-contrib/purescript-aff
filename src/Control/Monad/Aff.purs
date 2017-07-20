@@ -4,13 +4,11 @@ module Control.Monad.Aff
   , liftEff'
   , forkAff
   , runAff
-  , killThread
-  , joinThread
   ) where
 
 import Prelude
-import Control.Monad.Aff.Internal (ASYNC, Aff, Thread(..), launchAff, unsafeLaunchAff)
-import Control.Monad.Aff.Internal (Aff, ParAff, Thread, Canceler(..), ASYNC, bracket, delay, launchAff, makeAff, nonCanceler) as Internal
+import Control.Monad.Aff.Internal (ASYNC, Aff, Thread, launchAff, unsafeLaunchAff)
+import Control.Monad.Aff.Internal (Aff, ParAff, Thread, Canceler(..), ASYNC, bracket, delay, launchAff, makeAff, nonCanceler, joinThread, killThread) as Internal
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Class (liftEff)
 import Control.Monad.Eff.Exception (Error, EXCEPTION)
@@ -26,9 +24,3 @@ runAff k aff = void $ launchAff $ liftEff <<< k =<< try aff
 
 forkAff ∷ ∀ eff a. Aff eff a → Aff eff (Thread eff a)
 forkAff = liftEff <<< unsafeLaunchAff
-
-killThread ∷ ∀ eff a. Error → Thread eff a → Aff eff Unit
-killThread e (Thread t) = t.kill e
-
-joinThread ∷ ∀ eff a. Thread eff a → Aff eff a
-joinThread (Thread t) = t.join
