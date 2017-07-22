@@ -11,11 +11,10 @@ module Control.Monad.Aff.Console
   ) where
 
 import Prelude
-import Control.Monad.Eff.Console (CONSOLE) as Exports
-import Control.Monad.Eff.Console as C
-
 import Control.Monad.Aff (Aff)
 import Control.Monad.Eff.Class (liftEff)
+import Control.Monad.Eff.Console (CONSOLE) as Exports
+import Control.Monad.Eff.Console as C
 
 -- | Write a message to the console. Shorthand for `liftEff $ log x`.
 log :: forall eff. String -> Aff (console :: C.CONSOLE | eff) Unit

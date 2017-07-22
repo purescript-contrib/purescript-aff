@@ -1,7 +1,6 @@
 module Control.Monad.Aff.Class where
 
 import Prelude
-
 import Control.Monad.Aff (Aff)
 import Control.Monad.Cont.Trans (ContT)
 import Control.Monad.Eff.Class (class MonadEff)
@@ -13,7 +12,6 @@ import Control.Monad.RWS.Trans (RWST)
 import Control.Monad.State.Trans (StateT)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Writer.Trans (WriterT)
-
 import Data.Monoid (class Monoid)
 
 class MonadEff eff m ⇐ MonadAff eff m | m → eff where
