@@ -2,7 +2,7 @@
   "private": true,
   "scripts": {
     "clean": "rimraf output && rimraf .pulp-cache",
-    "build": "jshint src && jscs src && pulp build -- --censor-lib --strict",
+    "build": "jshint src --verbose && jscs src && pulp build -- --censor-lib --strict",
     "test": "pulp test"
   },
   "devDependencies": {
@@ -12,5 +12,8 @@
     "purescript-psa": "^0.5.0",
     "purescript": "^0.11.0",
     "rimraf": "^2.5.4"
+  },
+  "jscsConfig": {
+    "validateIndentation": false
   }
 }

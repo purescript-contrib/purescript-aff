@@ -1,3 +1,5 @@
+/* globals setImmediate, clearImmediate, setTimeout, clearTimeout */
+/* jshint -W083, -W098 */
 "use strict";
 
 /*
@@ -29,7 +31,7 @@ var RECOVER   = "Recover";   // Continue with `Either Error a` (via attempt)
 var RESUME    = "Resume";    // Continue indiscriminately
 var FINALIZED = "Finalized"; // Marker for finalization
 
-function Aff (tag, _1, _2, _3) {
+function Aff(tag, _1, _2, _3) {
   this.tag = tag;
   this._1  = _1;
   this._2  = _2;
@@ -117,6 +119,33 @@ exports._delay = function () {
   };
 }();
 
+function runEff(eff) {
+  try {
+    eff();
+  } catch (error) {
+    setTimeout(function () {
+      throw error;
+    }, 0);
+  }
+}
+
+function runSync(left, right, eff) {
+  try {
+    return right(eff());
+  } catch (error) {
+    return left(error);
+  }
+}
+
+function runAsync(left, eff, k) {
+  try {
+    return eff(k)();
+  } catch (error) {
+    k(left(error))();
+    return nonCanceler;
+  }
+}
+
 // Thread state machine
 var BLOCKED   = 0; // No effect is running.
 var PENDING   = 1; // An async effect is running.
@@ -164,7 +193,7 @@ exports._launchAff = function (isLeft, fromLeft, fromRight, left, right, aff) {
     // accidentally resuming the same thread. A common example may be invoking
     // the provided callback in `makeAff` more than once, but it may also be an
     // async effect resuming after the thread was already cancelled.
-    function run (localRunTick) {
+    function run(localRunTick) {
       while (1) {
         switch (status) {
         case BINDSTEP:
@@ -363,14 +392,16 @@ exports._launchAff = function (isLeft, fromLeft, fromRight, left, right, aff) {
         case COMPLETED:
           tmp = false;
           for (var k in joins) {
-            tmp = true;
-            runEff(joins[k](step));
+            if ({}.hasOwnProperty.call(joins, k)) {
+              tmp = true;
+              runEff(joins[k](step));
+            }
           }
           joins = tmp;
           // If we have an unhandled exception, and no other thread has joined
           // then we need to throw the exception in a fresh stack.
           if (isLeft(step) && !joins) {
-            setTimeout(function() {
+            setTimeout(function () {
               // Guard on joins because a completely synchronous thread can
               // still have an observer.
               if (!joins) {
@@ -390,7 +421,7 @@ exports._launchAff = function (isLeft, fromLeft, fromRight, left, right, aff) {
       }
     }
 
-    function addJoinCallback (cb) {
+    function addJoinCallback(cb) {
       var jid    = joinId++;
       joins[jid] = cb;
       return function (error) {
@@ -400,7 +431,7 @@ exports._launchAff = function (isLeft, fromLeft, fromRight, left, right, aff) {
       };
     }
 
-    function kill (error) {
+    function kill(error) {
       return new Aff(ASYNC, function (cb) {
         return function () {
           // Shadow the canceler binding because it can potentially be
@@ -447,7 +478,7 @@ exports._launchAff = function (isLeft, fromLeft, fromRight, left, right, aff) {
       });
     }
 
-    function join () {
+    function join() {
       return new Aff(ASYNC, function (cb) {
         return function () {
           if (status === COMPLETED) {
@@ -468,30 +499,3 @@ exports._launchAff = function (isLeft, fromLeft, fromRight, left, right, aff) {
     };
   };
 };
-
-function runEff (eff) {
-  try {
-    eff();
-  } catch (error) {
-    setTimeout(function () {
-      throw error;
-    }, 0);
-  }
-}
-
-function runSync (left, right, eff) {
-  try {
-    return right(eff());
-  } catch (error) {
-    return left(error);
-  }
-}
-
-function runAsync (left, eff, k) {
-  try {
-    return eff(k)();
-  } catch (error) {
-    k(left(error))();
-    return nonCanceler;
-  }
-}
