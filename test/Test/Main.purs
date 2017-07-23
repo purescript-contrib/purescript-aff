@@ -347,8 +347,8 @@ test_kill_parallel_alt = assert "kill/parallel/alt" do
   _ ← try $ joinThread t2
   eq "killedfookilledbardone" <$> readRef ref
 
-test_mapThread ∷ ∀ eff. TestAff eff Unit
-test_mapThread = assert "mapThread" do
+test_thread_map ∷ ∀ eff. TestAff eff Unit
+test_thread_map = assert "thread/map" do
   ref ← newRef 0
   let
     mapFn a = runPure do
@@ -363,6 +363,26 @@ test_mapThread = assert "mapThread" do
   b ← joinThread t2
   n ← readRef ref
   pure (a == 11 && b == 11 && n == 1)
+
+test_thread_apply ∷ ∀ eff. TestAff eff Unit
+test_thread_apply = assert "thread/apply" do
+  ref ← newRef 0
+  let
+    applyFn a b = runPure do
+      unsafeRunRef $ Ref.modifyRef ref (_ + 1)
+      pure (a + b)
+  t1 ← forkAff do
+    delay (Milliseconds 10.0)
+    pure 10
+  t2 ← forkAff do
+    delay (Milliseconds 15.0)
+    pure 12
+  let
+    t3 = applyFn <$> t1 <*> t2
+  a ← joinThread t3
+  b ← joinThread t3
+  n ← readRef ref
+  pure (a == 22 && b == 22 && n == 1)
 
 main ∷ TestEff () Unit
 main = do
@@ -390,4 +410,5 @@ main = do
     test_kill_parallel
     test_parallel_alt
     test_kill_parallel_alt
-    test_mapThread
+    test_thread_map
+    test_thread_apply

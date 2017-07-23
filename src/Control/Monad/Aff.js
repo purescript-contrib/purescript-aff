@@ -2,6 +2,9 @@
 /* jshint -W083, -W098 */
 "use strict";
 
+// A unique value for empty.
+var EMPTY = {};
+
 /*
 
 An awkward approximation. We elide evidence we would otherwise need in PS for
@@ -90,47 +93,37 @@ exports.bracket = function (acquire) {
   };
 };
 
-exports.mapThread = function () {
-  var EMPTY = {};
-
-  return function (f) {
-    return function (thread) {
-      var value = EMPTY;
-
-      function force() {
-        if (value === EMPTY) {
-          return new Aff(BIND, thread.join, function (result) {
-            value = new Aff(PURE, f(result));
-            return value;
-          });
-        } else {
-          return value;
-        }
-      }
-
-      return {
-        kill: thread.kill,
-        join: new Aff(BIND, new Aff(PURE, void 0), force)
-      };
-    };
-  };
-}();
+exports.memoAff = function (aff) {
+  var value = EMPTY;
+  return new Aff(BIND, new Aff(PURE, void 0), function () {
+    if (value === EMPTY) {
+      return new Aff(BIND, aff, function (result) {
+        value = new Aff(PURE, result);
+        return value;
+      });
+    } else {
+      return value;
+    }
+  });
+};
 
 exports._delay = function () {
-  var setDelay = function (n, k) {
+  function setDelay(n, k) {
     if (n === 0 && typeof setImmediate !== "undefined") {
       return setImmediate(k);
     } else {
       return setTimeout(k, n);
     }
-  };
-  var clearDelay = function (n, t) {
+  }
+
+  function clearDelay(n, t) {
     if (n === 0 && typeof clearImmediate !== "undefined") {
       return clearImmediate(t);
     } else {
       return clearTimeout(t);
     }
-  };
+  }
+
   return function (right, ms) {
     return new Aff(ASYNC, function (cb) {
       return function () {

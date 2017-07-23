@@ -34,7 +34,7 @@ import Control.Monad.Rec.Class (class MonadRec, Step(..))
 import Control.MonadPlus (class MonadPlus)
 import Control.MonadZero (class MonadZero)
 import Control.Parallel (parSequence_)
-import Control.Parallel.Class (class Parallel)
+import Control.Parallel.Class (class Parallel, parallel, sequential)
 import Control.Plus (class Plus, empty)
 import Data.Either (Either(..), isLeft)
 import Data.Function.Uncurried as Fn
@@ -190,7 +190,25 @@ newtype Thread eff a = Thread
   }
 
 instance functorThread ∷ Functor (Thread eff) where
-  map = mapThread
+  map f (Thread { kill, join }) = Thread
+    { kill
+    , join: memoAff (f <$> join)
+    }
+
+instance applyThread ∷ Apply (Thread eff) where
+  apply t1 t2 = Thread
+    { kill: \err → sequential $ parallel (killThread err t1) *> parallel (killThread err t2)
+    , join: memoAff do
+        f ← joinThread t1
+        a ← joinThread t2
+        pure (f a)
+    }
+
+instance applicativeThread ∷ Applicative (Thread eff) where
+  pure a = Thread
+    { kill: const (pure unit)
+    , join: pure a
+    }
 
 killThread ∷ ∀ eff a. Error → Thread eff a → Aff eff Unit
 killThread e (Thread t) = t.kill e
@@ -242,7 +260,7 @@ foreign import _delay ∷ ∀ a eff. Fn.Fn2 (Unit → Either a Unit) Number (Aff
 foreign import _liftEff ∷ ∀ eff a. Eff eff a → Aff eff a
 foreign import bracket ∷ ∀ eff a b. Aff eff a → (a → Aff eff Unit) → (a → Aff eff b) → Aff eff b
 foreign import makeAff ∷ ∀ eff a. ((Either Error a → Eff eff Unit) → Eff eff (Canceler eff)) → Aff eff a
-foreign import mapThread ∷ ∀ eff a b. (a → b) → Thread eff a → Thread eff b
+foreign import memoAff ∷ ∀ eff a. Aff eff a → Aff eff a
 
 foreign import _launchAff
   ∷ ∀ eff a
