@@ -34,7 +34,7 @@ import Control.Monad.Rec.Class (class MonadRec, Step(..))
 import Control.MonadPlus (class MonadPlus)
 import Control.MonadZero (class MonadZero)
 import Control.Parallel (parSequence_)
-import Control.Parallel.Class (class Parallel, parallel, sequential)
+import Control.Parallel.Class (class Parallel)
 import Control.Plus (class Plus, empty)
 import Data.Either (Either(..), isLeft)
 import Data.Function.Uncurried as Fn
@@ -197,11 +197,8 @@ instance functorThread ∷ Functor (Thread eff) where
 
 instance applyThread ∷ Apply (Thread eff) where
   apply t1 t2 = Thread
-    { kill: \err → sequential $ parallel (killThread err t1) *> parallel (killThread err t2)
-    , join: memoAff do
-        f ← joinThread t1
-        a ← joinThread t2
-        pure (f a)
+    { kill: \err → parSequence_ [ killThread err t1, killThread err t2 ]
+    , join: memoAff (joinThread t1 <*> joinThread t2)
     }
 
 instance applicativeThread ∷ Applicative (Thread eff) where
