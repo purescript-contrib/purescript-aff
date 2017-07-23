@@ -90,6 +90,32 @@ exports.bracket = function (acquire) {
   };
 };
 
+exports.mapThread = function () {
+  var EMPTY = {};
+
+  return function (f) {
+    return function (thread) {
+      var value = EMPTY;
+
+      function force() {
+        if (value === EMPTY) {
+          return new Aff(BIND, thread.join, function (result) {
+            value = new Aff(PURE, f(result));
+            return value;
+          });
+        } else {
+          return value;
+        }
+      }
+
+      return {
+        kill: thread.kill,
+        join: new Aff(BIND, new Aff(PURE, void 0), force)
+      };
+    };
+  };
+}();
+
 exports._delay = function () {
   var setDelay = function (n, k) {
     if (n === 0 && typeof setImmediate !== "undefined") {

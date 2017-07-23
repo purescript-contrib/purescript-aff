@@ -2,14 +2,15 @@ module Test.Main where
 
 import Prelude
 import Control.Alt ((<|>))
-import Control.Monad.Aff (Aff, Canceler(..), ASYNC, nonCanceler, runAff, launchAff, makeAff, try, bracket, delay, forkAff, joinThread, killThread)
-import Control.Monad.Eff (Eff)
+import Control.Monad.Aff (Aff, Canceler(..), nonCanceler, runAff, launchAff, makeAff, try, bracket, delay, forkAff, joinThread, killThread)
+import Control.Monad.Eff (Eff, runPure)
 import Control.Monad.Eff.Class (class MonadEff, liftEff)
 import Control.Monad.Eff.Console (CONSOLE)
 import Control.Monad.Eff.Console as Console
 import Control.Monad.Eff.Exception (Error, EXCEPTION, throwException, error, message)
 import Control.Monad.Eff.Ref (REF, Ref)
 import Control.Monad.Eff.Ref as Ref
+import Control.Monad.Eff.Ref.Unsafe (unsafeRunRef)
 import Control.Monad.Error.Class (throwError)
 import Control.Parallel (parallel, sequential)
 import Data.Bifunctor (lmap)
@@ -21,7 +22,7 @@ import Data.Time.Duration (Milliseconds(..))
 import Test.Assert (assert', ASSERT)
 
 type TestEffects eff = (assert ∷ ASSERT, console ∷ CONSOLE, ref ∷ REF, exception ∷ EXCEPTION | eff)
-type TestEff eff = Eff (TestEffects (async ∷ ASYNC | eff))
+type TestEff eff = Eff (TestEffects eff)
 type TestAff eff = Aff (TestEffects eff)
 
 newRef ∷ ∀ m eff a. MonadEff (ref ∷ REF | eff) m ⇒ a → m (Ref a)
@@ -346,6 +347,23 @@ test_kill_parallel_alt = assert "kill/parallel/alt" do
   _ ← try $ joinThread t2
   eq "killedfookilledbardone" <$> readRef ref
 
+test_mapThread ∷ ∀ eff. TestAff eff Unit
+test_mapThread = assert "mapThread" do
+  ref ← newRef 0
+  let
+    mapFn a = runPure do
+      unsafeRunRef $ Ref.modifyRef ref (_ + 1)
+      pure (a + 1)
+  t1 ← forkAff do
+    delay (Milliseconds 10.0)
+    pure 10
+  let
+    t2 = mapFn <$> t1
+  a ← joinThread t2
+  b ← joinThread t2
+  n ← readRef ref
+  pure (a == 11 && b == 11 && n == 1)
+
 main ∷ TestEff () Unit
 main = do
   test_pure
@@ -372,3 +390,4 @@ main = do
     test_kill_parallel
     test_parallel_alt
     test_kill_parallel_alt
+    test_mapThread

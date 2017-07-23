@@ -15,6 +15,7 @@ module Control.Monad.Aff
   , atomically
   , killThread
   , joinThread
+  , module Exports
   ) where
 
 import Prelude
@@ -28,6 +29,7 @@ import Control.Monad.Eff.Ref (newRef, readRef, writeRef)
 import Control.Monad.Eff.Ref.Unsafe (unsafeRunRef)
 import Control.Monad.Eff.Unsafe (unsafeCoerceEff)
 import Control.Monad.Error.Class (class MonadError, class MonadThrow, throwError, catchError, try)
+import Control.Monad.Error.Class (try) as Exports
 import Control.Monad.Rec.Class (class MonadRec, Step(..))
 import Control.MonadPlus (class MonadPlus)
 import Control.MonadZero (class MonadZero)
@@ -188,7 +190,7 @@ newtype Thread eff a = Thread
   }
 
 instance functorThread ∷ Functor (Thread eff) where
-  map f (Thread { kill, join }) = Thread { kill, join: f <$> join }
+  map = mapThread
 
 killThread ∷ ∀ eff a. Error → Thread eff a → Aff eff Unit
 killThread e (Thread t) = t.kill e
@@ -240,6 +242,7 @@ foreign import _delay ∷ ∀ a eff. Fn.Fn2 (Unit → Either a Unit) Number (Aff
 foreign import _liftEff ∷ ∀ eff a. Eff eff a → Aff eff a
 foreign import bracket ∷ ∀ eff a b. Aff eff a → (a → Aff eff Unit) → (a → Aff eff b) → Aff eff b
 foreign import makeAff ∷ ∀ eff a. ((Either Error a → Eff eff Unit) → Eff eff (Canceler eff)) → Aff eff a
+foreign import mapThread ∷ ∀ eff a b. (a → b) → Thread eff a → Thread eff b
 
 foreign import _launchAff
   ∷ ∀ eff a
