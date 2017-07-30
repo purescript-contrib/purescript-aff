@@ -27,12 +27,26 @@ var BIND    = "Bind";
 var CATCH   = "Catch";
 var BRACKET = "Bracket";
 
+/*
+
+data ParAff eff a
+  = forall b. Map (b -> a) (ParAff eff b)
+  | forall b. Apply (ParAff eff (b -> a)) (ParAff eff b)
+  | Alt (ParAff eff a) (ParAff eff a)
+  | Par (Aff eff a)
+
+*/
+var MAP   = "Map"
+var APPLY = "Apply"
+var ALT   = "Alt"
+
 // These are constructors used to implement the recover stack. We still use the
 // Aff constructor so that property offsets can always inline.
 var CONS      = "Cons";      // Cons-list
 var RECOVER   = "Recover";   // Continue with `Either Error a` (via attempt)
 var RESUME    = "Resume";    // Continue indiscriminately
 var FINALIZED = "Finalized"; // Marker for finalization
+var THREAD    = "Thread";
 
 function Aff(tag, _1, _2, _3) {
   this.tag = tag;
@@ -79,6 +93,24 @@ exports._bind = function (aff) {
 
 exports._liftEff = function (eff) {
   return new Aff(SYNC, eff);
+};
+
+exports._parAffMap = function (f) {
+  return function (aff) {
+    return new Aff(MAP, f, aff);
+  };
+};
+
+exports._parAffApply = function (aff1) {
+  return function (aff2) {
+    return new Aff(APPLY, aff1, aff2);
+  };
+};
+
+exports._parAffAlt = function (aff1) {
+  return function (aff2) {
+    return new Aff(ALT, aff1, aff2);
+  };
 };
 
 exports.makeAff = function (k) {
@@ -214,6 +246,10 @@ exports._launchAff = function (isLeft, fromLeft, fromRight, left, right, aff) {
     // async effect resuming after the thread was already cancelled.
     function run(localRunTick) {
       while (1) {
+        tmp       = null;
+        result    = null;
+        attempt   = null;
+        canceler  = null;
         switch (status) {
         case BINDSTEP:
           status = CONTINUE;
@@ -432,11 +468,6 @@ exports._launchAff = function (isLeft, fromLeft, fromRight, left, right, aff) {
         case BLOCKED: return;
         case PENDING: return;
         }
-
-        tmp       = null;
-        result    = null;
-        attempt   = null;
-        canceler  = null;
       }
     }
 
@@ -517,4 +548,357 @@ exports._launchAff = function (isLeft, fromLeft, fromRight, left, right, aff) {
       join: join()
     };
   };
+};
+
+exports._sequential = function (isLeft, fromLeft, fromRight, left, right, runAff, par) {
+  function runParAff(cb) {
+    // Table of all forked threads.
+    var threadId  = 0;
+    var threads   = {};
+
+    // Table of currently running cancelers, as a product of `Alt` behavior.
+    var killId    = 0;
+    var kills     = {};
+
+    // Error used for early cancelation on Alt branches.
+    var early     = new Error("ParAff early exit");
+
+    // Error used to kill the entire tree.
+    var interrupt = null;
+
+    // The root pointer of the tree.
+    var root      = EMPTY;
+
+    // Walks the applicative tree, substituting non-applicative nodes with
+    // `THREAD` nodes. In this tree, all applicative nodes use the `_3` slot
+    // as a mutable slot for memoization. In an unresolved state, the `_3`
+    // slot is `EMPTY`. In the cases of `ALT` and `APPLY`, we always walk
+    // the left side first, because both operations are left-associative. As
+    // we `RETURN` from those branches, we then walk the right side.
+    function run() {
+      var status = CONTINUE;
+      var step   = par;
+      var head   = null;
+      var tail   = null;
+      var tmp, tid;
+
+      loop: while (1) {
+        tmp = null;
+        tid = null;
+
+        switch (status) {
+        case CONTINUE:
+          switch (step.tag) {
+          case MAP:
+            if (head) {
+              tail = new Aff(CONS, head, tail);
+            }
+            head = new Aff(MAP, step._1, EMPTY, EMPTY);
+            step = step._2;
+            break;
+          case APPLY:
+            if (head) {
+              tail = new Aff(CONS, head, tail);
+            }
+            head = new Aff(APPLY, EMPTY, step._2, EMPTY);
+            step = step._1;
+            break;
+          case ALT:
+            if (head) {
+              tail = new Aff(CONS, head, tail);
+            }
+            head = new Aff(ALT, EMPTY, step._2, EMPTY);
+            step = step._1;
+            break;
+          default:
+            // When we hit a leaf value, we suspend the stack in the `THREAD`.
+            // When the thread resolves, it can bubble back up the tree.
+            tid    = threadId++;
+            status = RETURN;
+            tmp    = step;
+            step   = new Aff(THREAD, tid, new Aff(CONS, head, tail), EMPTY);
+            // We prime the effect, but don't immediately run it. We need to
+            // walk the entire tree first before actually running effects
+            // because they may all be synchronous and resolve immediately, at
+            // which point it would attempt to resolve against an incomplete
+            // tree.
+            threads[tid] = runAff(resolve(step))(tmp);
+          }
+          break;
+        case RETURN:
+          // Terminal case, we are back at the root.
+          if (head === null) {
+            break loop;
+          }
+          // If we are done with the right side, we need to continue down the
+          // left. Otherwise we should continue up the stack.
+          if (head._1 === EMPTY) {
+            head._1 = step;
+            status  = CONTINUE;
+            step    = head._2;
+            head._2 = EMPTY;
+          } else {
+            head._2 = step;
+            step    = head;
+            if (tail === null) {
+              head  = null;
+            } else {
+              head  = tail._1;
+              tail  = tail._2;
+            }
+          }
+        }
+      }
+
+      // Keep a reference to the tree root so it can be cancelled.
+      root = step;
+
+      // Walk the primed threads and fork them. We store the actual `Thread`
+      // reference so we can cancel them when needed.
+      for (tid = 0; tid < threadId; tid++) {
+        threads[tid] = threads[tid]();
+      }
+    }
+
+    function resolve(thread) {
+      return function (result) {
+        return function () {
+          delete threads[thread._1];
+          thread._3 = result;
+          join(result, thread._2._1, thread._2._2);
+        };
+      };
+    }
+
+    // When a thread resolves, we need to bubble back up the tree with the
+    // result, computing the applicative nodes.
+    function join(result, head, tail) {
+      var fail, step, lhs, rhs, tmp, kid;
+
+      if (isLeft(result)) {
+        fail = result;
+        step = null;
+      } else {
+        step = result;
+        fail = null;
+      }
+
+      loop: while (1) {
+        lhs = null;
+        rhs = null;
+        tmp = null;
+        kid = null;
+
+        // We should never continue if the entire tree has been interrupted.
+        if (interrupt !== null) {
+          return;
+        }
+
+        // We've made it all the way to the root of the tree, which means
+        // the tree has fully evaluated.
+        if (head === null) {
+          cb(fail || step)();
+          return;
+        }
+
+        // The tree has already been computed, so we shouldn't try to do it
+        // again. This should never happen.
+        // TODO: Remove this?
+        if (head._3 !== EMPTY) {
+          return;
+        }
+
+        switch (head.tag) {
+        case MAP:
+          if (fail === null) {
+            head._3 = right(head._1(fromRight(step)));
+            step    = head._3;
+          } else {
+            head._3 = fail;
+          }
+          break;
+        case APPLY:
+          lhs = head._1._3;
+          rhs = head._2._3;
+          // We can only proceed if both sides have resolved.
+          if (lhs === EMPTY || rhs === EMPTY) {
+            return;
+          }
+          // If either side resolve with an error, we should continue with
+          // the first error.
+          if (isLeft(lhs)) {
+            if (isLeft(rhs)) {
+              if (step === lhs) {
+                step = rhs;
+              }
+            } else {
+              step = lhs;
+            }
+          } else if (isLeft(rhs)) {
+            step = rhs;
+          } else {
+            head._3 = right(fromRight(lhs)(fromRight(rhs)));
+            step    = head._3;
+          }
+          break;
+        case ALT:
+          lhs     = head._1._3;
+          rhs     = head._2._3;
+          head._3 = step;
+          tmp     = true;
+          kid     = killId++;
+
+          // Once a side has resolved, we need to cancel the side that is still
+          // pending before we can continue.
+          kills[kid] = kill(early, step === lhs ? head._2 : head._1, function (killResult) {
+            return function () {
+              delete kills[kid];
+              if (isLeft(killResult)) {
+                fail = killResult;
+                step = null;
+              }
+              if (tmp) {
+                tmp = false;
+              } else if (tail === null) {
+                join(fail || step, null, null);
+              } else {
+                join(fail || step, tail._1, tail._2);
+              }
+            };
+          });
+
+          if (tmp) {
+            tmp = false;
+            return;
+          }
+          break;
+        }
+
+        if (tail === null) {
+          head = null;
+        } else {
+          head = tail._1;
+          tail = tail._2;
+        }
+      }
+    }
+
+    // Walks a tree, invoking all the cancelers. Returns the table of pending
+    // cancellation threads.
+    function kill(error, par, cb) {
+      var step  = par;
+      var fail  = null;
+      var head  = null;
+      var tail  = null;
+      var count = 0;
+      var kills = {};
+      var tmp, kid;
+
+      loop: while (1) {
+        tmp = null;
+        kid = null;
+
+        switch (step.tag) {
+        case THREAD:
+          tmp = threads[step._1];
+          kid = count++;
+          if (tmp) {
+            // Again, we prime the effect but don't run it yet, so that we can
+            // collect all the threads first.
+            kills[kid] = runAff(function (result) {
+              return function () {
+                count--;
+                if (fail === null && isLeft(result)) {
+                  fail = result;
+                }
+                // We can resolve the callback when all threads have died.
+                if (count === 0) {
+                  cb(fail || right(void 0))();
+                }
+              };
+            })(tmp.kill(error));
+          }
+          // Terminal case.
+          if (head === null) {
+            break loop;
+          }
+          // Go down the right side of the tree.
+          step = head._2;
+          if (tail === null) {
+            head = null;
+          } else {
+            head = tail._1;
+            tail = tail._2;
+          }
+          break;
+        case MAP:
+          step = step._2;
+          break;
+        case APPLY:
+        case ALT:
+          if (head) {
+            tail = new Aff(CONS, head, tail);
+          }
+          head = step;
+          step = step._1;
+          break;
+        }
+      }
+
+      // Run the cancelation effects. We alias `count` because it's mutable.
+      for (kid = 0, tmp = count; kid < tmp; kid++) {
+        kills[kid] = kills[kid]();
+      }
+
+      return kills;
+    }
+
+    function ignore () {
+      return function () {};
+    }
+
+    // Cancels the entire tree. If there are already subtrees being canceled,
+    // we need to first cancel those joins. This is important so that errors
+    // don't accidentally get swallowed by irrelevant join callbacks.
+    function cancel(error, cb) {
+      interrupt = left(error);
+
+      // We can drop the threads here because we are only canceling join
+      // attempts, which are synchronous anyway.
+      for (var kid = 0, n = killId; kid < n; kid++) {
+        runAff(ignore, kills[kid].kill(error))();
+      }
+
+      var newKills = kill(error, root, cb);
+
+      return function (killError) {
+        return new Aff(ASYNC, function (killCb) {
+          return function () {
+            for (var kid in newKills) {
+              if (newKills.hasOwnProperty(kid)) {
+                runAff(ignore, newKills[kid].kill(killError))();
+              }
+            }
+            return nonCanceler;
+          };
+        });
+      };
+    }
+
+    run();
+
+    return function (killError) {
+      return new Aff(ASYNC, function (killCb) {
+        return function () {
+          return cancel(killError, killCb);
+        };
+      });
+    };
+  }
+
+  return new Aff(ASYNC, function (cb) {
+    return function () {
+      return runParAff(cb);
+    };
+  });
 };

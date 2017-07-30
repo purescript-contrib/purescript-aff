@@ -7,6 +7,7 @@ module Control.Monad.Aff
   , makeAff
   , launchAff
   , runAff
+  , runAff_
   , forkAff
   , liftEff'
   , bracket
@@ -25,25 +26,27 @@ import Control.Apply (lift2)
 import Control.Monad.Eff (Eff, kind Effect)
 import Control.Monad.Eff.Class (class MonadEff, liftEff)
 import Control.Monad.Eff.Exception (Error, EXCEPTION, error)
-import Control.Monad.Eff.Ref (newRef, readRef, writeRef)
-import Control.Monad.Eff.Ref.Unsafe (unsafeRunRef)
 import Control.Monad.Eff.Unsafe (unsafeCoerceEff)
 import Control.Monad.Error.Class (class MonadError, class MonadThrow, throwError, catchError, try)
 import Control.Monad.Error.Class (try) as Exports
 import Control.Monad.Rec.Class (class MonadRec, Step(..))
 import Control.MonadPlus (class MonadPlus)
 import Control.MonadZero (class MonadZero)
-import Control.Parallel (parSequence_)
+import Control.Parallel (parSequence_, parallel)
 import Control.Parallel.Class (class Parallel)
 import Control.Plus (class Plus, empty)
 import Data.Either (Either(..), isLeft)
 import Data.Function.Uncurried as Fn
-import Data.Maybe (Maybe(..))
 import Data.Monoid (class Monoid, mempty)
 import Data.Newtype (class Newtype)
 import Data.Time.Duration (Milliseconds(..))
 import Partial.Unsafe (unsafeCrashWith)
+import Unsafe.Coerce (unsafeCoerce)
 
+-- | An `Aff eff a` is an asynchronous computation with effects `eff`. The
+-- | computation may either error with an exception, or produce a result of
+-- | type `a`. `Aff` effects are assembled from primitive `Eff` effects using
+-- | `makeAff`.
 foreign import data Aff ∷ # Effect → Type → Type
 
 instance functorAff ∷ Functor (Aff eff) where
@@ -96,41 +99,16 @@ instance monadErrorAff ∷ MonadError Error (Aff eff) where
 instance monadEffAff ∷ MonadEff eff (Aff eff) where
   liftEff = _liftEff
 
-newtype ParAff eff a = ParAff (Aff eff a)
+foreign import data ParAff ∷ # Effect → Type → Type
 
-derive instance newtypeParAff ∷ Newtype (ParAff eff a) _
-
-derive newtype instance functorParAff ∷ Functor (ParAff eff)
+instance functorParAff ∷ Functor (ParAff eff) where
+  map = _parAffMap
 
 instance applyParAff ∷ Apply (ParAff eff) where
-  apply (ParAff ff) (ParAff fa) = ParAff $ makeAff \k → do
-    ref1 ← unsafeRunRef $ newRef Nothing
-    ref2 ← unsafeRunRef $ newRef Nothing
-
-    t1 ← launchAff do
-      f ← try ff
-      liftEff do
-        ma ← unsafeRunRef $ readRef ref2
-        case ma of
-          Nothing → unsafeRunRef $ writeRef ref1 (Just f)
-          Just a  → k (f <*> a)
-
-    t2 ← launchAff do
-      a ← try fa
-      liftEff do
-        mf ← unsafeRunRef $ readRef ref1
-        case mf of
-          Nothing → unsafeRunRef $ writeRef ref2 (Just a)
-          Just f  → k (f <*> a)
-
-    pure $ Canceler \err →
-      parSequence_
-        [ killThread err t1
-        , killThread err t2
-        ]
+  apply = _parAffApply
 
 instance applicativeParAff ∷ Applicative (ParAff eff) where
-  pure = ParAff <<< pure
+  pure = parallel <<< pure
 
 instance semigroupParAff ∷ Semigroup a ⇒ Semigroup (ParAff eff a) where
   append = lift2 append
@@ -138,51 +116,17 @@ instance semigroupParAff ∷ Semigroup a ⇒ Semigroup (ParAff eff a) where
 instance monoidParAff ∷ Monoid a ⇒ Monoid (ParAff eff a) where
   mempty = pure mempty
 
-data AltStatus a
-  = Pending
-  | Completed a
-
 instance altParAff ∷ Alt (ParAff eff) where
-  alt = runAlt
-    where
-    runAlt ∷ ∀ a. ParAff eff a → ParAff eff a → ParAff eff a
-    runAlt (ParAff a1) (ParAff a2) = ParAff $ makeAff \k → do
-      ref ← unsafeRunRef $ newRef Nothing
-      t1 ← launchAff a1
-      t2 ← launchAff a2
-
-      let
-        completed ∷ Thread eff a → Either Error a → Aff eff Unit
-        completed t res = do
-          val ← liftEff $ unsafeRunRef $ readRef ref
-          case val, res of
-            _, Right _ → do
-              killThread (error "Alt ParAff: early exit") t
-              liftEff (k res)
-            Nothing, _ →
-              liftEff $ unsafeRunRef $ writeRef ref (Just res)
-            Just res', _ →
-              liftEff (k res')
-
-      t3 ← launchAff $ completed t2 =<< try (joinThread t1)
-      t4 ← launchAff $ completed t1 =<< try (joinThread t2)
-
-      pure $ Canceler \err →
-        parSequence_
-          [ killThread err t3
-          , killThread err t4
-          , killThread err t1
-          , killThread err t2
-          ]
+  alt = _parAffAlt
 
 instance plusParAff ∷ Plus (ParAff e) where
-  empty = ParAff empty
+  empty = parallel empty
 
 instance alternativeParAff ∷ Alternative (ParAff e)
 
 instance parallelAff ∷ Parallel (ParAff eff) (Aff eff) where
-  parallel = ParAff
-  sequential (ParAff aff) = aff
+  parallel = (unsafeCoerce ∷ ∀ a. Aff eff a → ParAff eff a)
+  sequential a = Fn.runFn7 _sequential isLeft unsafeFromLeft unsafeFromRight Left Right runAff a
 
 newtype Thread eff a = Thread
   { kill ∷ Error → Aff eff Unit
@@ -230,8 +174,11 @@ nonCanceler = Canceler (const (pure unit))
 launchAff ∷ ∀ eff a. Aff eff a → Eff eff (Thread eff a)
 launchAff aff = Fn.runFn6 _launchAff isLeft unsafeFromLeft unsafeFromRight Left Right aff
 
-runAff ∷ ∀ eff a. (Either Error a → Eff eff Unit) → Aff eff a → Eff eff Unit
-runAff k aff = void $ launchAff $ liftEff <<< k =<< try aff
+runAff ∷ ∀ eff a. (Either Error a → Eff eff Unit) → Aff eff a → Eff eff (Thread eff Unit)
+runAff k aff = launchAff $ liftEff <<< k =<< try aff
+
+runAff_ ∷ ∀ eff a. (Either Error a → Eff eff Unit) → Aff eff a → Eff eff Unit
+runAff_ k aff = void $ runAff k aff
 
 forkAff ∷ ∀ eff a. Aff eff a → Aff eff (Thread eff a)
 forkAff = liftEff <<< launchAff
@@ -255,6 +202,9 @@ foreign import _map ∷ ∀ eff a b. (a → b) → Aff eff a → Aff eff b
 foreign import _bind ∷ ∀ eff a b. Aff eff a → (a → Aff eff b) → Aff eff b
 foreign import _delay ∷ ∀ a eff. Fn.Fn2 (Unit → Either a Unit) Number (Aff eff Unit)
 foreign import _liftEff ∷ ∀ eff a. Eff eff a → Aff eff a
+foreign import _parAffMap ∷ ∀ eff a b. (a → b) → ParAff eff a → ParAff eff b
+foreign import _parAffApply ∷ ∀ eff a b. ParAff eff (a → b) → ParAff eff a → ParAff eff b
+foreign import _parAffAlt ∷ ∀ eff a. ParAff eff a → ParAff eff a → ParAff eff a
 foreign import bracket ∷ ∀ eff a b. Aff eff a → (a → Aff eff Unit) → (a → Aff eff b) → Aff eff b
 foreign import makeAff ∷ ∀ eff a. ((Either Error a → Eff eff Unit) → Eff eff (Canceler eff)) → Aff eff a
 foreign import memoAff ∷ ∀ eff a. Aff eff a → Aff eff a
@@ -269,6 +219,18 @@ foreign import _launchAff
       (a → Either Error a)
       (Aff eff a)
       (Eff eff (Thread eff a))
+
+foreign import _sequential
+  ∷ ∀ eff a
+  . Fn.Fn7
+      (Either Error a → Boolean)
+      (Either Error a → Error)
+      (Either Error a → a)
+      (Error → Either Error a)
+      (a → Either Error a)
+      ((Either Error a → Eff eff Unit) → Aff eff a → Eff eff (Thread eff Unit))
+      (ParAff eff a)
+      (Aff eff a)
 
 unsafeFromLeft ∷ ∀ x y. Either x y → x
 unsafeFromLeft = case _ of

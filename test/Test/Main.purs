@@ -2,7 +2,7 @@ module Test.Main where
 
 import Prelude
 import Control.Alt ((<|>))
-import Control.Monad.Aff (Aff, Canceler(..), nonCanceler, runAff, launchAff, makeAff, try, bracket, delay, forkAff, joinThread, killThread)
+import Control.Monad.Aff (Aff, Canceler(..), nonCanceler, runAff_, launchAff, makeAff, try, bracket, delay, forkAff, joinThread, killThread)
 import Control.Monad.Eff (Eff, runPure)
 import Control.Monad.Eff.Class (class MonadEff, liftEff)
 import Control.Monad.Eff.Console (CONSOLE)
@@ -12,7 +12,8 @@ import Control.Monad.Eff.Ref (REF, Ref)
 import Control.Monad.Eff.Ref as Ref
 import Control.Monad.Eff.Ref.Unsafe (unsafeRunRef)
 import Control.Monad.Error.Class (throwError)
-import Control.Parallel (parallel, sequential)
+import Control.Parallel (parallel, sequential, parTraverse_)
+import Data.Array as Array
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..), isLeft)
 import Data.Foldable (sum)
@@ -47,10 +48,10 @@ assertEff s = case _ of
     Console.log ("[OK] " <> s)
 
 runAssert ∷ ∀ eff. String → TestAff eff Boolean → TestEff eff Unit
-runAssert s = runAff (assertEff s)
+runAssert s = runAff_ (assertEff s)
 
 runAssertEq ∷ ∀ eff a. Eq a ⇒ String → a → TestAff eff a → TestEff eff Unit
-runAssertEq s a = runAff (assertEff s <<< map (eq a))
+runAssertEq s a = runAff_ (assertEff s <<< map (eq a))
 
 assertEq ∷ ∀ eff a. Eq a ⇒ String → a → TestAff eff a → TestAff eff Unit
 assertEq s a aff = liftEff <<< assertEff s <<< map (eq a) =<< try aff
@@ -384,6 +385,12 @@ test_thread_apply = assert "thread/apply" do
   n ← readRef ref
   pure (a == 22 && b == 22 && n == 1)
 
+test_parallel_stack ∷ ∀ eff. TestAff eff Unit
+test_parallel_stack = assert "parallel/stack" do
+  ref ← newRef 0
+  parTraverse_ (modifyRef ref <<< add) (Array.replicate 100000 1)
+  eq 100000 <$> readRef ref
+
 main ∷ TestEff () Unit
 main = do
   test_pure
@@ -412,3 +419,4 @@ main = do
     test_kill_parallel_alt
     test_thread_map
     test_thread_apply
+    test_parallel_stack
