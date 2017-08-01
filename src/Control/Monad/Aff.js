@@ -33,20 +33,22 @@ data ParAff eff a
   = forall b. Map (b -> a) (ParAff eff b)
   | forall b. Apply (ParAff eff (b -> a)) (ParAff eff b)
   | Alt (ParAff eff a) (ParAff eff a)
-  | Par (Aff eff a)
+  | ?Par (Aff eff a)
 
 */
 var MAP   = "Map"
 var APPLY = "Apply"
 var ALT   = "Alt"
 
-// These are constructors used to implement the recover stack. We still use the
-// Aff constructor so that property offsets can always inline.
-var CONS      = "Cons";      // Cons-list
-var RECOVER   = "Recover";   // Continue with `Either Error a` (via attempt)
+// Various constructors used in interpretation
+var CONS      = "Cons";      // Cons-list, for stacks
+var RECOVER   = "Recover";   // Continue with error handler
 var RESUME    = "Resume";    // Continue indiscriminately
 var FINALIZED = "Finalized"; // Marker for finalization
-var THREAD    = "Thread";
+
+var FORKED    = "Forked";    // Reference to a forked thread, with resumption stack
+var THREAD    = "Thread";    // Actual thread reference
+var THUNK     = "Thunk";     // Primed effect, ready to invoke
 
 function Aff(tag, _1, _2, _3) {
   this.tag = tag;
@@ -570,7 +572,7 @@ exports._sequential = function (isLeft, fromLeft, fromRight, left, right, runAff
     var root      = EMPTY;
 
     // Walks the applicative tree, substituting non-applicative nodes with
-    // `THREAD` nodes. In this tree, all applicative nodes use the `_3` slot
+    // `FORKED` nodes. In this tree, all applicative nodes use the `_3` slot
     // as a mutable slot for memoization. In an unresolved state, the `_3`
     // slot is `EMPTY`. In the cases of `ALT` and `APPLY`, we always walk
     // the left side first, because both operations are left-associative. As
@@ -611,18 +613,18 @@ exports._sequential = function (isLeft, fromLeft, fromRight, left, right, runAff
             step = step._1;
             break;
           default:
-            // When we hit a leaf value, we suspend the stack in the `THREAD`.
+            // When we hit a leaf value, we suspend the stack in the `FORKED`.
             // When the thread resolves, it can bubble back up the tree.
             tid    = threadId++;
             status = RETURN;
             tmp    = step;
-            step   = new Aff(THREAD, tid, new Aff(CONS, head, tail), EMPTY);
+            step   = new Aff(FORKED, tid, new Aff(CONS, head, tail), EMPTY);
             // We prime the effect, but don't immediately run it. We need to
             // walk the entire tree first before actually running effects
             // because they may all be synchronous and resolve immediately, at
             // which point it would attempt to resolve against an incomplete
             // tree.
-            threads[tid] = runAff(resolve(step))(tmp);
+            threads[tid] = new Aff(THUNK, runAff(resolve(step))(tmp));
           }
           break;
         case RETURN:
@@ -656,7 +658,10 @@ exports._sequential = function (isLeft, fromLeft, fromRight, left, right, runAff
       // Walk the primed threads and fork them. We store the actual `Thread`
       // reference so we can cancel them when needed.
       for (tid = 0; tid < threadId; tid++) {
-        threads[tid] = threads[tid]();
+        tmp = threads[tid];
+        if (tmp && tmp.tag === THUNK) {
+          threads[tid] = new Aff(THREAD, tmp._1());
+        }
       }
     }
 
@@ -747,7 +752,6 @@ exports._sequential = function (isLeft, fromLeft, fromRight, left, right, runAff
           head._3 = step;
           tmp     = true;
           kid     = killId++;
-
           // Once a side has resolved, we need to cancel the side that is still
           // pending before we can continue.
           kills[kid] = kill(early, step === lhs ? head._2 : head._1, function (killResult) {
@@ -796,16 +800,19 @@ exports._sequential = function (isLeft, fromLeft, fromRight, left, right, runAff
 
       loop: while (1) {
         tmp = null;
-        kid = null;
 
         switch (step.tag) {
-        case THREAD:
+        case FORKED:
           tmp = threads[step._1];
-          kid = count++;
-          if (tmp) {
+          // If we haven't forked the thread yet (such as with a sync Alt),
+          // then we should just remove it from the queue and continue.
+          if (tmp.tag === THUNK) {
+            delete threads[step._1];
+            cb(right(void 0))();
+          } else {
             // Again, we prime the effect but don't run it yet, so that we can
             // collect all the threads first.
-            kills[kid] = runAff(function (result) {
+            kills[count++] = runAff(function (result) {
               return function () {
                 count--;
                 if (fail === null && isLeft(result)) {
@@ -816,7 +823,7 @@ exports._sequential = function (isLeft, fromLeft, fromRight, left, right, runAff
                   cb(fail || right(void 0))();
                 }
               };
-            })(tmp.kill(error));
+            })(tmp._1.kill(error));
           }
           // Terminal case.
           if (head === null) {

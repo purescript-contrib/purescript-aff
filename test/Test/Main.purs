@@ -327,6 +327,22 @@ test_parallel_alt = assert "parallel/alt" do
   r2 ← joinThread t1
   pure (r1 == "bar" && r2 == "bar")
 
+test_parallel_alt_sync ∷ ∀ eff. TestAff eff Unit
+test_parallel_alt_sync = assert "kill/parallel/alt/sync" do
+  ref ← newRef ""
+  let
+    action s = do
+      bracket
+        (pure unit)
+        (\_ → modifyRef ref (_ <> "killed" <> s))
+        (\_ → modifyRef ref (_ <> s) $> s)
+  r1 ← sequential $
+    parallel (action "foo")
+    <|> parallel (action "bar")
+    <|> parallel (action "baz")
+  r2 ← readRef ref
+  pure (r1 == "foo" && r2 == "fookilledfoo")
+
 test_kill_parallel_alt ∷ ∀ eff. TestAff eff Unit
 test_kill_parallel_alt = assert "kill/parallel/alt" do
   ref ← newRef ""
@@ -416,6 +432,7 @@ main = do
     test_parallel
     test_kill_parallel
     test_parallel_alt
+    test_parallel_alt_sync
     test_kill_parallel_alt
     test_thread_map
     test_thread_apply
