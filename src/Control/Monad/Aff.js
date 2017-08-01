@@ -36,9 +36,9 @@ data ParAff eff a
   | ?Par (Aff eff a)
 
 */
-var MAP   = "Map"
-var APPLY = "Apply"
-var ALT   = "Alt"
+var MAP   = "Map";
+var APPLY = "Apply";
+var ALT   = "Alt";
 
 // Various constructors used in interpretation
 var CONS      = "Cons";      // Cons-list, for stacks
@@ -571,108 +571,79 @@ exports._sequential = function (isLeft, fromLeft, fromRight, left, right, runAff
     // The root pointer of the tree.
     var root      = EMPTY;
 
-    // Walks the applicative tree, substituting non-applicative nodes with
-    // `FORKED` nodes. In this tree, all applicative nodes use the `_3` slot
-    // as a mutable slot for memoization. In an unresolved state, the `_3`
-    // slot is `EMPTY`. In the cases of `ALT` and `APPLY`, we always walk
-    // the left side first, because both operations are left-associative. As
-    // we `RETURN` from those branches, we then walk the right side.
-    function run() {
-      var status = CONTINUE;
-      var step   = par;
-      var head   = null;
-      var tail   = null;
-      var tmp, tid;
+    // Walks a tree, invoking all the cancelers. Returns the table of pending
+    // cancellation threads.
+    function kill(error, par, cb) {
+      var step  = par;
+      var fail  = null;
+      var head  = null;
+      var tail  = null;
+      var count = 0;
+      var kills = {};
+      var tmp, kid;
 
       loop: while (1) {
         tmp = null;
-        tid = null;
 
-        switch (status) {
-        case CONTINUE:
-          switch (step.tag) {
-          case MAP:
-            if (head) {
-              tail = new Aff(CONS, head, tail);
-            }
-            head = new Aff(MAP, step._1, EMPTY, EMPTY);
-            step = step._2;
-            break;
-          case APPLY:
-            if (head) {
-              tail = new Aff(CONS, head, tail);
-            }
-            head = new Aff(APPLY, EMPTY, step._2, EMPTY);
-            step = step._1;
-            break;
-          case ALT:
-            if (head) {
-              tail = new Aff(CONS, head, tail);
-            }
-            head = new Aff(ALT, EMPTY, step._2, EMPTY);
-            step = step._1;
-            break;
-          default:
-            // When we hit a leaf value, we suspend the stack in the `FORKED`.
-            // When the thread resolves, it can bubble back up the tree.
-            tid    = threadId++;
-            status = RETURN;
-            tmp    = step;
-            step   = new Aff(FORKED, tid, new Aff(CONS, head, tail), EMPTY);
-            // We prime the effect, but don't immediately run it. We need to
-            // walk the entire tree first before actually running effects
-            // because they may all be synchronous and resolve immediately, at
-            // which point it would attempt to resolve against an incomplete
-            // tree.
-            threads[tid] = new Aff(THUNK, runAff(resolve(step))(tmp));
+        switch (step.tag) {
+        case FORKED:
+          tmp = threads[step._1];
+          // If we haven't forked the thread yet (such as with a sync Alt),
+          // then we should just remove it from the queue and continue.
+          if (tmp.tag === THUNK) {
+            delete threads[step._1];
+            cb(right(void 0))();
+          } else {
+            // Again, we prime the effect but don't run it yet, so that we can
+            // collect all the threads first.
+            kills[count++] = runAff(function (result) {
+              return function () {
+                count--;
+                if (fail === null && isLeft(result)) {
+                  fail = result;
+                }
+                // We can resolve the callback when all threads have died.
+                if (count === 0) {
+                  cb(fail || right(void 0))();
+                }
+              };
+            })(tmp._1.kill(error));
           }
-          break;
-        case RETURN:
-          // Terminal case, we are back at the root.
+          // Terminal case.
           if (head === null) {
             break loop;
           }
-          // If we are done with the right side, we need to continue down the
-          // left. Otherwise we should continue up the stack.
-          if (head._1 === EMPTY) {
-            head._1 = step;
-            status  = CONTINUE;
-            step    = head._2;
-            head._2 = EMPTY;
+          // Go down the right side of the tree.
+          step = head._2;
+          if (tail === null) {
+            head = null;
           } else {
-            head._2 = step;
-            step    = head;
-            if (tail === null) {
-              head  = null;
-            } else {
-              head  = tail._1;
-              tail  = tail._2;
-            }
+            head = tail._1;
+            tail = tail._2;
           }
+          break;
+        case MAP:
+          step = step._2;
+          break;
+        case APPLY:
+        case ALT:
+          if (head) {
+            tail = new Aff(CONS, head, tail);
+          }
+          head = step;
+          step = step._1;
+          break;
         }
       }
 
-      // Keep a reference to the tree root so it can be cancelled.
-      root = step;
-
-      // Walk the primed threads and fork them. We store the actual `Thread`
-      // reference so we can cancel them when needed.
-      for (tid = 0; tid < threadId; tid++) {
-        tmp = threads[tid];
-        if (tmp && tmp.tag === THUNK) {
-          threads[tid] = new Aff(THREAD, tmp._1());
-        }
+      // Run the cancelation effects. We alias `count` because it's mutable.
+      kid = 0;
+      tmp = count;
+      for (; kid < tmp; kid++) {
+        kills[kid] = kills[kid]();
       }
-    }
 
-    function resolve(thread) {
-      return function (result) {
-        return function () {
-          delete threads[thread._1];
-          thread._3 = result;
-          join(result, thread._2._1, thread._2._2);
-        };
-      };
+      return kills;
     }
 
     // When a thread resolves, we need to bubble back up the tree with the
@@ -787,77 +758,108 @@ exports._sequential = function (isLeft, fromLeft, fromRight, left, right, runAff
       }
     }
 
-    // Walks a tree, invoking all the cancelers. Returns the table of pending
-    // cancellation threads.
-    function kill(error, par, cb) {
-      var step  = par;
-      var fail  = null;
-      var head  = null;
-      var tail  = null;
-      var count = 0;
-      var kills = {};
-      var tmp, kid;
+    function resolve(thread) {
+      return function (result) {
+        return function () {
+          delete threads[thread._1];
+          thread._3 = result;
+          join(result, thread._2._1, thread._2._2);
+        };
+      };
+    }
+
+    // Walks the applicative tree, substituting non-applicative nodes with
+    // `FORKED` nodes. In this tree, all applicative nodes use the `_3` slot
+    // as a mutable slot for memoization. In an unresolved state, the `_3`
+    // slot is `EMPTY`. In the cases of `ALT` and `APPLY`, we always walk
+    // the left side first, because both operations are left-associative. As
+    // we `RETURN` from those branches, we then walk the right side.
+    function run() {
+      var status = CONTINUE;
+      var step   = par;
+      var head   = null;
+      var tail   = null;
+      var tmp, tid;
 
       loop: while (1) {
         tmp = null;
+        tid = null;
 
-        switch (step.tag) {
-        case FORKED:
-          tmp = threads[step._1];
-          // If we haven't forked the thread yet (such as with a sync Alt),
-          // then we should just remove it from the queue and continue.
-          if (tmp.tag === THUNK) {
-            delete threads[step._1];
-            cb(right(void 0))();
-          } else {
-            // Again, we prime the effect but don't run it yet, so that we can
-            // collect all the threads first.
-            kills[count++] = runAff(function (result) {
-              return function () {
-                count--;
-                if (fail === null && isLeft(result)) {
-                  fail = result;
-                }
-                // We can resolve the callback when all threads have died.
-                if (count === 0) {
-                  cb(fail || right(void 0))();
-                }
-              };
-            })(tmp._1.kill(error));
+        switch (status) {
+        case CONTINUE:
+          switch (step.tag) {
+          case MAP:
+            if (head) {
+              tail = new Aff(CONS, head, tail);
+            }
+            head = new Aff(MAP, step._1, EMPTY, EMPTY);
+            step = step._2;
+            break;
+          case APPLY:
+            if (head) {
+              tail = new Aff(CONS, head, tail);
+            }
+            head = new Aff(APPLY, EMPTY, step._2, EMPTY);
+            step = step._1;
+            break;
+          case ALT:
+            if (head) {
+              tail = new Aff(CONS, head, tail);
+            }
+            head = new Aff(ALT, EMPTY, step._2, EMPTY);
+            step = step._1;
+            break;
+          default:
+            // When we hit a leaf value, we suspend the stack in the `FORKED`.
+            // When the thread resolves, it can bubble back up the tree.
+            tid    = threadId++;
+            status = RETURN;
+            tmp    = step;
+            step   = new Aff(FORKED, tid, new Aff(CONS, head, tail), EMPTY);
+            // We prime the effect, but don't immediately run it. We need to
+            // walk the entire tree first before actually running effects
+            // because they may all be synchronous and resolve immediately, at
+            // which point it would attempt to resolve against an incomplete
+            // tree.
+            threads[tid] = new Aff(THUNK, runAff(resolve(step))(tmp));
           }
-          // Terminal case.
+          break;
+        case RETURN:
+          // Terminal case, we are back at the root.
           if (head === null) {
             break loop;
           }
-          // Go down the right side of the tree.
-          step = head._2;
-          if (tail === null) {
-            head = null;
+          // If we are done with the right side, we need to continue down the
+          // left. Otherwise we should continue up the stack.
+          if (head._1 === EMPTY) {
+            head._1 = step;
+            status  = CONTINUE;
+            step    = head._2;
+            head._2 = EMPTY;
           } else {
-            head = tail._1;
-            tail = tail._2;
+            head._2 = step;
+            step    = head;
+            if (tail === null) {
+              head  = null;
+            } else {
+              head  = tail._1;
+              tail  = tail._2;
+            }
           }
-          break;
-        case MAP:
-          step = step._2;
-          break;
-        case APPLY:
-        case ALT:
-          if (head) {
-            tail = new Aff(CONS, head, tail);
-          }
-          head = step;
-          step = step._1;
-          break;
         }
       }
 
-      // Run the cancelation effects. We alias `count` because it's mutable.
-      for (kid = 0, tmp = count; kid < tmp; kid++) {
-        kills[kid] = kills[kid]();
-      }
+      // Keep a reference to the tree root so it can be cancelled.
+      root = step;
 
-      return kills;
+      // Walk the primed threads and fork them. We store the actual `Thread`
+      // reference so we can cancel them when needed.
+      for (tid = 0; tid < threadId; tid++) {
+        tmp = threads[tid];
+        if (tmp && tmp.tag === THUNK) {
+          threads[tid] = new Aff(THREAD, tmp._1());
+        }
+      }
     }
 
     function ignore () {
