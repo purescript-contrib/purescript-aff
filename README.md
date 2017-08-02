@@ -201,9 +201,9 @@ necessary) on `take` operations, or as asynchronous, empty-or-full variables.
 
 ## Parallel Execution
 
-There are `MonadPar` and `MonadRace` instances defined for `Aff`, allowing for parallel execution of `Aff` computations.
+There is a `MonadPar` instance defined for `Aff`, allowing for parallel execution of `Aff` computations.
 
-There are two ways of taking advantage of these instances - directly through the `par` and `race` functions from these classes, or by using the `Parallel` newtype wrapper that enables parallel behaviours through the `Applicative` and `Alternative` operators.
+There are two ways of taking advantage of these instances - directly through the `parallel` function from `MonadPar`, or by using the `Parallel` newtype wrapper that enables parallel behaviours through the `Applicative` and `Alternative` operators.
 
 In the following example, using the newtype, two Ajax requests are initiated simultaneously (rather than in sequence, as they would be for `Aff`):
 
@@ -217,7 +217,7 @@ And the equivalent using the `MonadPar` function directly:
 par f (Ajax.get "http://foo.com") (Ajax.get "http://foo.com")
 ```
 
-The `race` function from `MonadPar` or the `(<|>)` operator of the `Alt` instance of `Parallel` allows you to race two asynchronous computations, and use whichever value comes back first (or the first error, if both err).
+The `(<|>)` operator of the `Alt` instance of `Parallel` allows you to race two asynchronous computations, and use whichever value comes back first (or the first error, if both err).
 
 The `runParallel` function allows you to unwrap the `Aff` and return to normal monadic (sequential) composition.
 
