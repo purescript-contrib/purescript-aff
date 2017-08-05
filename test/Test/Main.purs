@@ -2,7 +2,7 @@ module Test.Main where
 
 import Prelude
 import Control.Alt ((<|>))
-import Control.Monad.Aff (Aff, Canceler(..), nonCanceler, runAff_, launchAff, makeAff, try, bracket, delay, forkAff, joinThread, killThread)
+import Control.Monad.Aff (Aff, Canceler(..), runAff_, launchAff, makeAff, try, bracket, generalBracket, delay, forkAff, joinFiber, killFiber)
 import Control.Monad.Eff (Eff, runPure)
 import Control.Monad.Eff.Class (class MonadEff, liftEff)
 import Control.Monad.Eff.Console (CONSOLE)
@@ -15,9 +15,10 @@ import Control.Monad.Error.Class (throwError)
 import Control.Parallel (parallel, sequential, parTraverse_)
 import Data.Array as Array
 import Data.Bifunctor (lmap)
-import Data.Either (Either(..), isLeft)
+import Data.Either (Either(..), isLeft, isRight)
 import Data.Foldable (sum)
 import Data.Maybe (Maybe(..))
+import Data.Monoid (mempty)
 import Data.Traversable (traverse)
 import Data.Time.Duration (Milliseconds(..))
 import Test.Assert (assert', ASSERT)
@@ -96,7 +97,7 @@ test_delay = assert "delay" do
 test_fork ∷ ∀ eff. TestAff eff Unit
 test_fork = assert "fork" do
   ref ← newRef 0
-  thread ← forkAff do
+  fiber ← forkAff do
     delay (Milliseconds 10.0)
     modifyRef ref (_ + 1)
   writeRef ref 42
@@ -107,41 +108,41 @@ test_fork = assert "fork" do
 test_join ∷ ∀ eff. TestAff eff Unit
 test_join = assert "join" do
   ref ← newRef 1
-  thread ← forkAff do
+  fiber ← forkAff do
     delay (Milliseconds 10.0)
     modifyRef ref (_ - 2)
     readRef ref
   writeRef ref 42
-  eq 40 <$> joinThread thread
+  eq 40 <$> joinFiber fiber
 
 test_join_throw ∷ ∀ eff. TestAff eff Unit
 test_join_throw = assert "join/throw" do
-  thread ← forkAff do
+  fiber ← forkAff do
     delay (Milliseconds 10.0)
     throwError (error "Nope.")
-  isLeft <$> try (joinThread thread)
+  isLeft <$> try (joinFiber fiber)
 
 test_join_throw_sync ∷ ∀ eff. TestAff eff Unit
 test_join_throw_sync = assert "join/throw/sync" do
-  thread ← forkAff (throwError (error "Nope."))
-  isLeft <$> try (joinThread thread)
+  fiber ← forkAff (throwError (error "Nope."))
+  isLeft <$> try (joinFiber fiber)
 
 test_multi_join ∷ ∀ eff. TestAff eff Unit
 test_multi_join = assert "join/multi" do
   ref ← newRef 1
-  thread1 ← forkAff do
+  f1 ← forkAff do
     delay (Milliseconds 10.0)
     modifyRef ref (_ + 1)
     pure 10
-  thread2 ← forkAff do
+  f2 ← forkAff do
     delay (Milliseconds 20.0)
     modifyRef ref (_ + 1)
     pure 20
-  n1 ← sum <$> traverse joinThread
-    [ thread1
-    , thread1
-    , thread1
-    , thread2
+  n1 ← sum <$> traverse joinFiber
+    [ f1
+    , f1
+    , f1
+    , f2
     ]
   n2 ← readRef ref
   pure (n1 == 50 && n2 == 3)
@@ -150,10 +151,10 @@ test_makeAff ∷ ∀ eff. TestAff eff Unit
 test_makeAff = assert "makeAff" do
   ref1 ← newRef Nothing
   ref2 ← newRef 0
-  thread ← forkAff do
+  fiber ← forkAff do
     n ← makeAff \cb → do
       writeRef ref1 (Just cb)
-      pure nonCanceler
+      pure mempty
     writeRef ref2 n
   cb ← readRef ref1
   case cb of
@@ -170,14 +171,14 @@ test_bracket = assert "bracket" do
       delay (Milliseconds 10.0)
       modifyRef ref (_ <> [ s ])
       pure s
-  thread ← forkAff do
+  fiber ← forkAff do
     delay (Milliseconds 40.0)
     readRef ref
   _ ← bracket
     (action "foo")
     (\s → void $ action (s <> "/release"))
     (\s → action (s <> "/run"))
-  joinThread thread <#> eq
+  joinFiber fiber <#> eq
     [ "foo"
     , "foo/run"
     , "foo/release"
@@ -212,20 +213,48 @@ test_bracket_nested = assert "bracket/nested" do
     , "foo/bar/run/release/bar/release"
     ]
 
+test_general_bracket ∷ ∀ eff. TestAff eff Unit
+test_general_bracket = assert "bracket/general" do
+  ref ← newRef ""
+  let
+    action s = do
+      delay (Milliseconds 10.0)
+      modifyRef ref (_ <> s)
+      pure s
+    bracketAction s =
+      generalBracket (action s)
+        { kill: \error s' → void $ action (s' <> "/kill/" <> message error)
+        , throw: \error s' → void $ action (s' <> "/throw/" <> message error)
+        , release: \s' → void $ action (s' <> "/release")
+        }
+
+  f1 ← forkAff $ bracketAction "foo" (const (action "a"))
+  killFiber (error "z") f1
+  r1 ← try $ joinFiber f1
+
+  f2 ← forkAff $ bracketAction "bar" (const (throwError $ error "b"))
+  r2 ← try $ joinFiber f2
+
+  f3 ← forkAff $ bracketAction "baz" (const (action "c"))
+  r3 ← try $ joinFiber f3
+
+  r4 ← readRef ref
+  pure (isLeft r1 && isLeft r2 && isRight r3 && r4 == "foofoo/kill/zbarbar/throw/bbazcbaz/release")
+
 test_kill ∷ ∀ eff. TestAff eff Unit
 test_kill = assert "kill" do
-  thread ← forkAff $ makeAff \_ → pure nonCanceler
-  killThread (error "Nope") thread
-  isLeft <$> try (joinThread thread)
+  fiber ← forkAff $ makeAff \_ → pure mempty
+  killFiber (error "Nope") fiber
+  isLeft <$> try (joinFiber fiber)
 
 test_kill_canceler ∷ ∀ eff. TestAff eff Unit
 test_kill_canceler = assert "kill/canceler" do
   ref ← newRef 0
-  thread ← forkAff do
+  fiber ← forkAff do
     n ← makeAff \_ → pure (Canceler \_ → liftEff (writeRef ref 42))
     writeRef ref 2
-  killThread (error "Nope") thread
-  res ← try (joinThread thread)
+  killFiber (error "Nope") fiber
+  res ← try (joinFiber fiber)
   n ← readRef ref
   pure (n == 42 && (lmap message res) == Left "Nope")
 
@@ -236,13 +265,13 @@ test_kill_bracket = assert "kill/bracket" do
     action n = do
       delay (Milliseconds 10.0)
       modifyRef ref (_ <> n)
-  thread ←
+  fiber ←
     forkAff $ bracket
       (action "a")
       (\_ → action "b")
       (\_ → action "c")
-  killThread (error "Nope") thread
-  _ ← try (joinThread thread)
+  killFiber (error "Nope") fiber
+  _ ← try (joinFiber fiber)
   eq "ab" <$> readRef ref
 
 test_kill_bracket_nested ∷ ∀ eff. TestAff eff Unit
@@ -258,13 +287,13 @@ test_kill_bracket_nested = assert "kill/bracket/nested" do
         (action (s <> "/bar"))
         (\s' → void $ action (s' <> "/release"))
         (\s' → action (s' <> "/run"))
-  thread ←
+  fiber ←
     forkAff $ bracket
       (bracketAction "foo")
       (\s → void $ bracketAction (s <> "/release"))
       (\s → bracketAction (s <> "/run"))
-  killThread (error "Nope") thread
-  _ ← try (joinThread thread)
+  killFiber (error "Nope") fiber
+  _ ← try (joinFiber fiber)
   readRef ref <#> eq
     [ "foo/bar"
     , "foo/bar/run"
@@ -282,13 +311,13 @@ test_parallel = assert "parallel" do
       delay (Milliseconds 10.0)
       modifyRef ref (_ <> s)
       pure s
-  t1 ← forkAff $ sequential $
+  f1 ← forkAff $ sequential $
     { a: _, b: _ }
       <$> parallel (action "foo")
       <*> parallel (action "bar")
   delay (Milliseconds 10.0)
   r1 ← readRef ref
-  r2 ← joinThread t1
+  r2 ← joinFiber f1
   pure (r1 == "foobar" && r2.a == "foo" && r2.b == "bar")
 
 test_kill_parallel ∷ ∀ eff. TestAff eff Unit
@@ -302,14 +331,14 @@ test_kill_parallel = assert "kill/parallel" do
         (\_ → do
           delay (Milliseconds 10.0)
           modifyRef ref (_ <> s))
-  t1 ← forkAff $ sequential $
+  f1 ← forkAff $ sequential $
     parallel (action "foo") *> parallel (action "bar")
-  t2 ← forkAff do
+  f2 ← forkAff do
     delay (Milliseconds 5.0)
-    killThread (error "Nope") t1
+    killFiber (error "Nope") f1
     modifyRef ref (_ <> "done")
-  _ ← try $ joinThread t1
-  _ ← try $ joinThread t2
+  _ ← try $ joinFiber f1
+  _ ← try $ joinFiber f2
   eq "killedfookilledbardone" <$> readRef ref
 
 test_parallel_alt ∷ ∀ eff. TestAff eff Unit
@@ -320,11 +349,11 @@ test_parallel_alt = assert "parallel/alt" do
       delay (Milliseconds n)
       modifyRef ref (_ <> s)
       pure s
-  t1 ← forkAff $ sequential $
+  f1 ← forkAff $ sequential $
     parallel (action 10.0 "foo") <|> parallel (action 5.0 "bar")
   delay (Milliseconds 10.0)
   r1 ← readRef ref
-  r2 ← joinThread t1
+  r2 ← joinFiber f1
   pure (r1 == "bar" && r2 == "bar")
 
 test_parallel_alt_sync ∷ ∀ eff. TestAff eff Unit
@@ -354,50 +383,50 @@ test_kill_parallel_alt = assert "kill/parallel/alt" do
         (\_ → do
           delay (Milliseconds n)
           modifyRef ref (_ <> s))
-  t1 ← forkAff $ sequential $
+  f1 ← forkAff $ sequential $
     parallel (action 10.0 "foo") <|> parallel (action 20.0 "bar")
-  t2 ← forkAff do
+  f2 ← forkAff do
     delay (Milliseconds 5.0)
-    killThread (error "Nope") t1
+    killFiber (error "Nope") f1
     modifyRef ref (_ <> "done")
-  _ ← try $ joinThread t1
-  _ ← try $ joinThread t2
+  _ ← try $ joinFiber f1
+  _ ← try $ joinFiber f2
   eq "killedfookilledbardone" <$> readRef ref
 
-test_thread_map ∷ ∀ eff. TestAff eff Unit
-test_thread_map = assert "thread/map" do
+test_fiber_map ∷ ∀ eff. TestAff eff Unit
+test_fiber_map = assert "fiber/map" do
   ref ← newRef 0
   let
     mapFn a = runPure do
       unsafeRunRef $ Ref.modifyRef ref (_ + 1)
       pure (a + 1)
-  t1 ← forkAff do
+  f1 ← forkAff do
     delay (Milliseconds 10.0)
     pure 10
   let
-    t2 = mapFn <$> t1
-  a ← joinThread t2
-  b ← joinThread t2
+    f2 = mapFn <$> f1
+  a ← joinFiber f2
+  b ← joinFiber f2
   n ← readRef ref
   pure (a == 11 && b == 11 && n == 1)
 
-test_thread_apply ∷ ∀ eff. TestAff eff Unit
-test_thread_apply = assert "thread/apply" do
+test_fiber_apply ∷ ∀ eff. TestAff eff Unit
+test_fiber_apply = assert "fiber/apply" do
   ref ← newRef 0
   let
     applyFn a b = runPure do
       unsafeRunRef $ Ref.modifyRef ref (_ + 1)
       pure (a + b)
-  t1 ← forkAff do
+  f1 ← forkAff do
     delay (Milliseconds 10.0)
     pure 10
-  t2 ← forkAff do
+  f2 ← forkAff do
     delay (Milliseconds 15.0)
     pure 12
   let
-    t3 = applyFn <$> t1 <*> t2
-  a ← joinThread t3
-  b ← joinThread t3
+    f3 = applyFn <$> f1 <*> f2
+  a ← joinFiber f3
+  b ← joinFiber f3
   n ← readRef ref
   pure (a == 22 && b == 22 && n == 1)
 
@@ -425,6 +454,7 @@ main = do
     test_makeAff
     test_bracket
     test_bracket_nested
+    test_general_bracket
     test_kill
     test_kill_canceler
     test_kill_bracket
@@ -434,6 +464,6 @@ main = do
     test_parallel_alt
     test_parallel_alt_sync
     test_kill_parallel_alt
-    test_thread_map
-    test_thread_apply
+    test_fiber_map
+    test_fiber_apply
     test_parallel_stack

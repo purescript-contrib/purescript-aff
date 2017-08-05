@@ -16,7 +16,7 @@ data Aff eff a
   | Sync (Eff eff a)
   | Async ((Either Error a -> Eff eff Unit) -> Eff eff (Canceler eff))
   | forall b. Catch (Error -> a) (Aff eff b) ?(b -> a)
-  | forall b. Bracket (Aff eff b) (b -> Aff eff Unit) (b -> Aff eff a)
+  | forall b. Bracket (Aff eff b) (BracketConditions eff b) (b -> Aff eff a)
 
 */
 var PURE    = "Pure";
@@ -44,10 +44,11 @@ var ALT   = "Alt";
 var CONS      = "Cons";      // Cons-list, for stacks
 var RECOVER   = "Recover";   // Continue with error handler
 var RESUME    = "Resume";    // Continue indiscriminately
+var BRACKETED = "Bracketed"; // Continue with bracket finalizers
 var FINALIZED = "Finalized"; // Marker for finalization
 
-var FORKED    = "Forked";    // Reference to a forked thread, with resumption stack
-var THREAD    = "Thread";    // Actual thread reference
+var FORKED    = "Forked";    // Reference to a forked fiber, with resumption stack
+var FIBER     = "Fiber";     // Actual fiber reference
 var THUNK     = "Thunk";     // Primed effect, ready to invoke
 
 function Aff(tag, _1, _2, _3) {
@@ -119,10 +120,10 @@ exports.makeAff = function (k) {
   return new Aff(ASYNC, k);
 };
 
-exports.bracket = function (acquire) {
-  return function (release) {
+exports.generalBracket = function (acquire) {
+  return function (options) {
     return function (k) {
-      return new Aff(BRACKET, acquire, release, k);
+      return new Aff(BRACKET, acquire, options, k);
     };
   };
 };
@@ -199,13 +200,13 @@ function runAsync(left, eff, k) {
   }
 }
 
-// Thread state machine
+// Fiber state machine
 var BLOCKED   = 0; // No effect is running.
 var PENDING   = 1; // An async effect is running.
 var RETURN    = 2; // The current stack has returned.
 var CONTINUE  = 3; // Run the next effect.
 var BINDSTEP  = 4; // Apply the next bind.
-var COMPLETED = 5; // The entire thread has completed.
+var COMPLETED = 5; // The entire fiber has completed.
 
 exports._launchAff = function (isLeft, fromLeft, fromRight, left, right, aff) {
   return function () {
@@ -220,7 +221,7 @@ exports._launchAff = function (isLeft, fromLeft, fromRight, left, right, aff) {
     var fail      = null; // Failure step
     var interrupt = null; // Asynchronous interrupt
 
-    // Stack of continuations for the current thread.
+    // Stack of continuations for the current fiber.
     var bhead = null;
     var btail = null;
 
@@ -241,11 +242,11 @@ exports._launchAff = function (isLeft, fromLeft, fromRight, left, right, aff) {
     var tmp, result, attempt, canceler;
 
     // Each invocation of `run` requires a tick. When an asynchronous effect is
-    // resolved, we must check that the local tick coincides with the thread
+    // resolved, we must check that the local tick coincides with the fiber
     // tick before resuming. This prevents multiple async continuations from
-    // accidentally resuming the same thread. A common example may be invoking
+    // accidentally resuming the same fiber. A common example may be invoking
     // the provided callback in `makeAff` more than once, but it may also be an
-    // async effect resuming after the thread was already cancelled.
+    // async effect resuming after the fiber was already cancelled.
     function run(localRunTick) {
       while (1) {
         tmp       = null;
@@ -372,7 +373,7 @@ exports._launchAff = function (isLeft, fromLeft, fromRight, left, right, aff) {
 
         case RETURN:
           // If the current stack has returned, and we have no other stacks to
-          // resume or finalizers to run, the thread has halted and we can
+          // resume or finalizers to run, the fiber has halted and we can
           // invoke all join callbacks. Otherwise we need to resume.
           if (attempts === null) {
             runTick++; // Increment the counter to prevent reentry after completion.
@@ -412,20 +413,33 @@ exports._launchAff = function (isLeft, fromLeft, fromRight, left, right, aff) {
               break;
 
             // If we have a bracket, we should enqueue the finalizer branch,
-            // and continue with the success branch only if the thread has
+            // and continue with the success branch only if the fiber has
             // not been interrupted. If the bracket acquisition failed, we
             // should not run either.
             case BRACKET:
               bracket--;
               if (fail === null) {
                 result   = fromRight(step);
-                attempts = new Aff(CONS, attempt._2(result), attempts._2);
+                attempts = new Aff(CONS, new Aff(BRACKETED, attempt._2, result), attempts._2);
                 if (interrupt === null || bracket > 0) {
                   status = CONTINUE;
                   step   = attempt._3(result);
                 }
               } else {
                 attempts = attempts._2;
+              }
+              break;
+
+            case BRACKETED:
+              bracket++;
+              attempts = new Aff(CONS, new Aff(FINALIZED, step), attempts._2);
+              status   = CONTINUE;
+              if (interrupt !== null) {
+                step = attempt._1.kill(fromLeft(interrupt))(attempt._2);
+              } else if (fail !== null) {
+                step = attempt._1.throw(fromLeft(fail))(attempt._2);
+              } else {
+                step = attempt._1.release(attempt._2);
               }
               break;
 
@@ -455,11 +469,11 @@ exports._launchAff = function (isLeft, fromLeft, fromRight, left, right, aff) {
             }
           }
           joins = tmp;
-          // If we have an unhandled exception, and no other thread has joined
+          // If we have an unhandled exception, and no other fiber has joined
           // then we need to throw the exception in a fresh stack.
           if (isLeft(step) && !joins) {
             setTimeout(function () {
-              // Guard on joins because a completely synchronous thread can
+              // Guard on joins because a completely synchronous fiber can
               // still have an observer.
               if (!joins) {
                 throw fromLeft(step);
@@ -554,9 +568,9 @@ exports._launchAff = function (isLeft, fromLeft, fromRight, left, right, aff) {
 
 exports._sequential = function (isLeft, fromLeft, fromRight, left, right, runAff, par) {
   function runParAff(cb) {
-    // Table of all forked threads.
-    var threadId  = 0;
-    var threads   = {};
+    // Table of all forked fibers.
+    var fiberId   = 0;
+    var fibers    = {};
 
     // Table of currently running cancelers, as a product of `Alt` behavior.
     var killId    = 0;
@@ -572,7 +586,7 @@ exports._sequential = function (isLeft, fromLeft, fromRight, left, right, runAff
     var root      = EMPTY;
 
     // Walks a tree, invoking all the cancelers. Returns the table of pending
-    // cancellation threads.
+    // cancellation fibers.
     function kill(error, par, cb) {
       var step  = par;
       var fail  = null;
@@ -587,22 +601,22 @@ exports._sequential = function (isLeft, fromLeft, fromRight, left, right, runAff
 
         switch (step.tag) {
         case FORKED:
-          tmp = threads[step._1];
-          // If we haven't forked the thread yet (such as with a sync Alt),
+          tmp = fibers[step._1];
+          // If we haven't forked the fiber yet (such as with a sync Alt),
           // then we should just remove it from the queue and continue.
           if (tmp.tag === THUNK) {
-            delete threads[step._1];
+            delete fibers[step._1];
             cb(right(void 0))();
           } else {
             // Again, we prime the effect but don't run it yet, so that we can
-            // collect all the threads first.
+            // collect all the fibers first.
             kills[count++] = runAff(function (result) {
               return function () {
                 count--;
                 if (fail === null && isLeft(result)) {
                   fail = result;
                 }
-                // We can resolve the callback when all threads have died.
+                // We can resolve the callback when all fibers have died.
                 if (count === 0) {
                   cb(fail || right(void 0))();
                 }
@@ -646,7 +660,7 @@ exports._sequential = function (isLeft, fromLeft, fromRight, left, right, runAff
       return kills;
     }
 
-    // When a thread resolves, we need to bubble back up the tree with the
+    // When a fiber resolves, we need to bubble back up the tree with the
     // result, computing the applicative nodes.
     function join(result, head, tail) {
       var fail, step, lhs, rhs, tmp, kid;
@@ -758,12 +772,12 @@ exports._sequential = function (isLeft, fromLeft, fromRight, left, right, runAff
       }
     }
 
-    function resolve(thread) {
+    function resolve(fiber) {
       return function (result) {
         return function () {
-          delete threads[thread._1];
-          thread._3 = result;
-          join(result, thread._2._1, thread._2._2);
+          delete fibers[fiber._1];
+          fiber._3 = result;
+          join(result, fiber._2._1, fiber._2._2);
         };
       };
     }
@@ -779,11 +793,11 @@ exports._sequential = function (isLeft, fromLeft, fromRight, left, right, runAff
       var step   = par;
       var head   = null;
       var tail   = null;
-      var tmp, tid;
+      var tmp, fid;
 
       loop: while (1) {
         tmp = null;
-        tid = null;
+        fid = null;
 
         switch (status) {
         case CONTINUE:
@@ -811,17 +825,17 @@ exports._sequential = function (isLeft, fromLeft, fromRight, left, right, runAff
             break;
           default:
             // When we hit a leaf value, we suspend the stack in the `FORKED`.
-            // When the thread resolves, it can bubble back up the tree.
-            tid    = threadId++;
+            // When the fiber resolves, it can bubble back up the tree.
+            fid    = fiberId++;
             status = RETURN;
             tmp    = step;
-            step   = new Aff(FORKED, tid, new Aff(CONS, head, tail), EMPTY);
+            step   = new Aff(FORKED, fid, new Aff(CONS, head, tail), EMPTY);
             // We prime the effect, but don't immediately run it. We need to
             // walk the entire tree first before actually running effects
             // because they may all be synchronous and resolve immediately, at
             // which point it would attempt to resolve against an incomplete
             // tree.
-            threads[tid] = new Aff(THUNK, runAff(resolve(step))(tmp));
+            fibers[fid] = new Aff(THUNK, runAff(resolve(step))(tmp));
           }
           break;
         case RETURN:
@@ -852,12 +866,12 @@ exports._sequential = function (isLeft, fromLeft, fromRight, left, right, runAff
       // Keep a reference to the tree root so it can be cancelled.
       root = step;
 
-      // Walk the primed threads and fork them. We store the actual `Thread`
+      // Walk the primed fibers and fork them. We store the actual `Fiber`
       // reference so we can cancel them when needed.
-      for (tid = 0; tid < threadId; tid++) {
-        tmp = threads[tid];
+      for (fid = 0; fid < fiberId; fid++) {
+        tmp = fibers[fid];
         if (tmp && tmp.tag === THUNK) {
-          threads[tid] = new Aff(THREAD, tmp._1());
+          fibers[fid] = new Aff(FIBER, tmp._1());
         }
       }
     }
@@ -872,7 +886,7 @@ exports._sequential = function (isLeft, fromLeft, fromRight, left, right, runAff
     function cancel(error, cb) {
       interrupt = left(error);
 
-      // We can drop the threads here because we are only canceling join
+      // We can drop the fibers here because we are only canceling join
       // attempts, which are synchronous anyway.
       for (var kid = 0, n = killId; kid < n; kid++) {
         runAff(ignore, kills[kid].kill(error))();
