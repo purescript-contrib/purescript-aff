@@ -6,9 +6,13 @@ module Control.Monad.Aff
   , BracketConditions
   , makeAff
   , launchAff
+  , launchSuspendedAff
   , runAff
   , runAff_
   , forkAff
+  , suspendAff
+  , spawnAff
+  , spawnSuspendedAff
   , liftEff'
   , bracket
   , generalBracket
@@ -128,7 +132,7 @@ instance alternativeParAff ∷ Alternative (ParAff e)
 
 instance parallelAff ∷ Parallel (ParAff eff) (Aff eff) where
   parallel = (unsafeCoerce ∷ ∀ a. Aff eff a → ParAff eff a)
-  sequential a = Fn.runFn7 _sequential isLeft unsafeFromLeft unsafeFromRight Left Right runAff a
+  sequential a = Fn.runFn3 _sequential ffiUtil runAff a
 
 -- | Represents a forked computation by way of `forkAff`. `Fiber`s are
 -- | memoized, so their results are only computed once.
@@ -182,7 +186,11 @@ instance monoidCanceler ∷ Monoid (Canceler eff) where
 
 -- | Forks an `Aff` from an `Eff` context, returning the `Fiber`.
 launchAff ∷ ∀ eff a. Aff eff a → Eff eff (Fiber eff a)
-launchAff aff = Fn.runFn6 _launchAff isLeft unsafeFromLeft unsafeFromRight Left Right aff
+launchAff aff = Fn.runFn3 _launchAff ffiUtil false aff
+
+-- | Suspends an `Aff` from an `Eff` context, returning the `Fiber`.
+launchSuspendedAff ∷ ∀ eff a. Aff eff a → Eff eff (Fiber eff a)
+launchSuspendedAff aff = Fn.runFn3 _launchAff ffiUtil true aff
 
 -- | Forks an `Aff` from an `Eff` context and also takes a callback to run when
 -- | it completes. Returns the pending `Fiber`.
@@ -194,9 +202,25 @@ runAff k aff = launchAff $ liftEff <<< k =<< try aff
 runAff_ ∷ ∀ eff a. (Either Error a → Eff eff Unit) → Aff eff a → Eff eff Unit
 runAff_ k aff = void $ runAff k aff
 
--- | Forks an `Aff` from within another `Aff` context, returning the `Fiber`.
-forkAff ∷ ∀ eff a. Aff eff a → Aff eff (Fiber eff a)
-forkAff = liftEff <<< launchAff
+-- | Forks a supervised `Aff` from within a parent `Aff` context, returning the
+-- | `Fiber`. When the parent `Fiber` completes, the child will be killed if it
+-- | has not completed.
+forkAff ∷ ∀  eff a. Aff eff a → Aff eff (Fiber eff a)
+forkAff = _fork false
+
+-- | Suspends a supervised `Aff` from within a parent `Aff` context, returning
+-- | the `Fiber`. A suspended `Fiber` does not execute until requested, via
+-- | `joinFiber`.
+suspendAff ∷ ∀  eff a. Aff eff a → Aff eff (Fiber eff a)
+suspendAff = _fork true
+
+-- | Forks an unsupervised `Aff`, returning the `Fiber`.
+spawnAff ∷ ∀ eff a. Aff eff a → Aff eff (Fiber eff a)
+spawnAff = liftEff <<< launchAff
+
+-- | Suspends an unsupervised `Aff`, returning the `Fiber`.
+spawnSuspendedAff ∷ ∀ eff a. Aff eff a → Aff eff (Fiber eff a)
+spawnSuspendedAff = liftEff <<< launchSuspendedAff
 
 -- | Pauses the running fiber.
 delay ∷ ∀ eff. Milliseconds → Aff eff Unit
@@ -216,12 +240,6 @@ finally fin a = bracket (pure unit) (const fin) (const a)
 atomically ∷ ∀ eff a. Aff eff a → Aff eff a
 atomically a = bracket a (const (pure unit)) pure
 
-type BracketConditions eff a =
-  { kill ∷ Error → a → Aff eff Unit
-  , throw ∷ Error → a → Aff eff Unit
-  , release ∷ a → Aff eff Unit
-  }
-
 -- | Guarantees resource acquisition and cleanup. The first effect may acquire
 -- | some resource, while the second will dispose of it. The third effect makes
 -- | use of the resource. Disposal is always run last, regardless. Neither
@@ -238,6 +256,7 @@ bracket acquire release =
 foreign import _pure ∷ ∀ eff a. a → Aff eff a
 foreign import _throwError ∷ ∀ eff a. Error → Aff eff a
 foreign import _catchError ∷ ∀ eff a. Aff eff a → (Error → Aff eff a) → Aff eff a
+foreign import _fork ∷ ∀ eff a. Boolean → Aff eff a → Aff eff (Fiber eff a)
 foreign import _map ∷ ∀ eff a b. (a → b) → Aff eff a → Aff eff b
 foreign import _bind ∷ ∀ eff a b. Aff eff a → (a → Aff eff b) → Aff eff b
 foreign import _delay ∷ ∀ a eff. Fn.Fn2 (Unit → Either a Unit) Number (Aff eff Unit)
@@ -245,6 +264,14 @@ foreign import _liftEff ∷ ∀ eff a. Eff eff a → Aff eff a
 foreign import _parAffMap ∷ ∀ eff a b. (a → b) → ParAff eff a → ParAff eff b
 foreign import _parAffApply ∷ ∀ eff a b. ParAff eff (a → b) → ParAff eff a → ParAff eff b
 foreign import _parAffAlt ∷ ∀ eff a. ParAff eff a → ParAff eff a → ParAff eff a
+
+type BracketConditions eff a =
+  { kill ∷ Error → a → Aff eff Unit
+  , throw ∷ Error → a → Aff eff Unit
+  , release ∷ a → Aff eff Unit
+  }
+
+-- | A general purpose bracket
 foreign import generalBracket ∷ ∀ eff a b. Aff eff a → BracketConditions eff a → (a → Aff eff b) → Aff eff b
 
 -- | Constructs an `Aff` from low-level `Eff` effects using a callback. A
@@ -259,33 +286,43 @@ foreign import memoAff ∷ ∀ eff a. Aff eff a → Aff eff a
 
 foreign import _launchAff
   ∷ ∀ eff a
-  . Fn.Fn6
-      (Either Error a → Boolean)
-      (Either Error a → Error)
-      (Either Error a → a)
-      (Error → Either Error a)
-      (a → Either Error a)
+  . Fn.Fn3
+      FFIUtil
+      Boolean
       (Aff eff a)
       (Eff eff (Fiber eff a))
 
 foreign import _sequential
   ∷ ∀ eff a
-  . Fn.Fn7
-      (Either Error a → Boolean)
-      (Either Error a → Error)
-      (Either Error a → a)
-      (Error → Either Error a)
-      (a → Either Error a)
+  . Fn.Fn3
+      FFIUtil
       ((Either Error a → Eff eff Unit) → Aff eff a → Eff eff (Fiber eff Unit))
       (ParAff eff a)
       (Aff eff a)
 
-unsafeFromLeft ∷ ∀ x y. Either x y → x
-unsafeFromLeft = case _ of
-  Left a  → a
-  Right _ → unsafeCrashWith "unsafeFromLeft: Right"
+newtype FFIUtil = FFIUtil
+  { isLeft ∷ ∀ a b. Either a b → Boolean
+  , fromLeft ∷ ∀ a b. Either a b → a
+  , fromRight ∷ ∀ a b. Either a b → b
+  , left ∷ ∀ a b. a → Either a b
+  , right ∷ ∀ a b. b → Either a b
+  }
 
-unsafeFromRight ∷ ∀ x y. Either x y → y
-unsafeFromRight = case _ of
-  Right a → a
-  Left  _ → unsafeCrashWith "unsafeFromRight: Left"
+ffiUtil ∷ FFIUtil
+ffiUtil = FFIUtil
+  { isLeft
+  , fromLeft: unsafeFromLeft
+  , fromRight: unsafeFromRight
+  , left: Left
+  , right: Right
+  }
+  where
+  unsafeFromLeft ∷ ∀ a b. Either a b → a
+  unsafeFromLeft = case _ of
+    Left a  → a
+    Right _ → unsafeCrashWith "unsafeFromLeft: Right"
+
+  unsafeFromRight ∷ ∀ a b. Either a b → b
+  unsafeFromRight = case _ of
+    Right a → a
+    Left  _ → unsafeCrashWith "unsafeFromRight: Left"

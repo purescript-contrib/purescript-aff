@@ -13,19 +13,22 @@ efficiency sake.
 data Aff eff a
   = Pure a
   | Throw Error
+  | Catch (Aff eff a) (Error -> Aff eff a)
   | Sync (Eff eff a)
   | Async ((Either Error a -> Eff eff Unit) -> Eff eff (Canceler eff))
-  | forall b. Catch (Error -> a) (Aff eff b) ?(b -> a)
+  | forall b. Bind (Aff eff b) (b -> Aff eff a)
   | forall b. Bracket (Aff eff b) (BracketConditions eff b) (b -> Aff eff a)
+  | forall b. Fork Boolean (Aff eff b) ?(Thread eff b -> a)
 
 */
 var PURE    = "Pure";
 var THROW   = "Throw";
+var CATCH   = "Catch";
 var SYNC    = "Sync";
 var ASYNC   = "Async";
 var BIND    = "Bind";
-var CATCH   = "Catch";
 var BRACKET = "Bracket";
+var FORK    = "Fork";
 
 /*
 
@@ -91,6 +94,12 @@ exports._map = function (f) {
 exports._bind = function (aff) {
   return function (k) {
     return new Aff(BIND, aff, k);
+  };
+};
+
+exports._fork = function (suspended) {
+  return function (aff) {
+    return new Aff(FORK, suspended, aff);
   };
 };
 
@@ -206,367 +215,456 @@ var PENDING   = 1; // An async effect is running.
 var RETURN    = 2; // The current stack has returned.
 var CONTINUE  = 3; // Run the next effect.
 var BINDSTEP  = 4; // Apply the next bind.
-var COMPLETED = 5; // The entire fiber has completed.
+var KILLFORKS = 5; // Killing supervised forks.
+var COMPLETED = 6; // The entire fiber has completed.
 
-exports._launchAff = function (isLeft, fromLeft, fromRight, left, right, aff) {
-  return function () {
-    // Monotonically increasing tick, increased on each asynchronous turn.
-    var runTick = 0;
+function runFiber(util, suspended, aff, completeCb) {
+  // Monotonically increasing tick, increased on each asynchronous turn.
+  var runTick = 0;
 
-    // The current branch of the state machine.
-    var status = CONTINUE;
+  // The current branch of the state machine.
+  var status = CONTINUE;
 
-    // The current point of interest for the state machine branch.
-    var step      = aff;  // Successful step
-    var fail      = null; // Failure step
-    var interrupt = null; // Asynchronous interrupt
+  // The current point of interest for the state machine branch.
+  var step      = aff;  // Successful step
+  var fail      = null; // Failure step
+  var interrupt = null; // Asynchronous interrupt
 
-    // Stack of continuations for the current fiber.
-    var bhead = null;
-    var btail = null;
+  // Stack of continuations for the current fiber.
+  var bhead = null;
+  var btail = null;
 
-    // Stack of attempts and finalizers for error recovery. This holds a union
-    // of an arbitrary Aff finalizer or a Cons list of bind continuations.
-    var attempts = null;
+  // Stack of attempts and finalizers for error recovery. This holds a union
+  // of an arbitrary Aff finalizer or a Cons list of bind continuations.
+  var attempts = null;
 
-    // A special state is needed for Bracket, because it cannot be killed. When
-    // we enter a bracket acquisition or finalizer, we increment the counter,
-    // and then decrement once complete.
-    var bracket = 0;
+  // A special state is needed for Bracket, because it cannot be killed. When
+  // we enter a bracket acquisition or finalizer, we increment the counter,
+  // and then decrement once complete.
+  var bracket = 0;
 
-    // Each join gets a new id so they can be revoked.
-    var joinId = 0;
-    var joins  = {};
+  // Each join gets a new id so they can be revoked.
+  var joinId = 0;
+  var joins  = {};
 
-    // Temporary bindings for the various branches.
-    var tmp, result, attempt, canceler;
+  // Track child forks so they don't outlive the parent thread.
+  var forkCount = 0;
+  var forkId    = 0;
+  var forks     = {};
 
-    // Each invocation of `run` requires a tick. When an asynchronous effect is
-    // resolved, we must check that the local tick coincides with the fiber
-    // tick before resuming. This prevents multiple async continuations from
-    // accidentally resuming the same fiber. A common example may be invoking
-    // the provided callback in `makeAff` more than once, but it may also be an
-    // async effect resuming after the fiber was already cancelled.
-    function run(localRunTick) {
-      while (1) {
-        tmp       = null;
-        result    = null;
-        attempt   = null;
-        canceler  = null;
-        switch (status) {
-        case BINDSTEP:
+  // Temporary bindings for the various branches.
+  var tmp, result, attempt, canceler;
+
+  function launchChildFiber(fid, suspended, child) {
+    forkCount++;
+    var blocked = true;
+    var fiber = runFiber(util, suspended, child, function () {
+      forkCount--;
+      if (blocked) {
+        blocked = false;
+      } else {
+        delete forks[fid];
+      }
+    });
+    if (blocked) {
+      blocked = false;
+      forks[fid] = fiber;
+    }
+    return fiber;
+  }
+
+  function killChildFibers(finalStep) {
+    return new Aff(ASYNC, function (cb) {
+      return function () {
+        var killError = new Error("[Aff] Child fiber outlived parent");
+        var killId    = 0;
+        var kills     = {};
+        for (var k in forks) {
+          if (forks.hasOwnProperty(k)) {
+            kills[killId++] = forks[k].kill(killError);
+          }
+        }
+        forks = {};
+        forkCount = 0;
+        for (var i = 0, len = killId; i < len; i++) {
+          kills[i] = runFiber(util, false, kills[i], function () {
+            delete kills[i];
+            killId--;
+            if (killId === 0) {
+              cb(finalStep)();
+            }
+          });
+        }
+        return function (error) {
+          return new Aff(SYNC, function () {
+            for (var k in kills) {
+              if (kills.hasOwnProperty(k)) {
+                runFiber(util, false, kills[k].kill(error), function () {});
+              }
+            }
+          });
+        };
+      };
+    });
+  }
+
+  // Each invocation of `run` requires a tick. When an asynchronous effect is
+  // resolved, we must check that the local tick coincides with the fiber
+  // tick before resuming. This prevents multiple async continuations from
+  // accidentally resuming the same fiber. A common example may be invoking
+  // the provided callback in `makeAff` more than once, but it may also be an
+  // async effect resuming after the fiber was already cancelled.
+  function run(localRunTick) {
+    while (true) {
+      tmp       = null;
+      result    = null;
+      attempt   = null;
+      canceler  = null;
+      switch (status) {
+      case BINDSTEP:
+        status = CONTINUE;
+        step   = bhead(step);
+        if (btail === null) {
+          bhead = null;
+        } else {
+          bhead = btail._1;
+          btail = btail._2;
+        }
+        break;
+
+      case CONTINUE:
+        switch (step.tag) {
+        case BIND:
+          if (bhead) {
+            btail = new Aff(CONS, bhead, btail);
+          }
+          bhead  = step._2;
           status = CONTINUE;
-          step   = bhead(step);
-          if (btail === null) {
-            bhead = null;
+          step   = step._1;
+          break;
+
+        case PURE:
+          if (bhead === null) {
+            status = RETURN;
+            step   = util.right(step._1);
           } else {
-            bhead = btail._1;
-            btail = btail._2;
+            status = BINDSTEP;
+            step   = step._1;
           }
           break;
 
-        case CONTINUE:
-          switch (step.tag) {
-          case BIND:
-            if (bhead) {
-              btail = new Aff(CONS, bhead, btail);
+        case THROW:
+          bhead  = null;
+          btail  = null;
+          status = RETURN;
+          fail   = util.left(step._1);
+          break;
+
+        case SYNC:
+          status = BLOCKED;
+          result = runSync(util.left, util.right, step._1);
+          if (util.isLeft(result)) {
+            status = RETURN;
+            fail   = result;
+          } else if (bhead === null) {
+            status = RETURN;
+            step   = result;
+          } else {
+            status = BINDSTEP;
+            step   = util.fromRight(result);
+          }
+          break;
+
+        case ASYNC:
+          status   = BLOCKED;
+          canceler = runAsync(util.left, step._1, function (result) {
+            return function () {
+              if (runTick !== localRunTick) {
+                return;
+              }
+              tmp = status;
+              if (util.isLeft(result)) {
+                status = RETURN;
+                fail   = result;
+              } else if (bhead === null) {
+                status = RETURN;
+                step   = result;
+              } else {
+                status = BINDSTEP;
+                step   = util.fromRight(result);
+              }
+              // We only need to invoke `run` if the subsequent block has
+              // switch the status to PENDING. Otherwise the callback was
+              // resolved synchronously, and the current loop can continue
+              // normally.
+              if (tmp === PENDING) {
+                run(++runTick);
+              } else {
+                localRunTick = ++runTick;
+              }
+            };
+          });
+          // If the callback was resolved synchronously, the status will have
+          // switched to CONTINUE, and we should not move on to PENDING.
+          if (status === BLOCKED) {
+            status = PENDING;
+            step   = canceler;
+          }
+          break;
+
+        // Enqueue the current stack of binds and continue
+        case CATCH:
+          attempts = new Aff(CONS, new Aff(RECOVER, step._2, bhead, btail), attempts);
+          bhead    = null;
+          btail    = null;
+          status   = CONTINUE;
+          step     = step._1;
+          break;
+
+        // When we evaluate a Bracket, we also enqueue the instruction so we
+        // can fullfill it later once we return from the acquisition.
+        case BRACKET:
+          bracket++;
+          if (bhead === null) {
+              attempts = new Aff(CONS, step, attempts);
+          } else {
+              attempts = new Aff(CONS, step, new Aff(CONS, new Aff(RESUME, bhead, btail), attempts));
+          }
+          bhead  = null;
+          btail  = null;
+          status = CONTINUE;
+          step   = step._1;
+          break;
+
+        case FORK:
+          status = BINDSTEP;
+          step   = launchChildFiber(forkId++, step._1, step._2);
+          break;
+        }
+        break;
+
+      case RETURN:
+        // If the current stack has returned, and we have no other stacks to
+        // resume or finalizers to run, the fiber has halted and we can
+        // invoke all join callbacks. Otherwise we need to resume.
+        if (attempts === null) {
+          runTick++; // Increment the counter to prevent reentry after completion.
+          status = KILLFORKS;
+          step   = interrupt || fail || step;
+        } else {
+          attempt = attempts._1;
+          switch (attempt.tag) {
+          // We cannot recover from an interrupt. Otherwise we should
+          // continue stepping, or run the exception handler if an exception
+          // was raised.
+          case RECOVER:
+            attempts = attempts._2;
+            if (interrupt === null) {
+              bhead  = attempt._2;
+              btail  = attempt._3;
+              if (fail === null) {
+                status = BINDSTEP;
+                step   = util.fromRight(step);
+              } else {
+                status = CONTINUE;
+                step   = attempt._1(util.fromLeft(fail));
+                fail   = null;
+              }
             }
-            bhead  = step._2;
-            status = CONTINUE;
-            step   = step._1;
             break;
 
-          case PURE:
-            if (bhead === null) {
-              status = RETURN;
-              step   = right(step._1);
-            } else {
+          // We cannot resume from an interrupt or exception.
+          case RESUME:
+            attempts = attempts._2;
+            if (interrupt === null && fail === null) {
+              bhead  = attempt._1;
+              btail  = attempt._2;
               status = BINDSTEP;
-              step   = step._1;
+              step   = util.fromRight(step);
             }
             break;
 
-          case THROW:
+          // If we have a bracket, we should enqueue the finalizer branch,
+          // and continue with the success branch only if the fiber has
+          // not been interrupted. If the bracket acquisition failed, we
+          // should not run either.
+          case BRACKET:
+            bracket--;
+            if (fail === null) {
+              result   = util.fromRight(step);
+              attempts = new Aff(CONS, new Aff(BRACKETED, attempt._2, result), attempts._2);
+              if (interrupt === null || bracket > 0) {
+                status = CONTINUE;
+                step   = attempt._3(result);
+              }
+            } else {
+              attempts = attempts._2;
+            }
+            break;
+
+          case BRACKETED:
+            bracket++;
+            attempts = new Aff(CONS, new Aff(FINALIZED, step), attempts._2);
+            status   = CONTINUE;
+            if (interrupt !== null) {
+              step = attempt._1.kill(util.fromLeft(interrupt))(attempt._2);
+            } else if (fail !== null) {
+              step = attempt._1.throw(util.fromLeft(fail))(attempt._2);
+            } else {
+              step = attempt._1.release(attempt._2);
+            }
+            break;
+
+          case FINALIZED:
+            bracket--;
+            attempts = attempts._2;
+            step     = attempt._1;
+            break;
+
+          // Otherwise we need to run a finalizer, which cannot be interrupted.
+          // We insert a FINALIZED marker to know when we can release it.
+          default:
+            bracket++;
+            attempts._1 = new Aff(FINALIZED, step);
+            status      = CONTINUE;
+            step        = attempt;
+          }
+        }
+        break;
+
+      case KILLFORKS:
+        if (forkCount === 0) {
+          status = COMPLETED;
+        } else {
+          status = CONTINUE;
+          step   = killChildFibers(step);
+        }
+        break;
+
+      case COMPLETED:
+        completeCb();
+        tmp = false;
+        for (var k in joins) {
+          if ({}.hasOwnProperty.call(joins, k)) {
+            tmp = true;
+            runEff(joins[k](step));
+          }
+        }
+        joins = tmp;
+        // If we have an unhandled exception, and no other fiber has joined
+        // then we need to throw the exception in a fresh stack.
+        if (util.isLeft(step) && !joins) {
+          setTimeout(function () {
+            // Guard on joins because a completely synchronous fiber can
+            // still have an observer.
+            if (!joins) {
+              throw util.fromLeft(step);
+            }
+          }, 0);
+        }
+        return;
+      case BLOCKED: return;
+      case PENDING: return;
+      }
+    }
+  }
+
+  function addJoinCallback(cb) {
+    var jid    = joinId++;
+    joins[jid] = cb;
+    return function (error) {
+      return new Aff(SYNC, function () {
+        delete joins[jid];
+      });
+    };
+  }
+
+  function kill(error) {
+    return new Aff(ASYNC, function (cb) {
+      return function () {
+        // Shadow the canceler binding because it can potentially be
+        // clobbered if we call `run`.
+        var canceler;
+        var killCb = function () {
+          return cb(util.right(void 0));
+        };
+        if (suspended) {
+          suspended = false;
+          status    = COMPLETED;
+          interrupt = util.left(error);
+        }
+        switch (status) {
+        case COMPLETED:
+          canceler = nonCanceler;
+          killCb()();
+          break;
+        case PENDING:
+          canceler = addJoinCallback(killCb);
+          if (interrupt === null) {
+            interrupt = util.left(error);
+          }
+          // If we can interrupt the pending action, enqueue the canceler as
+          // a non-interruptible finalizer.
+          if (bracket === 0) {
+            attempts = new Aff(CONS, step(error), attempts);
+            bhead    = null;
+            btail    = null;
+            status   = RETURN;
+            step     = null;
+            fail     = null;
+            run(++runTick);
+          }
+          break;
+        default:
+          canceler = addJoinCallback(killCb);
+          if (interrupt === null) {
+            interrupt = util.left(error);
+          }
+          if (bracket === 0) {
             bhead  = null;
             btail  = null;
             status = RETURN;
-            fail   = left(step._1);
-            break;
-
-          case SYNC:
-            status = BLOCKED;
-            result = runSync(left, right, step._1);
-            if (isLeft(result)) {
-              status = RETURN;
-              fail   = result;
-            } else if (bhead === null) {
-              status = RETURN;
-              step   = result;
-            } else {
-              status = BINDSTEP;
-              step   = fromRight(result);
-            }
-            break;
-
-          case ASYNC:
-            status   = BLOCKED;
-            canceler = runAsync(left, step._1, function (result) {
-              return function () {
-                if (runTick !== localRunTick) {
-                  return;
-                }
-                tmp = status;
-                if (isLeft(result)) {
-                  status = RETURN;
-                  fail   = result;
-                } else if (bhead === null) {
-                  status = RETURN;
-                  step   = result;
-                } else {
-                  status = BINDSTEP;
-                  step   = fromRight(result);
-                }
-                // We only need to invoke `run` if the subsequent block has
-                // switch the status to PENDING. Otherwise the callback was
-                // resolved synchronously, and the current loop can continue
-                // normally.
-                if (tmp === PENDING) {
-                  run(++runTick);
-                } else {
-                  localRunTick = ++runTick;
-                }
-              };
-            });
-            // If the callback was resolved synchronously, the status will have
-            // switched to CONTINUE, and we should not move on to PENDING.
-            if (status === BLOCKED) {
-              status = PENDING;
-              step   = canceler;
-            }
-            break;
-
-          // Enqueue the current stack of binds and continue
-          case CATCH:
-            attempts = new Aff(CONS, new Aff(RECOVER, step._2, bhead, btail), attempts);
-            bhead    = null;
-            btail    = null;
-            status   = CONTINUE;
-            step     = step._1;
-            break;
-
-          // When we evaluate a Bracket, we also enqueue the instruction so we
-          // can fullfill it later once we return from the acquisition.
-          case BRACKET:
-            bracket++;
-            if (bhead === null) {
-               attempts = new Aff(CONS, step, attempts);
-            } else {
-               attempts = new Aff(CONS, step, new Aff(CONS, new Aff(RESUME, bhead, btail), attempts));
-            }
-            bhead  = null;
-            btail  = null;
-            status = CONTINUE;
-            step   = step._1;
-            break;
           }
-          break;
-
-        case RETURN:
-          // If the current stack has returned, and we have no other stacks to
-          // resume or finalizers to run, the fiber has halted and we can
-          // invoke all join callbacks. Otherwise we need to resume.
-          if (attempts === null) {
-            runTick++; // Increment the counter to prevent reentry after completion.
-            status = COMPLETED;
-            step   = interrupt || fail || step;
-          } else {
-            attempt = attempts._1;
-            switch (attempt.tag) {
-            // We cannot recover from an interrupt. Otherwise we should
-            // continue stepping, or run the exception handler if an exception
-            // was raised.
-            case RECOVER:
-              attempts = attempts._2;
-              if (interrupt === null) {
-                bhead  = attempt._2;
-                btail  = attempt._3;
-                if (fail === null) {
-                  status = BINDSTEP;
-                  step   = fromRight(step);
-                } else {
-                  status = CONTINUE;
-                  step   = attempt._1(fromLeft(fail));
-                  fail   = null;
-                }
-              }
-              break;
-
-            // We cannot resume from an interrupt or exception.
-            case RESUME:
-              attempts = attempts._2;
-              if (interrupt === null && fail === null) {
-                bhead  = attempt._1;
-                btail  = attempt._2;
-                status = BINDSTEP;
-                step   = fromRight(step);
-              }
-              break;
-
-            // If we have a bracket, we should enqueue the finalizer branch,
-            // and continue with the success branch only if the fiber has
-            // not been interrupted. If the bracket acquisition failed, we
-            // should not run either.
-            case BRACKET:
-              bracket--;
-              if (fail === null) {
-                result   = fromRight(step);
-                attempts = new Aff(CONS, new Aff(BRACKETED, attempt._2, result), attempts._2);
-                if (interrupt === null || bracket > 0) {
-                  status = CONTINUE;
-                  step   = attempt._3(result);
-                }
-              } else {
-                attempts = attempts._2;
-              }
-              break;
-
-            case BRACKETED:
-              bracket++;
-              attempts = new Aff(CONS, new Aff(FINALIZED, step), attempts._2);
-              status   = CONTINUE;
-              if (interrupt !== null) {
-                step = attempt._1.kill(fromLeft(interrupt))(attempt._2);
-              } else if (fail !== null) {
-                step = attempt._1.throw(fromLeft(fail))(attempt._2);
-              } else {
-                step = attempt._1.release(attempt._2);
-              }
-              break;
-
-            case FINALIZED:
-              bracket--;
-              attempts = attempts._2;
-              step     = attempt._1;
-              break;
-
-            // Otherwise we need to run a finalizer, which cannot be interrupted.
-            // We insert a FINALIZED marker to know when we can release it.
-            default:
-              bracket++;
-              attempts._1 = new Aff(FINALIZED, step);
-              status      = CONTINUE;
-              step        = attempt;
-            }
-          }
-          break;
-
-        case COMPLETED:
-          tmp = false;
-          for (var k in joins) {
-            if ({}.hasOwnProperty.call(joins, k)) {
-              tmp = true;
-              runEff(joins[k](step));
-            }
-          }
-          joins = tmp;
-          // If we have an unhandled exception, and no other fiber has joined
-          // then we need to throw the exception in a fresh stack.
-          if (isLeft(step) && !joins) {
-            setTimeout(function () {
-              // Guard on joins because a completely synchronous fiber can
-              // still have an observer.
-              if (!joins) {
-                throw fromLeft(step);
-              }
-            }, 0);
-          }
-          return;
-        case BLOCKED: return;
-        case PENDING: return;
         }
-      }
-    }
-
-    function addJoinCallback(cb) {
-      var jid    = joinId++;
-      joins[jid] = cb;
-      return function (error) {
-        return new Aff(SYNC, function () {
-          delete joins[jid];
-        });
+        return canceler;
       };
-    }
+    });
+  }
 
-    function kill(error) {
-      return new Aff(ASYNC, function (cb) {
-        return function () {
-          // Shadow the canceler binding because it can potentially be
-          // clobbered if we call `run`.
-          var canceler;
-          var killCb = function () {
-            return cb(right(void 0));
-          };
-          switch (status) {
-          case COMPLETED:
-            canceler = nonCanceler;
-            killCb()();
-            break;
-          case PENDING:
-            canceler = addJoinCallback(killCb);
-            if (interrupt === null) {
-              interrupt = left(error);
-            }
-            // If we can interrupt the pending action, enqueue the canceler as
-            // a non-interruptible finalizer.
-            if (bracket === 0) {
-              attempts = new Aff(CONS, step(error), attempts);
-              bhead    = null;
-              btail    = null;
-              status   = RETURN;
-              step     = null;
-              fail     = null;
-              run(++runTick);
-            }
-            break;
-          default:
-            canceler = addJoinCallback(killCb);
-            if (interrupt === null) {
-              interrupt = left(error);
-            }
-            if (bracket === 0) {
-              bhead  = null;
-              btail  = null;
-              status = RETURN;
-            }
-          }
-          return canceler;
-        };
-      });
-    }
+  function join() {
+    return new Aff(ASYNC, function (cb) {
+      return function () {
+        if (suspended) {
+          suspended = false;
+          run(runTick);
+        }
+        if (status === COMPLETED) {
+          joins = true;
+          cb(step)();
+          return nonCanceler;
+        }
+        return addJoinCallback(cb);
+      };
+    });
+  }
 
-    function join() {
-      return new Aff(ASYNC, function (cb) {
-        return function () {
-          if (status === COMPLETED) {
-            joins = true;
-            cb(step)();
-            return nonCanceler;
-          }
-          return addJoinCallback(cb);
-        };
-      });
-    }
-
+  if (suspended === false) {
     run(runTick);
+  }
 
-    return {
-      kill: kill,
-      join: join()
-    };
+  return {
+    kill: kill,
+    join: join()
+  };
+}
+
+exports._launchAff = function (util, suspended, aff) {
+  return function () {
+    return runFiber(util, suspended, aff, function () {});
   };
 };
 
-exports._sequential = function (isLeft, fromLeft, fromRight, left, right, runAff, par) {
+exports._sequential = function (util, runAff, par) {
   function runParAff(cb) {
     // Table of all forked fibers.
     var fiberId   = 0;
@@ -577,7 +675,7 @@ exports._sequential = function (isLeft, fromLeft, fromRight, left, right, runAff
     var kills     = {};
 
     // Error used for early cancelation on Alt branches.
-    var early     = new Error("ParAff early exit");
+    var early     = new Error("[ParAff] Early exit");
 
     // Error used to kill the entire tree.
     var interrupt = null;
@@ -596,7 +694,7 @@ exports._sequential = function (isLeft, fromLeft, fromRight, left, right, runAff
       var kills = {};
       var tmp, kid;
 
-      loop: while (1) {
+      loop: while (true) {
         tmp = null;
 
         switch (step.tag) {
@@ -606,19 +704,19 @@ exports._sequential = function (isLeft, fromLeft, fromRight, left, right, runAff
           // then we should just remove it from the queue and continue.
           if (tmp.tag === THUNK) {
             delete fibers[step._1];
-            cb(right(void 0))();
+            cb(util.right(void 0))();
           } else {
             // Again, we prime the effect but don't run it yet, so that we can
             // collect all the fibers first.
             kills[count++] = runAff(function (result) {
               return function () {
                 count--;
-                if (fail === null && isLeft(result)) {
+                if (fail === null && util.isLeft(result)) {
                   fail = result;
                 }
                 // We can resolve the callback when all fibers have died.
                 if (count === 0) {
-                  cb(fail || right(void 0))();
+                  cb(fail || util.right(void 0))();
                 }
               };
             })(tmp._1.kill(error));
@@ -665,7 +763,7 @@ exports._sequential = function (isLeft, fromLeft, fromRight, left, right, runAff
     function join(result, head, tail) {
       var fail, step, lhs, rhs, tmp, kid;
 
-      if (isLeft(result)) {
+      if (util.isLeft(result)) {
         fail = result;
         step = null;
       } else {
@@ -673,7 +771,7 @@ exports._sequential = function (isLeft, fromLeft, fromRight, left, right, runAff
         fail = null;
       }
 
-      loop: while (1) {
+      loop: while (true) {
         lhs = null;
         rhs = null;
         tmp = null;
@@ -701,7 +799,7 @@ exports._sequential = function (isLeft, fromLeft, fromRight, left, right, runAff
         switch (head.tag) {
         case MAP:
           if (fail === null) {
-            head._3 = right(head._1(fromRight(step)));
+            head._3 = util.right(head._1(util.fromRight(step)));
             step    = head._3;
           } else {
             head._3 = fail;
@@ -716,18 +814,18 @@ exports._sequential = function (isLeft, fromLeft, fromRight, left, right, runAff
           }
           // If either side resolve with an error, we should continue with
           // the first error.
-          if (isLeft(lhs)) {
-            if (isLeft(rhs)) {
+          if (util.isLeft(lhs)) {
+            if (util.isLeft(rhs)) {
               if (step === lhs) {
                 step = rhs;
               }
             } else {
               step = lhs;
             }
-          } else if (isLeft(rhs)) {
+          } else if (util.isLeft(rhs)) {
             step = rhs;
           } else {
-            head._3 = right(fromRight(lhs)(fromRight(rhs)));
+            head._3 = util.right(util.fromRight(lhs)(util.fromRight(rhs)));
             step    = head._3;
           }
           break;
@@ -742,7 +840,7 @@ exports._sequential = function (isLeft, fromLeft, fromRight, left, right, runAff
           kills[kid] = kill(early, step === lhs ? head._2 : head._1, function (killResult) {
             return function () {
               delete kills[kid];
-              if (isLeft(killResult)) {
+              if (util.isLeft(killResult)) {
                 fail = killResult;
                 step = null;
               }
@@ -795,7 +893,7 @@ exports._sequential = function (isLeft, fromLeft, fromRight, left, right, runAff
       var tail   = null;
       var tmp, fid;
 
-      loop: while (1) {
+      loop: while (true) {
         tmp = null;
         fid = null;
 
@@ -884,7 +982,7 @@ exports._sequential = function (isLeft, fromLeft, fromRight, left, right, runAff
     // we need to first cancel those joins. This is important so that errors
     // don't accidentally get swallowed by irrelevant join callbacks.
     function cancel(error, cb) {
-      interrupt = left(error);
+      interrupt = util.left(error);
 
       // We can drop the fibers here because we are only canceling join
       // attempts, which are synchronous anyway.

@@ -2,7 +2,7 @@ module Test.Main where
 
 import Prelude
 import Control.Alt ((<|>))
-import Control.Monad.Aff (Aff, Canceler(..), runAff_, launchAff, makeAff, try, bracket, generalBracket, delay, forkAff, joinFiber, killFiber)
+import Control.Monad.Aff (Aff, Canceler(..), runAff_, launchAff, makeAff, try, bracket, generalBracket, delay, forkAff, suspendAff, joinFiber, killFiber)
 import Control.Monad.Eff (Eff, runPure)
 import Control.Monad.Eff.Class (class MonadEff, liftEff)
 import Control.Monad.Eff.Console (CONSOLE)
@@ -96,24 +96,24 @@ test_delay = assert "delay" do
 
 test_fork ∷ ∀ eff. TestAff eff Unit
 test_fork = assert "fork" do
-  ref ← newRef 0
+  ref ← newRef ""
   fiber ← forkAff do
     delay (Milliseconds 10.0)
-    modifyRef ref (_ + 1)
-  writeRef ref 42
+    modifyRef ref (_ <> "child")
+  modifyRef ref (_ <> "go")
   delay (Milliseconds 20.0)
-  modifyRef ref (_ - 3)
-  eq 40 <$> readRef ref
+  modifyRef ref (_ <> "parent")
+  eq "gochildparent" <$> readRef ref
 
 test_join ∷ ∀ eff. TestAff eff Unit
 test_join = assert "join" do
-  ref ← newRef 1
+  ref ← newRef ""
   fiber ← forkAff do
     delay (Milliseconds 10.0)
-    modifyRef ref (_ - 2)
+    modifyRef ref (_ <> "child")
     readRef ref
-  writeRef ref 42
-  eq 40 <$> joinFiber fiber
+  modifyRef ref (_ <> "parent")
+  eq "parentchild" <$> joinFiber fiber
 
 test_join_throw ∷ ∀ eff. TestAff eff Unit
 test_join_throw = assert "join/throw" do
@@ -146,6 +146,18 @@ test_multi_join = assert "join/multi" do
     ]
   n2 ← readRef ref
   pure (n1 == 50 && n2 == 3)
+
+test_suspend ∷ ∀ eff. TestAff eff Unit
+test_suspend = assert "suspend" do
+  ref ← newRef ""
+  fiber ← suspendAff do
+    delay (Milliseconds 10.0)
+    modifyRef ref (_ <> "child")
+  modifyRef ref (_ <> "go")
+  delay (Milliseconds 20.0)
+  modifyRef ref (_ <> "parent")
+  _ ← joinFiber fiber
+  eq "goparentchild" <$> readRef ref
 
 test_makeAff ∷ ∀ eff. TestAff eff Unit
 test_makeAff = assert "makeAff" do
@@ -249,14 +261,14 @@ test_kill = assert "kill" do
 
 test_kill_canceler ∷ ∀ eff. TestAff eff Unit
 test_kill_canceler = assert "kill/canceler" do
-  ref ← newRef 0
+  ref ← newRef ""
   fiber ← forkAff do
-    n ← makeAff \_ → pure (Canceler \_ → liftEff (writeRef ref 42))
-    writeRef ref 2
+    n ← makeAff \_ → pure (Canceler \_ → liftEff (writeRef ref "cancel"))
+    writeRef ref "done"
   killFiber (error "Nope") fiber
   res ← try (joinFiber fiber)
   n ← readRef ref
-  pure (n == 42 && (lmap message res) == Left "Nope")
+  pure (n == "cancel" && (lmap message res) == Left "Nope")
 
 test_kill_bracket ∷ ∀ eff. TestAff eff Unit
 test_kill_bracket = assert "kill/bracket" do
@@ -302,6 +314,27 @@ test_kill_bracket_nested = assert "kill/bracket/nested" do
     , "foo/bar/run/release/bar/run"
     , "foo/bar/run/release/bar/release"
     ]
+
+-- You monster!!
+test_kill_child ∷ ∀ eff. TestAff eff Unit
+test_kill_child = assert "kill/child" do
+  ref ← newRef ""
+  let
+    action s = generalBracket
+      (modifyRef ref (_ <> "acquire" <> s))
+      { throw: \_ _ → modifyRef ref (_ <> "throw" <> s)
+      , kill: \_ _ → modifyRef ref (_ <> "kill" <> s)
+      , release: \_ → modifyRef ref (_ <> "complete" <> s)
+      }
+      (\_ -> do
+        delay (Milliseconds 10.0)
+        modifyRef ref (_ <> "child" <> s))
+  fiber ← forkAff do
+    _ ← forkAff $ action "foo"
+    _ ← forkAff $ action "bar"
+    modifyRef ref (_ <> "parent")
+  delay (Milliseconds 20.0)
+  eq "acquirefooacquirebarparentkillfookillbar" <$> readRef ref
 
 test_parallel ∷ ∀ eff. TestAff eff Unit
 test_parallel = assert "parallel" do
@@ -451,6 +484,7 @@ main = do
     test_join_throw
     test_join_throw_sync
     test_multi_join
+    test_suspend
     test_makeAff
     test_bracket
     test_bracket_nested
@@ -459,6 +493,7 @@ main = do
     test_kill_canceler
     test_kill_bracket
     test_kill_bracket_nested
+    test_kill_child
     test_parallel
     test_kill_parallel
     test_parallel_alt
