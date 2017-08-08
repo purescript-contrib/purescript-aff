@@ -507,11 +507,11 @@ function runFiber(util, suspended, aff, completeCb) {
             attempts = new Aff(CONS, new Aff(FINALIZED, step), attempts._2);
             status   = CONTINUE;
             if (interrupt !== null) {
-              step = attempt._1.kill(util.fromLeft(interrupt))(attempt._2);
+              step = attempt._1.killed(util.fromLeft(interrupt))(attempt._2);
             } else if (fail !== null) {
-              step = attempt._1.throw(util.fromLeft(fail))(attempt._2);
+              step = attempt._1.failed(util.fromLeft(fail))(attempt._2);
             } else {
-              step = attempt._1.release(attempt._2);
+              step = attempt._1.completed(attempt._2);
             }
             break;
 

@@ -235,9 +235,9 @@ test_general_bracket = assert "bracket/general" do
       pure s
     bracketAction s =
       generalBracket (action s)
-        { kill: \error s' → void $ action (s' <> "/kill/" <> message error)
-        , throw: \error s' → void $ action (s' <> "/throw/" <> message error)
-        , release: \s' → void $ action (s' <> "/release")
+        { killed: \error s' → void $ action (s' <> "/kill/" <> message error)
+        , failed: \error s' → void $ action (s' <> "/throw/" <> message error)
+        , completed: \s' → void $ action (s' <> "/release")
         }
 
   f1 ← forkAff $ bracketAction "foo" (const (action "a"))
@@ -322,9 +322,9 @@ test_kill_child = assert "kill/child" do
   let
     action s = generalBracket
       (modifyRef ref (_ <> "acquire" <> s))
-      { throw: \_ _ → modifyRef ref (_ <> "throw" <> s)
-      , kill: \_ _ → modifyRef ref (_ <> "kill" <> s)
-      , release: \_ → modifyRef ref (_ <> "complete" <> s)
+      { failed: \_ _ → modifyRef ref (_ <> "throw" <> s)
+      , killed: \_ _ → modifyRef ref (_ <> "kill" <> s)
+      , completed: \_ → modifyRef ref (_ <> "complete" <> s)
       }
       (\_ -> do
         delay (Milliseconds 10.0)

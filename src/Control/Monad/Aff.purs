@@ -246,11 +246,11 @@ atomically a = bracket a (const (pure unit)) pure
 -- | acquisition nor disposal may be cancelled and are guaranteed to run until
 -- | they complete.
 bracket ∷ ∀ eff a b. Aff eff a → (a → Aff eff Unit) → (a → Aff eff b) → Aff eff b
-bracket acquire release =
+bracket acquire completed =
   generalBracket acquire
-    { kill: const release
-    , throw: const release
-    , release
+    { killed: const completed
+    , failed: const completed
+    , completed
     }
 
 foreign import _pure ∷ ∀ eff a. a → Aff eff a
@@ -266,9 +266,9 @@ foreign import _parAffApply ∷ ∀ eff a b. ParAff eff (a → b) → ParAff eff
 foreign import _parAffAlt ∷ ∀ eff a. ParAff eff a → ParAff eff a → ParAff eff a
 
 type BracketConditions eff a =
-  { kill ∷ Error → a → Aff eff Unit
-  , throw ∷ Error → a → Aff eff Unit
-  , release ∷ a → Aff eff Unit
+  { killed ∷ Error → a → Aff eff Unit
+  , failed ∷ Error → a → Aff eff Unit
+  , completed ∷ a → Aff eff Unit
   }
 
 -- | A general purpose bracket
