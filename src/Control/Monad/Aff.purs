@@ -17,6 +17,7 @@ module Control.Monad.Aff
   , bracket
   , generalBracket
   , delay
+  , never
   , finally
   , atomically
   , killFiber
@@ -226,6 +227,10 @@ spawnSuspendedAff = liftEff <<< launchSuspendedAff
 delay ∷ ∀ eff. Milliseconds → Aff eff Unit
 delay (Milliseconds n) = Fn.runFn2 _delay Right n
 
+-- | An async computation which does not resolve.
+never ∷ ∀ eff a. Aff eff a
+never = makeAff \_ → pure mempty
+
 -- | All `Eff` exceptions are implicitly caught within an `Aff` context, but
 -- | standard `liftEff` won't remove the effect label.
 liftEff' ∷ ∀ eff a. Eff (exception ∷ EXCEPTION | eff) a → Aff eff a
@@ -271,7 +276,9 @@ type BracketConditions eff a =
   , completed ∷ a → Aff eff Unit
   }
 
--- | A general purpose bracket
+-- | A general purpose bracket which lets you observe the status of the
+-- | bracketed action. The bracketed action may have been killed with an
+-- | exception, thrown an exception, or completed successfully.
 foreign import generalBracket ∷ ∀ eff a b. Aff eff a → BracketConditions eff a → (a → Aff eff b) → Aff eff b
 
 -- | Constructs an `Aff` from low-level `Eff` effects using a callback. A
