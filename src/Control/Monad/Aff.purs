@@ -132,7 +132,7 @@ instance alternativeParAff ∷ Alternative (ParAff e)
 
 instance parallelAff ∷ Parallel (ParAff eff) (Aff eff) where
   parallel = (unsafeCoerce ∷ ∀ a. Aff eff a → ParAff eff a)
-  sequential a = Fn.runFn3 _sequential ffiUtil runAff a
+  sequential a = Fn.runFn2 _sequential ffiUtil a
 
 -- | Represents a forked computation by way of `forkAff`. `Fiber`s are
 -- | memoized, so their results are only computed once.
@@ -294,9 +294,8 @@ foreign import _launchAff
 
 foreign import _sequential
   ∷ ∀ eff a
-  . Fn.Fn3
+  . Fn.Fn2
       FFIUtil
-      ((Either Error a → Eff eff Unit) → Aff eff a → Eff eff (Fiber eff Unit))
       (ParAff eff a)
       (Aff eff a)
 

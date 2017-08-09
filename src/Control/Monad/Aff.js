@@ -542,7 +542,7 @@ function runFiber(util, suspended, aff, completeCb) {
         break;
 
       case COMPLETED:
-        completeCb();
+        completeCb(step);
         tmp = false;
         for (var k in joins) {
           if ({}.hasOwnProperty.call(joins, k)) {
@@ -664,7 +664,7 @@ exports._launchAff = function (util, suspended, aff) {
   };
 };
 
-exports._sequential = function (util, runAff, par) {
+exports._sequential = function (util, par) {
   function runParAff(cb) {
     // Table of all forked fibers.
     var fiberId   = 0;
@@ -708,18 +708,20 @@ exports._sequential = function (util, runAff, par) {
           } else {
             // Again, we prime the effect but don't run it yet, so that we can
             // collect all the fibers first.
-            kills[count++] = runAff(function (result) {
+            kills[count++] = function (aff) {
               return function () {
-                count--;
-                if (fail === null && util.isLeft(result)) {
-                  fail = result;
-                }
-                // We can resolve the callback when all fibers have died.
-                if (count === 0) {
-                  cb(fail || util.right(void 0))();
-                }
+                return runFiber(util, false, aff, function (result) {
+                  count--;
+                  if (fail === null && util.isLeft(result)) {
+                    fail = result;
+                  }
+                  // We can resolve the callback when all fibers have died.
+                  if (count === 0) {
+                    cb(fail || util.right(void 0))();
+                  }
+                });
               };
-            })(tmp._1.kill(error));
+            }(tmp._1.kill(error));
           }
           // Terminal case.
           if (head === null) {
@@ -872,11 +874,9 @@ exports._sequential = function (util, runAff, par) {
 
     function resolve(fiber) {
       return function (result) {
-        return function () {
-          delete fibers[fiber._1];
-          fiber._3 = result;
-          join(result, fiber._2._1, fiber._2._2);
-        };
+        delete fibers[fiber._1];
+        fiber._3 = result;
+        join(result, fiber._2._1, fiber._2._2);
       };
     }
 
@@ -933,7 +933,11 @@ exports._sequential = function (util, runAff, par) {
             // because they may all be synchronous and resolve immediately, at
             // which point it would attempt to resolve against an incomplete
             // tree.
-            fibers[fid] = new Aff(THUNK, runAff(resolve(step))(tmp));
+            fibers[fid] = function (aff, completeCb) {
+              return new Aff(THUNK, function () {
+                return runFiber(util, false, aff, completeCb);
+              });
+            }(tmp, resolve(step));
           }
           break;
         case RETURN:
@@ -974,10 +978,6 @@ exports._sequential = function (util, runAff, par) {
       }
     }
 
-    function ignore () {
-      return function () {};
-    }
-
     // Cancels the entire tree. If there are already subtrees being canceled,
     // we need to first cancel those joins. This is important so that errors
     // don't accidentally get swallowed by irrelevant join callbacks.
@@ -987,7 +987,7 @@ exports._sequential = function (util, runAff, par) {
       // We can drop the fibers here because we are only canceling join
       // attempts, which are synchronous anyway.
       for (var kid = 0, n = killId; kid < n; kid++) {
-        runAff(ignore, kills[kid].kill(error))();
+        runFiber(util, false, kills[kid].kill(error), function () {});
       }
 
       var newKills = kill(error, root, cb);
@@ -997,7 +997,7 @@ exports._sequential = function (util, runAff, par) {
           return function () {
             for (var kid in newKills) {
               if (newKills.hasOwnProperty(kid)) {
-                runAff(ignore, newKills[kid].kill(killError))();
+                runFiber(util, false, newKills[kid].kill(killError), function () {});
               }
             }
             return nonCanceler;
