@@ -511,7 +511,7 @@ function runFiber(util, suspended, aff, completeCb) {
             } else if (fail !== null) {
               step = attempt._1.failed(util.fromLeft(fail))(attempt._2);
             } else {
-              step = attempt._1.completed(attempt._2);
+              step = attempt._1.completed(util.fromRight(step))(attempt._2);
             }
             break;
 

@@ -237,7 +237,7 @@ test_general_bracket = assert "bracket/general" do
       generalBracket (action s)
         { killed: \error s' → void $ action (s' <> "/kill/" <> message error)
         , failed: \error s' → void $ action (s' <> "/throw/" <> message error)
-        , completed: \s' → void $ action (s' <> "/release")
+        , completed: \r s' → void $ action (s' <> "/release/" <> r)
         }
 
   f1 ← forkAff $ bracketAction "foo" (const (action "a"))
@@ -251,7 +251,7 @@ test_general_bracket = assert "bracket/general" do
   r3 ← try $ joinFiber f3
 
   r4 ← readRef ref
-  pure (isLeft r1 && isLeft r2 && isRight r3 && r4 == "foofoo/kill/zbarbar/throw/bbazcbaz/release")
+  pure (isLeft r1 && isLeft r2 && isRight r3 && r4 == "foofoo/kill/zbarbar/throw/bbazcbaz/release/c")
 
 test_kill ∷ ∀ eff. TestAff eff Unit
 test_kill = assert "kill" do
@@ -324,7 +324,7 @@ test_kill_child = assert "kill/child" do
       (modifyRef ref (_ <> "acquire" <> s))
       { failed: \_ _ → modifyRef ref (_ <> "throw" <> s)
       , killed: \_ _ → modifyRef ref (_ <> "kill" <> s)
-      , completed: \_ → modifyRef ref (_ <> "complete" <> s)
+      , completed: \_ _ → modifyRef ref (_ <> "complete" <> s)
       }
       (\_ -> do
         delay (Milliseconds 10.0)

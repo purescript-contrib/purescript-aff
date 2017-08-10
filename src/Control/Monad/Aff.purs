@@ -255,7 +255,7 @@ bracket acquire completed =
   generalBracket acquire
     { killed: const completed
     , failed: const completed
-    , completed
+    , completed: const completed
     }
 
 foreign import _pure ∷ ∀ eff a. a → Aff eff a
@@ -270,16 +270,16 @@ foreign import _parAffMap ∷ ∀ eff a b. (a → b) → ParAff eff a → ParAff
 foreign import _parAffApply ∷ ∀ eff a b. ParAff eff (a → b) → ParAff eff a → ParAff eff b
 foreign import _parAffAlt ∷ ∀ eff a. ParAff eff a → ParAff eff a → ParAff eff a
 
-type BracketConditions eff a =
+type BracketConditions eff a b =
   { killed ∷ Error → a → Aff eff Unit
   , failed ∷ Error → a → Aff eff Unit
-  , completed ∷ a → Aff eff Unit
+  , completed ∷ b → a → Aff eff Unit
   }
 
 -- | A general purpose bracket which lets you observe the status of the
 -- | bracketed action. The bracketed action may have been killed with an
 -- | exception, thrown an exception, or completed successfully.
-foreign import generalBracket ∷ ∀ eff a b. Aff eff a → BracketConditions eff a → (a → Aff eff b) → Aff eff b
+foreign import generalBracket ∷ ∀ eff a b. Aff eff a → BracketConditions eff a b → (a → Aff eff b) → Aff eff b
 
 -- | Constructs an `Aff` from low-level `Eff` effects using a callback. A
 -- | `Canceler` effect should be returned to cancel the pending action. The
