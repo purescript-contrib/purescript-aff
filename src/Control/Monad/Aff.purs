@@ -39,7 +39,7 @@ import Control.Monad.Rec.Class (class MonadRec, Step(..))
 import Control.Parallel (parSequence_, parallel)
 import Control.Parallel.Class (class Parallel)
 import Control.Plus (class Plus, empty)
-import Data.Either (Either(..), isLeft)
+import Data.Either (Either(..))
 import Data.Function.Uncurried as Fn
 import Data.Monoid (class Monoid, mempty)
 import Data.Newtype (class Newtype)
@@ -323,6 +323,11 @@ ffiUtil = FFIUtil
   , right: Right
   }
   where
+  isLeft ∷ ∀ a b. Either a b → Boolean
+  isLeft = case _ of
+    Left _ -> true
+    Right _ → false
+
   unsafeFromLeft ∷ ∀ a b. Either a b → a
   unsafeFromLeft = case _ of
     Left a  → a

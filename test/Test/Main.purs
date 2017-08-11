@@ -172,6 +172,7 @@ test_makeAff = assert "makeAff" do
   case cb of
     Just k → do
       liftEff $ k (Right 42)
+      _ ← joinFiber fiber
       eq 42 <$> readRef ref2
     Nothing → pure false
 
