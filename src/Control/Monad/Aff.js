@@ -62,9 +62,11 @@ var Aff = function () {
   }
 
   function AffCtr(tag) {
-    return function (_1, _2, _3) {
+    var fn = function (_1, _2, _3) {
       return new Aff(tag, _1, _2, _3);
     };
+    fn.tag = tag;
+    return fn;
   }
 
   function nonCanceler(error) {
@@ -898,40 +900,40 @@ var Aff = function () {
   }
 
   Aff.EMPTY    = EMPTY;
-  Aff.pure     = AffCtr(PURE);
-  Aff.throw    = AffCtr(THROW);
-  Aff.catch    = AffCtr(CATCH);
-  Aff.sync     = AffCtr(SYNC);
-  Aff.async    = AffCtr(ASYNC);
-  Aff.bind     = AffCtr(BIND);
-  Aff.bracket  = AffCtr(BRACKET);
-  Aff.fork     = AffCtr(FORK);
-  Aff.parMap   = AffCtr(MAP);
-  Aff.parApply = AffCtr(APPLY);
-  Aff.parAlt   = AffCtr(ALT);
+  Aff.Pure     = AffCtr(PURE);
+  Aff.Throw    = AffCtr(THROW);
+  Aff.Catch    = AffCtr(CATCH);
+  Aff.Sync     = AffCtr(SYNC);
+  Aff.Async    = AffCtr(ASYNC);
+  Aff.Bind     = AffCtr(BIND);
+  Aff.Bracket  = AffCtr(BRACKET);
+  Aff.Fork     = AffCtr(FORK);
+  Aff.ParMap   = AffCtr(MAP);
+  Aff.ParApply = AffCtr(APPLY);
+  Aff.ParAlt   = AffCtr(ALT);
   Aff.runFiber = runFiber;
   Aff.runPar   = runPar;
 
   return Aff;
 }();
 
-exports._pure = Aff.pure;
+exports._pure = Aff.Pure;
 
-exports._throwError = Aff.throw;
+exports._throwError = Aff.Throw;
 
 exports._catchError = function (aff) {
   return function (k) {
-    return Aff.catch(aff, k);
+    return Aff.Catch(aff, k);
   };
 };
 
 exports._map = function (f) {
   return function (aff) {
-    if (aff.tag === "Pure") {
-      return Aff.pure(f(aff._1));
+    if (aff.tag === Aff.Pure.tag) {
+      return Aff.Pure(f(aff._1));
     } else {
-      return Aff.bind(aff, function (value) {
-        return Aff.pure(f(value));
+      return Aff.Bind(aff, function (value) {
+        return Aff.Pure(f(value));
       });
     }
   };
@@ -939,52 +941,52 @@ exports._map = function (f) {
 
 exports._bind = function (aff) {
   return function (k) {
-    return Aff.bind(aff, k);
+    return Aff.Bind(aff, k);
   };
 };
 
 exports._fork = function (suspended) {
   return function (aff) {
-    return Aff.fork(suspended, aff);
+    return Aff.Fork(suspended, aff);
   };
 };
 
-exports._liftEff = Aff.sync;
+exports._liftEff = Aff.Sync;
 
 exports._parAffMap = function (f) {
   return function (aff) {
-    return Aff.parMap(f, aff);
+    return Aff.ParMap(f, aff);
   };
 };
 
 exports._parAffApply = function (aff1) {
   return function (aff2) {
-    return Aff.parApply(aff1, aff2);
+    return Aff.ParApply(aff1, aff2);
   };
 };
 
 exports._parAffAlt = function (aff1) {
   return function (aff2) {
-    return Aff.parAlt(aff1, aff2);
+    return Aff.ParAlt(aff1, aff2);
   };
 };
 
-exports.makeAff = Aff.async;
+exports.makeAff = Aff.Async;
 
 exports.generalBracket = function (acquire) {
   return function (options) {
     return function (k) {
-      return Aff.bracket(acquire, options, k);
+      return Aff.Bracket(acquire, options, k);
     };
   };
 };
 
 exports.memoAff = function (aff) {
   var value = Aff.EMPTY;
-  return Aff.bind(Aff.pure(void 0), function () {
+  return Aff.Bind(Aff.Pure(void 0), function () {
     if (value === Aff.EMPTY) {
-      return Aff.bind(aff, function (result) {
-        value = Aff.pure(result);
+      return Aff.Bind(aff, function (result) {
+        value = Aff.Pure(result);
         return value;
       });
     } else {
@@ -1011,11 +1013,11 @@ exports._delay = function () {
   }
 
   return function (right, ms) {
-    return Aff.async(function (cb) {
+    return Aff.Async(function (cb) {
       return function () {
         var timer = setDelay(ms, cb(right()));
         return function () {
-          return Aff.sync(function () {
+          return Aff.Sync(function () {
             return right(clearDelay(ms, timer));
           });
         };
@@ -1031,7 +1033,7 @@ exports._launchAff = function (util, suspended, aff) {
 };
 
 exports._sequential = function(util, par) {
-  return Aff.async(function (cb) {
+  return Aff.Async(function (cb) {
     return function () {
       return Aff.runPar(util, par, cb);
     };
