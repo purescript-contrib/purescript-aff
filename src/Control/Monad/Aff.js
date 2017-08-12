@@ -71,7 +71,7 @@ var Aff = function () {
 
   function nonCanceler(error) {
     return new Aff(PURE, void 0);
-  };
+  }
 
   function runEff(eff) {
     try {
@@ -504,7 +504,9 @@ var Aff = function () {
           case SUSPENDED:
             status    = COMPLETED;
             interrupt = util.left(error);
-            /* fallthrough */
+            canceler  = nonCanceler;
+            killCb()();
+            break;
           case COMPLETED:
             canceler = nonCanceler;
             killCb()();
