@@ -138,14 +138,14 @@ test_multi_join = assert "join/multi" do
     delay (Milliseconds 20.0)
     modifyRef ref (_ + 1)
     pure 20
-  n1 ← sum <$> traverse joinFiber
+  n1 ← traverse joinFiber
     [ f1
     , f1
     , f1
     , f2
     ]
   n2 ← readRef ref
-  pure (n1 == 50 && n2 == 3)
+  pure (sum n1 == 50 && n2 == 3)
 
 test_suspend ∷ ∀ eff. TestAff eff Unit
 test_suspend = assert "suspend" do
@@ -264,7 +264,9 @@ test_kill_canceler ∷ ∀ eff. TestAff eff Unit
 test_kill_canceler = assert "kill/canceler" do
   ref ← newRef ""
   fiber ← forkAff do
-    n ← makeAff \_ → pure (Canceler \_ → liftEff (writeRef ref "cancel"))
+    n ← makeAff \_ → pure $ Canceler \_ → do
+      delay (Milliseconds 20.0)
+      liftEff (writeRef ref "cancel")
     writeRef ref "done"
   killFiber (error "Nope") fiber
   res ← try (joinFiber fiber)

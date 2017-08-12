@@ -187,11 +187,11 @@ instance monoidCanceler ∷ Monoid (Canceler eff) where
 
 -- | Forks an `Aff` from an `Eff` context, returning the `Fiber`.
 launchAff ∷ ∀ eff a. Aff eff a → Eff eff (Fiber eff a)
-launchAff aff = Fn.runFn3 _launchAff ffiUtil false aff
+launchAff aff = Fn.runFn3 _launchAff ffiUtil 1 aff
 
 -- | Suspends an `Aff` from an `Eff` context, returning the `Fiber`.
 launchSuspendedAff ∷ ∀ eff a. Aff eff a → Eff eff (Fiber eff a)
-launchSuspendedAff aff = Fn.runFn3 _launchAff ffiUtil true aff
+launchSuspendedAff aff = Fn.runFn3 _launchAff ffiUtil 0 aff
 
 -- | Forks an `Aff` from an `Eff` context and also takes a callback to run when
 -- | it completes. Returns the pending `Fiber`.
@@ -207,13 +207,13 @@ runAff_ k aff = void $ runAff k aff
 -- | `Fiber`. When the parent `Fiber` completes, the child will be killed if it
 -- | has not completed.
 forkAff ∷ ∀  eff a. Aff eff a → Aff eff (Fiber eff a)
-forkAff = _fork false
+forkAff = _fork 1
 
 -- | Suspends a supervised `Aff` from within a parent `Aff` context, returning
 -- | the `Fiber`. A suspended `Fiber` does not execute until requested, via
 -- | `joinFiber`.
 suspendAff ∷ ∀  eff a. Aff eff a → Aff eff (Fiber eff a)
-suspendAff = _fork true
+suspendAff = _fork 0
 
 -- | Forks an unsupervised `Aff`, returning the `Fiber`.
 spawnAff ∷ ∀ eff a. Aff eff a → Aff eff (Fiber eff a)
@@ -261,7 +261,7 @@ bracket acquire completed =
 foreign import _pure ∷ ∀ eff a. a → Aff eff a
 foreign import _throwError ∷ ∀ eff a. Error → Aff eff a
 foreign import _catchError ∷ ∀ eff a. Aff eff a → (Error → Aff eff a) → Aff eff a
-foreign import _fork ∷ ∀ eff a. Boolean → Aff eff a → Aff eff (Fiber eff a)
+foreign import _fork ∷ ∀ eff a. Int → Aff eff a → Aff eff (Fiber eff a)
 foreign import _map ∷ ∀ eff a b. (a → b) → Aff eff a → Aff eff b
 foreign import _bind ∷ ∀ eff a b. Aff eff a → (a → Aff eff b) → Aff eff b
 foreign import _delay ∷ ∀ a eff. Fn.Fn2 (Unit → Either a Unit) Number (Aff eff Unit)
@@ -295,7 +295,7 @@ foreign import _launchAff
   ∷ ∀ eff a
   . Fn.Fn3
       FFIUtil
-      Boolean
+      Int
       (Aff eff a)
       (Eff eff (Fiber eff a))
 

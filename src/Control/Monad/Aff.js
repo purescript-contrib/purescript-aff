@@ -100,21 +100,50 @@ var Aff = function () {
     }
   }
 
+  var schedule = function () {
+    var limit    = 1024;
+    var size     = 0;
+    var ix       = 0;
+    var queue    = new Array(limit);
+    var draining = false;
+
+    return function (cb) {
+      var i, thunk;
+      if (size === limit) {
+        throw new Error("[Aff] Scheduler full");
+      }
+      queue[(ix + size) % limit] = cb;
+      size++;
+
+      if (!draining) {
+        draining = true;
+        while (size) {
+          size--;
+          thunk     = queue[ix];
+          queue[ix] = void 0;
+          ix        = (ix + 1) % limit;
+          thunk();
+        }
+        draining = false;
+      }
+    };
+  }();
+
   // Fiber state machine
-  var BLOCKED   = 0; // No effect is running.
-  var PENDING   = 1; // An async effect is running.
-  var RETURN    = 2; // The current stack has returned.
-  var CONTINUE  = 3; // Run the next effect.
-  var BINDSTEP  = 4; // Apply the next bind.
+  var SUSPENDED = 0; // Suspended, pending a join.
+  var CONTINUE  = 1; // Interpret the next instruction.
+  var BINDSTEP  = 2; // Apply the next bind.
+  var PENDING   = 3; // An async effect is running.
+  var RETURN    = 4; // The current stack has returned.
   var KILLFORKS = 5; // Killing supervised forks.
   var COMPLETED = 6; // The entire fiber has completed.
 
-  function runFiber(util, suspended, aff, completeCb) {
+  function runFiber(util, initStatus, aff, completeCb) {
     // Monotonically increasing tick, increased on each asynchronous turn.
     var runTick = 0;
 
     // The current branch of the state machine.
-    var status = CONTINUE;
+    var status = initStatus;
 
     // The current point of interest for the state machine branch.
     var step      = aff;  // Successful step
@@ -146,10 +175,10 @@ var Aff = function () {
     // Temporary bindings for the various branches.
     var tmp, result, attempt, canceler;
 
-    function launchChildFiber(fid, suspended, child) {
+    function launchChildFiber(fid, childStatus, child) {
       forkCount++;
       var blocked = true;
-      var fiber = runFiber(util, suspended, child, function () {
+      var fiber = runFiber(util, childStatus, child, function () {
         forkCount--;
         if (blocked) {
           blocked = false;
@@ -178,7 +207,7 @@ var Aff = function () {
           forks = {};
           forkCount = 0;
           for (var i = 0, len = killId; i < len; i++) {
-            kills[i] = runFiber(util, false, kills[i], function () {
+            kills[i] = runFiber(util, CONTINUE, kills[i], function () {
               delete kills[i];
               killId--;
               if (killId === 0) {
@@ -190,7 +219,7 @@ var Aff = function () {
             return new Aff(SYNC, function () {
               for (var k in kills) {
                 if (kills.hasOwnProperty(k)) {
-                  runFiber(util, false, kills[k].kill(error), function () {});
+                  runFiber(util, CONTINUE, kills[k].kill(error), function () {});
                 }
               }
             });
@@ -252,7 +281,6 @@ var Aff = function () {
             break;
 
           case SYNC:
-            status = BLOCKED;
             result = runSync(util.left, util.right, step._1);
             if (util.isLeft(result)) {
               status = RETURN;
@@ -267,41 +295,30 @@ var Aff = function () {
             break;
 
           case ASYNC:
-            status   = BLOCKED;
-            canceler = runAsync(util.left, step._1, function (result) {
+            status = PENDING;
+            step   = runAsync(util.left, step._1, function (result) {
               return function () {
                 if (runTick !== localRunTick) {
                   return;
-                }
-                tmp = status;
-                if (util.isLeft(result)) {
-                  status = RETURN;
-                  fail   = result;
-                } else if (bhead === null) {
-                  status = RETURN;
-                  step   = result;
                 } else {
-                  status = BINDSTEP;
-                  step   = util.fromRight(result);
+                  runTick++;
                 }
-                // We only need to invoke `run` if the subsequent block has
-                // switch the status to PENDING. Otherwise the callback was
-                // resolved synchronously, and the current loop can continue
-                // normally.
-                if (tmp === PENDING) {
-                  run(++runTick);
-                } else {
-                  localRunTick = ++runTick;
-                }
+                schedule(function () {
+                  if (util.isLeft(result)) {
+                    status = RETURN;
+                    fail   = result;
+                  } else if (bhead === null) {
+                    status = RETURN;
+                    step   = result;
+                  } else {
+                    status = BINDSTEP;
+                    step   = util.fromRight(result);
+                  }
+                  run(runTick);
+                });
               };
             });
-            // If the callback was resolved synchronously, the status will have
-            // switched to CONTINUE, and we should not move on to PENDING.
-            if (status === BLOCKED) {
-              status = PENDING;
-              step   = canceler;
-            }
-            break;
+            return;
 
           // Enqueue the current stack of binds and continue
           case CATCH:
@@ -375,7 +392,7 @@ var Aff = function () {
               }
               break;
 
-            // If we have a bracket, we should enqueue the finalizer branch,
+            // If we have a bracket, we should enqueue the handlers,
             // and continue with the success branch only if the fiber has
             // not been interrupted. If the bracket acquisition failed, we
             // should not run either.
@@ -393,6 +410,8 @@ var Aff = function () {
               }
               break;
 
+            // Enqueue the appropriate handler. We increase the bracket count
+            // because it should be cancelled.
             case BRACKETED:
               bracket++;
               attempts = new Aff(CONS, new Aff(FINALIZED, step), attempts._2);
@@ -447,14 +466,16 @@ var Aff = function () {
           if (util.isLeft(step) && !joins) {
             setTimeout(function () {
               // Guard on joins because a completely synchronous fiber can
-              // still have an observer.
+              // still have an observer which was added after-the-fact.
               if (!joins) {
                 throw util.fromLeft(step);
               }
             }, 0);
           }
           return;
-        case BLOCKED: return;
+        case SUSPENDED:
+          status = CONTINUE;
+          break;
         case PENDING: return;
         }
       }
@@ -479,12 +500,11 @@ var Aff = function () {
           var killCb = function () {
             return cb(util.right(void 0));
           };
-          if (suspended) {
-            suspended = false;
+          switch (status) {
+          case SUSPENDED:
             status    = COMPLETED;
             interrupt = util.left(error);
-          }
-          switch (status) {
+            /* fallthrough */
           case COMPLETED:
             canceler = nonCanceler;
             killCb()();
@@ -524,20 +544,25 @@ var Aff = function () {
 
     var join = new Aff(ASYNC, function (cb) {
       return function () {
-        if (suspended) {
-          suspended = false;
+        var canceler;
+        switch (status) {
+        case SUSPENDED:
+          canceler = addJoinCallback(cb);
           run(runTick);
-        }
-        if (status === COMPLETED) {
-          joins = true;
+          break;
+        case COMPLETED:
+          canceler = nonCanceler;
+          joins    = true;
           cb(step)();
-          return nonCanceler;
+          break;
+        default:
+          canceler = addJoinCallback(cb);
         }
-        return addJoinCallback(cb);
+        return canceler;
       };
     });
 
-    if (suspended === false) {
+    if (status === CONTINUE) {
       run(runTick);
     }
 
@@ -592,7 +617,7 @@ var Aff = function () {
             // collect all the fibers first.
             kills[count++] = function (aff) {
               return function () {
-                return runFiber(util, false, aff, function (result) {
+                return runFiber(util, CONTINUE, aff, function (result) {
                   count--;
                   if (fail === null && util.isLeft(result)) {
                     fail = result;
@@ -817,7 +842,7 @@ var Aff = function () {
             // tree.
             fibers[fid] = function (aff, completeCb) {
               return new Aff(THUNK, function () {
-                return runFiber(util, false, aff, completeCb);
+                return runFiber(util, CONTINUE, aff, completeCb);
               });
             }(tmp, resolve(step));
           }
@@ -869,7 +894,7 @@ var Aff = function () {
       // We can drop the fibers here because we are only canceling join
       // attempts, which are synchronous anyway.
       for (var kid = 0, n = killId; kid < n; kid++) {
-        runFiber(util, false, kills[kid].kill(error), function () {});
+        runFiber(util, CONTINUE, kills[kid].kill(error), function () {});
       }
 
       var newKills = kill(error, root, cb);
@@ -879,7 +904,7 @@ var Aff = function () {
           return function () {
             for (var kid in newKills) {
               if (newKills.hasOwnProperty(kid)) {
-                runFiber(util, false, newKills[kid].kill(killError), function () {});
+                runFiber(util, CONTINUE, newKills[kid].kill(killError), function () {});
               }
             }
             return nonCanceler;
@@ -945,9 +970,9 @@ exports._bind = function (aff) {
   };
 };
 
-exports._fork = function (suspended) {
+exports._fork = function (status) {
   return function (aff) {
-    return Aff.Fork(suspended, aff);
+    return Aff.Fork(status, aff);
   };
 };
 
@@ -1026,9 +1051,9 @@ exports._delay = function () {
   };
 }();
 
-exports._launchAff = function (util, suspended, aff) {
+exports._launchAff = function (util, status, aff) {
   return function () {
-    return Aff.runFiber(util, suspended, aff, function () {});
+    return Aff.runFiber(util, status, aff, function () {});
   };
 };
 
