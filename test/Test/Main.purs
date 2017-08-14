@@ -1,8 +1,9 @@
 module Test.Main where
 
 import Prelude
+
 import Control.Alt ((<|>))
-import Control.Monad.Aff (Aff, Canceler(..), runAff_, launchAff, makeAff, try, bracket, generalBracket, delay, forkAff, suspendAff, joinFiber, killFiber)
+import Control.Monad.Aff (Aff, Canceler(..), runAff_, launchAff, makeAff, try, bracket, generalBracket, delay, forkAff, suspendAff, joinFiber, killFiber, never)
 import Control.Monad.Eff (Eff, runPure)
 import Control.Monad.Eff.Class (class MonadEff, liftEff)
 import Control.Monad.Eff.Console (CONSOLE)
@@ -19,8 +20,9 @@ import Data.Either (Either(..), isLeft, isRight)
 import Data.Foldable (sum)
 import Data.Maybe (Maybe(..))
 import Data.Monoid (mempty)
-import Data.Traversable (traverse)
+import Data.Time (Millisecond)
 import Data.Time.Duration (Milliseconds(..))
+import Data.Traversable (traverse)
 import Test.Assert (assert', ASSERT)
 
 type TestEffects eff = (assert ∷ ASSERT, console ∷ CONSOLE, ref ∷ REF, exception ∷ EXCEPTION | eff)
@@ -168,6 +170,7 @@ test_makeAff = assert "makeAff" do
       writeRef ref1 (Just cb)
       pure mempty
     writeRef ref2 n
+  delay (Milliseconds 5.0)
   cb ← readRef ref1
   case cb of
     Just k → do
@@ -242,6 +245,7 @@ test_general_bracket = assert "bracket/general" do
         }
 
   f1 ← forkAff $ bracketAction "foo" (const (action "a"))
+  delay (Milliseconds 5.0)
   killFiber (error "z") f1
   r1 ← try $ joinFiber f1
 
@@ -256,7 +260,7 @@ test_general_bracket = assert "bracket/general" do
 
 test_kill ∷ ∀ eff. TestAff eff Unit
 test_kill = assert "kill" do
-  fiber ← forkAff $ makeAff \_ → pure mempty
+  fiber ← forkAff never
   killFiber (error "Nope") fiber
   isLeft <$> try (joinFiber fiber)
 
@@ -268,6 +272,7 @@ test_kill_canceler = assert "kill/canceler" do
       delay (Milliseconds 20.0)
       liftEff (writeRef ref "cancel")
     writeRef ref "done"
+  delay (Milliseconds 10.0)
   killFiber (error "Nope") fiber
   res ← try (joinFiber fiber)
   n ← readRef ref
@@ -285,6 +290,7 @@ test_kill_bracket = assert "kill/bracket" do
       (action "a")
       (\_ → action "b")
       (\_ → action "c")
+  delay (Milliseconds 5.0)
   killFiber (error "Nope") fiber
   _ ← try (joinFiber fiber)
   eq "ab" <$> readRef ref
@@ -307,6 +313,7 @@ test_kill_bracket_nested = assert "kill/bracket/nested" do
       (bracketAction "foo")
       (\s → void $ bracketAction (s <> "/release"))
       (\s → bracketAction (s <> "/run"))
+  delay (Milliseconds 5.0)
   killFiber (error "Nope") fiber
   _ ← try (joinFiber fiber)
   readRef ref <#> eq
@@ -335,6 +342,7 @@ test_kill_child = assert "kill/child" do
   fiber ← forkAff do
     _ ← forkAff $ action "foo"
     _ ← forkAff $ action "bar"
+    delay (Milliseconds 5.0)
     modifyRef ref (_ <> "parent")
   delay (Milliseconds 20.0)
   eq "acquirefooacquirebarparentkillfookillbar" <$> readRef ref
@@ -351,7 +359,7 @@ test_parallel = assert "parallel" do
     { a: _, b: _ }
       <$> parallel (action "foo")
       <*> parallel (action "bar")
-  delay (Milliseconds 10.0)
+  delay (Milliseconds 15.0)
   r1 ← readRef ref
   r2 ← joinFiber f1
   pure (r1 == "foobar" && r2.a == "foo" && r2.b == "bar")
@@ -472,6 +480,12 @@ test_parallel_stack = assert "parallel/stack" do
   parTraverse_ (modifyRef ref <<< add) (Array.replicate 100000 1)
   eq 100000 <$> readRef ref
 
+test_scheduler_size ∷ ∀ eff. TestAff eff Unit
+test_scheduler_size = assert "scheduler" do
+  ref ← newRef 0
+  _ ← traverse joinFiber =<< traverse forkAff (Array.replicate 100000 (modifyRef ref (add 1)))
+  eq 100000 <$> readRef ref
+
 main ∷ TestEff () Unit
 main = do
   test_pure
@@ -504,4 +518,6 @@ main = do
     test_kill_parallel_alt
     test_fiber_map
     test_fiber_apply
+    -- Turn on if we decide to schedule forks
+    -- test_scheduler_size
     test_parallel_stack

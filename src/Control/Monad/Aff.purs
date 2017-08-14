@@ -26,13 +26,14 @@ module Control.Monad.Aff
   ) where
 
 import Prelude
+
 import Control.Alt (class Alt)
 import Control.Alternative (class Alternative)
 import Control.Apply (lift2)
 import Control.Monad.Eff (Eff, kind Effect)
 import Control.Monad.Eff.Class (class MonadEff, liftEff)
 import Control.Monad.Eff.Exception (Error, EXCEPTION, error)
-import Control.Monad.Eff.Unsafe (unsafeCoerceEff)
+import Control.Monad.Eff.Unsafe (unsafeCoerceEff, unsafePerformEff)
 import Control.Monad.Error.Class (class MonadError, class MonadThrow, throwError, catchError, try)
 import Control.Monad.Error.Class (try) as Exports
 import Control.Monad.Rec.Class (class MonadRec, Step(..))
@@ -135,40 +136,38 @@ instance parallelAff ∷ Parallel (ParAff eff) (Aff eff) where
   parallel = (unsafeCoerce ∷ ∀ a. Aff eff a → ParAff eff a)
   sequential a = Fn.runFn2 _sequential ffiUtil a
 
+type OnComplete eff a =
+  { rethrow ∷ Boolean
+  , handler ∷ (Either Error a → Eff eff Unit) → Eff eff Unit
+  }
+
 -- | Represents a forked computation by way of `forkAff`. `Fiber`s are
 -- | memoized, so their results are only computed once.
 newtype Fiber eff a = Fiber
-  { kill ∷ Error → Aff eff Unit
-  , join ∷ Aff eff a
+  { kill ∷ Fn.Fn2 Error (Either Error Unit → Eff eff Unit) (Eff eff (Eff eff Unit))
+  , join ∷ (Either Error a → Eff eff Unit) → Eff eff (Eff eff Unit)
+  , onComplete ∷ OnComplete eff a → Eff eff (Eff eff Unit)
+  , run ∷ Eff eff Unit
   }
 
 instance functorFiber ∷ Functor (Fiber eff) where
-  map f t = Fiber
-    { kill: const (pure unit)
-    , join: memoAff (f <$> joinFiber t)
-    }
+  map f t = unsafePerformEff (makeFiber (f <$> joinFiber t))
 
 instance applyFiber ∷ Apply (Fiber eff) where
-  apply t1 t2 = Fiber
-    { kill: const (pure unit)
-    , join: memoAff (joinFiber t1 <*> joinFiber t2)
-    }
+  apply t1 t2 = unsafePerformEff (makeFiber (joinFiber t1 <*> joinFiber t2))
 
 instance applicativeFiber ∷ Applicative (Fiber eff) where
-  pure a = Fiber
-    { kill: const (pure unit)
-    , join: pure a
-    }
+  pure a = unsafePerformEff (makeFiber (pure a))
 
 -- | Invokes pending cancelers in a fiber and runs cleanup effects. Blocks
 -- | until the fiber has fully exited.
 killFiber ∷ ∀ eff a. Error → Fiber eff a → Aff eff Unit
-killFiber e (Fiber t) = t.kill e
+killFiber e (Fiber t) = makeAff \k → Canceler <<< const <<< liftEff <$> Fn.runFn2 t.kill e k
 
 -- | Blocks until the fiber completes, yielding the result. If the fiber
 -- | throws an exception, it is rethrown in the current fiber.
 joinFiber ∷ ∀ eff a. Fiber eff a → Aff eff a
-joinFiber (Fiber t) = t.join
+joinFiber (Fiber t) = makeAff \k → Canceler <<< const <<< liftEff <$> t.join k
 
 -- | A cancellation effect for actions run via `makeAff`. If a `Fiber` is
 -- | killed, and an async action is pending, the canceler will be called to
@@ -187,11 +186,14 @@ instance monoidCanceler ∷ Monoid (Canceler eff) where
 
 -- | Forks an `Aff` from an `Eff` context, returning the `Fiber`.
 launchAff ∷ ∀ eff a. Aff eff a → Eff eff (Fiber eff a)
-launchAff aff = Fn.runFn3 _launchAff ffiUtil 1 aff
+launchAff aff = do
+  fiber@(Fiber { run }) ← makeFiber aff
+  run
+  pure fiber
 
 -- | Suspends an `Aff` from an `Eff` context, returning the `Fiber`.
 launchSuspendedAff ∷ ∀ eff a. Aff eff a → Eff eff (Fiber eff a)
-launchSuspendedAff aff = Fn.runFn3 _launchAff ffiUtil 0 aff
+launchSuspendedAff = makeFiber
 
 -- | Forks an `Aff` from an `Eff` context and also takes a callback to run when
 -- | it completes. Returns the pending `Fiber`.
@@ -207,13 +209,13 @@ runAff_ k aff = void $ runAff k aff
 -- | `Fiber`. When the parent `Fiber` completes, the child will be killed if it
 -- | has not completed.
 forkAff ∷ ∀  eff a. Aff eff a → Aff eff (Fiber eff a)
-forkAff = _fork 1
+forkAff = _fork true
 
 -- | Suspends a supervised `Aff` from within a parent `Aff` context, returning
 -- | the `Fiber`. A suspended `Fiber` does not execute until requested, via
 -- | `joinFiber`.
 suspendAff ∷ ∀  eff a. Aff eff a → Aff eff (Fiber eff a)
-suspendAff = _fork 0
+suspendAff = _fork false
 
 -- | Forks an unsupervised `Aff`, returning the `Fiber`.
 spawnAff ∷ ∀ eff a. Aff eff a → Aff eff (Fiber eff a)
@@ -261,7 +263,7 @@ bracket acquire completed =
 foreign import _pure ∷ ∀ eff a. a → Aff eff a
 foreign import _throwError ∷ ∀ eff a. Error → Aff eff a
 foreign import _catchError ∷ ∀ eff a. Aff eff a → (Error → Aff eff a) → Aff eff a
-foreign import _fork ∷ ∀ eff a. Int → Aff eff a → Aff eff (Fiber eff a)
+foreign import _fork ∷ ∀ eff a. Boolean → Aff eff a → Aff eff (Fiber eff a)
 foreign import _map ∷ ∀ eff a b. (a → b) → Aff eff a → Aff eff b
 foreign import _bind ∷ ∀ eff a b. Aff eff a → (a → Aff eff b) → Aff eff b
 foreign import _delay ∷ ∀ a eff. Fn.Fn2 (Unit → Either a Unit) Number (Aff eff Unit)
@@ -269,6 +271,7 @@ foreign import _liftEff ∷ ∀ eff a. Eff eff a → Aff eff a
 foreign import _parAffMap ∷ ∀ eff a b. (a → b) → ParAff eff a → ParAff eff b
 foreign import _parAffApply ∷ ∀ eff a b. ParAff eff (a → b) → ParAff eff a → ParAff eff b
 foreign import _parAffAlt ∷ ∀ eff a. ParAff eff a → ParAff eff a → ParAff eff a
+foreign import _makeFiber ∷ ∀ eff a. Fn.Fn2 FFIUtil (Aff eff a) (Eff eff (Fiber eff a))
 
 type BracketConditions eff a b =
   { killed ∷ Error → a → Aff eff Unit
@@ -287,17 +290,8 @@ foreign import generalBracket ∷ ∀ eff a b. Aff eff a → BracketConditions e
 -- | ignored.
 foreign import makeAff ∷ ∀ eff a. ((Either Error a → Eff eff Unit) → Eff eff (Canceler eff)) → Aff eff a
 
--- | Do not export this function. It is not referentially transparent in
--- | general, and can be used to create global mutable references.
-foreign import memoAff ∷ ∀ eff a. Aff eff a → Aff eff a
-
-foreign import _launchAff
-  ∷ ∀ eff a
-  . Fn.Fn3
-      FFIUtil
-      Int
-      (Aff eff a)
-      (Eff eff (Fiber eff a))
+makeFiber ∷ ∀ eff a. Aff eff a → Eff eff (Fiber eff a)
+makeFiber aff = Fn.runFn2 _makeFiber ffiUtil aff
 
 foreign import _sequential
   ∷ ∀ eff a
