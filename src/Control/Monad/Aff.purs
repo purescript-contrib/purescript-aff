@@ -3,7 +3,6 @@ module Control.Monad.Aff
   , Fiber
   , ParAff(..)
   , Canceler(..)
-  , BracketConditions
   , makeAff
   , launchAff
   , launchSuspendedAff
@@ -14,14 +13,18 @@ module Control.Monad.Aff
   , spawnAff
   , spawnSuspendedAff
   , liftEff'
-  , bracket
-  , generalBracket
+  , attempt
   , delay
   , never
   , finally
   , atomically
   , killFiber
   , joinFiber
+  , cancelWith
+  , bracket
+  , BracketConditions
+  , generalBracket
+  , nonCanceler
   , module Exports
   ) where
 
@@ -182,7 +185,11 @@ instance semigroupCanceler ∷ Semigroup (Canceler eff) where
 
 -- | A no-op `Canceler` can be constructed with `mempty`.
 instance monoidCanceler ∷ Monoid (Canceler eff) where
-  mempty = Canceler (const (pure unit))
+  mempty = nonCanceler
+
+-- | A canceler which does not cancel anything.
+nonCanceler ∷ ∀ eff. Canceler eff
+nonCanceler = Canceler (const (pure unit))
 
 -- | Forks an `Aff` from an `Eff` context, returning the `Fiber`.
 launchAff ∷ ∀ eff a. Aff eff a → Eff eff (Fiber eff a)
@@ -238,6 +245,15 @@ never = makeAff \_ → pure mempty
 liftEff' ∷ ∀ eff a. Eff (exception ∷ EXCEPTION | eff) a → Aff eff a
 liftEff' = liftEff <<< unsafeCoerceEff
 
+-- | A monomorphic version of `try`. Catches thrown errors and lifts them
+-- | into an `Either`.
+attempt ∷ ∀ eff a. Aff eff a → Aff eff (Either Error a)
+attempt = try
+
+-- | Ignores any errors.
+apathize ∷ ∀ eff a. Aff eff a → Aff eff Unit
+apathize = attempt >>> map (const unit)
+
 -- | Runs the first effect after the second, regardless of whether it completed
 -- | successfully or the fiber was cancelled.
 finally ∷ ∀ eff a. Aff eff Unit → Aff eff a → Aff eff a
@@ -246,6 +262,17 @@ finally fin a = bracket (pure unit) (const fin) (const a)
 -- | Runs an effect such that it cannot be killed.
 atomically ∷ ∀ eff a. Aff eff a → Aff eff a
 atomically a = bracket a (const (pure unit)) pure
+
+-- | Attaches a custom `Canceler` to an action. If the computation is canceled,
+-- | then the custom `Canceler` will be run afterwards.
+cancelWith ∷ ∀ eff a. Aff eff a → Canceler eff → Aff eff a
+cancelWith aff (Canceler cancel) =
+  generalBracket (pure unit)
+    { killed: \e _ → cancel e
+    , failed: const pure
+    , completed: const pure
+    }
+    (const aff)
 
 -- | Guarantees resource acquisition and cleanup. The first effect may acquire
 -- | some resource, while the second will dispose of it. The third effect makes
