@@ -193,8 +193,8 @@ nonCanceler = Canceler (const (pure unit))
 -- | Forks an `Aff` from an `Eff` context, returning the `Fiber`.
 launchAff ∷ ∀ eff a. Aff eff a → Eff eff (Fiber eff a)
 launchAff aff = do
-  fiber@(Fiber { run }) ← makeFiber aff
-  run
+  fiber ← makeFiber aff
+  case fiber of Fiber f → f.run
   pure fiber
 
 -- | Suspends an `Aff` from an `Eff` context, returning the `Fiber`.
@@ -220,12 +220,6 @@ forkAff = _fork true
 -- | with `joinFiber`.
 suspendAff ∷ ∀ eff a. Aff eff a → Aff eff (Fiber eff a)
 suspendAff = _fork false
-
--- | Creates a new supervision context for some `Aff`, guaranteeing fiber
--- | cleanup when the parent completes. Any pending fibers forked within
--- | the context will be killed and have their cancelers run.
-supervise ∷ ∀ eff a. Aff eff a → Aff eff a
-supervise aff = Fn.runFn2 _supervise ffiUtil aff
 
 -- | Pauses the running fiber.
 delay ∷ ∀ eff. Milliseconds → Aff eff Unit
@@ -282,6 +276,38 @@ bracket acquire completed =
     , completed: const completed
     }
 
+type Supervised eff a =
+  { fiber ∷ Fiber eff a
+  , supervisor ∷ Supervisor eff
+  }
+
+-- | Creates a new supervision context for some `Aff`, guaranteeing fiber
+-- | cleanup when the parent completes. Any pending fibers forked within
+-- | the context will be killed and have their cancelers run.
+supervise ∷ ∀ eff a. Aff eff a → Aff eff a
+supervise aff =
+  generalBracket (liftEff acquire)
+    { killed: \err sup → parSequence_ [ killFiber err sup.fiber, killAll err sup ]
+    , failed: const (killAll killError)
+    , completed: const (killAll killError)
+    }
+    (joinFiber <<< _.fiber)
+  where
+  killError ∷ Error
+  killError =
+    error "[Aff] Child fiber outlived parent"
+
+  killAll ∷ Error → Supervised eff a → Aff eff Unit
+  killAll err sup = makeAff \k →
+    Fn.runFn3 _killAll err sup.supervisor (k (pure unit))
+
+  acquire ∷ Eff eff (Supervised eff a)
+  acquire = do
+    sup ← Fn.runFn2 _makeSupervisedFiber ffiUtil aff
+    case sup.fiber of Fiber f → f.run
+    pure sup
+
+foreign import data Supervisor ∷ # Effect → Type
 foreign import _pure ∷ ∀ eff a. a → Aff eff a
 foreign import _throwError ∷ ∀ eff a. Error → Aff eff a
 foreign import _catchError ∷ ∀ eff a. Aff eff a → (Error → Aff eff a) → Aff eff a
@@ -294,7 +320,8 @@ foreign import _parAffMap ∷ ∀ eff a b. (a → b) → ParAff eff a → ParAff
 foreign import _parAffApply ∷ ∀ eff a b. ParAff eff (a → b) → ParAff eff a → ParAff eff b
 foreign import _parAffAlt ∷ ∀ eff a. ParAff eff a → ParAff eff a → ParAff eff a
 foreign import _makeFiber ∷ ∀ eff a. Fn.Fn2 FFIUtil (Aff eff a) (Eff eff (Fiber eff a))
-foreign import _supervise ∷ ∀ eff a. Fn.Fn2 FFIUtil (Aff eff a) (Aff eff a)
+foreign import _makeSupervisedFiber ∷ ∀ eff a. Fn.Fn2 FFIUtil (Aff eff a) (Eff eff (Supervised eff a))
+foreign import _killAll ∷ ∀ eff. Fn.Fn3 Error (Supervisor eff) (Eff eff Unit) (Eff eff (Canceler eff))
 foreign import _sequential ∷ ∀ eff a. ParAff eff a → Aff eff a
 
 type BracketConditions eff a b =

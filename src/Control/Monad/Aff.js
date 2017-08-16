@@ -168,45 +168,47 @@ var Aff = function () {
         return count === 0;
       },
       killAll: function (killError, cb) {
-        var killCount = 0;
-        var kills     = {};
+        return function () {
+          var killCount = 0;
+          var kills     = {};
 
-        function kill(fid) {
-          kills[fid] = fibers[fid].kill(killError, function (result) {
-            return function () {
-              delete kills[fid];
-              killCount--;
-              if (util.isLeft(result) && util.fromLeft(result)) {
-                setTimeout(function () {
-                  throw util.fromLeft(result);
-                }, 0);
-              }
-              if (killCount === 0) {
-                cb();
-              }
-            };
-          })();
-        }
-
-        for (var k in fibers) {
-          if (fibers.hasOwnProperty(k)) {
-            killCount++;
-            kill(k);
+          function kill(fid) {
+            kills[fid] = fibers[fid].kill(killError, function (result) {
+              return function () {
+                delete kills[fid];
+                killCount--;
+                if (util.isLeft(result) && util.fromLeft(result)) {
+                  setTimeout(function () {
+                    throw util.fromLeft(result);
+                  }, 0);
+                }
+                if (killCount === 0) {
+                  cb();
+                }
+              };
+            })();
           }
-        }
 
-        fibers  = {};
-        fiberId = 0;
-        count   = 0;
-
-        return function (error) {
-          return new Aff(SYNC, function () {
-            for (var k in kills) {
-              if (kills.hasOwnProperty(k)) {
-                kills[k]();
-              }
+          for (var k in fibers) {
+            if (fibers.hasOwnProperty(k)) {
+              killCount++;
+              kill(k);
             }
-          });
+          }
+
+          fibers  = {};
+          fiberId = 0;
+          count   = 0;
+
+          return function (error) {
+            return new Aff(SYNC, function () {
+              for (var k in kills) {
+                if (kills.hasOwnProperty(k)) {
+                  kills[k]();
+                }
+              }
+            });
+          };
         };
       }
     };
@@ -1046,64 +1048,18 @@ exports._makeFiber = function (util, aff) {
   };
 };
 
-exports._supervise = function (util, aff) {
-  return Aff.Async(function (cb) {
-    return function () {
-      var supervisor = Aff.Supervisor(util);
-      var fiber      = Aff.Fiber(util, supervisor, aff);
-      var killing    = false;
-      var cancelCb   = fiber.onComplete({
-        rethrow: false,
-        handler: function (result) {
-          return function () {
-            killing = true;
-            supervisor.killAll(new Error("[Aff] Child fiber outlived parent"), cb(result));
-          };
-        }
-      })();
-
-      fiber.run();
-
-      return function (killError) {
-        return Aff.Async(function (killCb) {
-          return function () {
-            if (killing) {
-              return Aff.nonCanceler;
-            }
-            cancelCb();
-
-            var killResult = null;
-            var killedAll  = false;
-
-            var canceler1  = fiber.kill(killError, function (result) {
-              return function () {
-                if (killedAll) {
-                  killCb(result)();
-                } else {
-                  killResult = result;
-                }
-              };
-            })();
-
-            var canceler2  = supervisor.killAll(killError, function () {
-              if (killResult) {
-                killCb(killResult)();
-              } else {
-                killedAll = true;
-              }
-            });
-
-            return function (/* unused */) {
-              return Aff.Sync(function () {
-                canceler1();
-                canceler2();
-              });
-            };
-          };
-        });
-      };
+exports._makeSupervisedFiber = function (util, aff) {
+  return function () {
+    var supervisor = Aff.Supervisor(util);
+    return {
+      fiber: Aff.Fiber(util, supervisor, aff),
+      supervisor: supervisor
     };
-  });
+  };
+};
+
+exports._killAll = function (error, supervisor, cb) {
+  return supervisor.killAll(error, cb);
 };
 
 exports._delay = function () {
