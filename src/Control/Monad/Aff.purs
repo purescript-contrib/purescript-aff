@@ -10,9 +10,8 @@ module Control.Monad.Aff
   , runAff_
   , forkAff
   , suspendAff
-  , spawnAff
-  , spawnSuspendedAff
   , liftEff'
+  , supervise
   , attempt
   , delay
   , never
@@ -137,7 +136,7 @@ instance alternativeParAff ∷ Alternative (ParAff e)
 
 instance parallelAff ∷ Parallel (ParAff eff) (Aff eff) where
   parallel = (unsafeCoerce ∷ ∀ a. Aff eff a → ParAff eff a)
-  sequential a = Fn.runFn2 _sequential ffiUtil a
+  sequential = _sequential
 
 type OnComplete eff a =
   { rethrow ∷ Boolean
@@ -212,25 +211,21 @@ runAff k aff = launchAff $ liftEff <<< k =<< try aff
 runAff_ ∷ ∀ eff a. (Either Error a → Eff eff Unit) → Aff eff a → Eff eff Unit
 runAff_ k aff = void $ runAff k aff
 
--- | Forks a supervised `Aff` from within a parent `Aff` context, returning the
--- | `Fiber`. When the parent `Fiber` completes, the child will be killed if it
--- | has not completed.
-forkAff ∷ ∀  eff a. Aff eff a → Aff eff (Fiber eff a)
+-- | Forks am `Aff` from within a parent `Aff` context, returning the `Fiber`.
+forkAff ∷ ∀ eff a. Aff eff a → Aff eff (Fiber eff a)
 forkAff = _fork true
 
--- | Suspends a supervised `Aff` from within a parent `Aff` context, returning
--- | the `Fiber`. A suspended `Fiber` does not execute until requested, via
--- | `joinFiber`.
-suspendAff ∷ ∀  eff a. Aff eff a → Aff eff (Fiber eff a)
+-- | Suspends n `Aff` from within a parent `Aff` context, returning the `Fiber`.
+-- | A suspended `Aff` is not executed until a consumer observes the result
+-- | with `joinFiber`.
+suspendAff ∷ ∀ eff a. Aff eff a → Aff eff (Fiber eff a)
 suspendAff = _fork false
 
--- | Forks an unsupervised `Aff`, returning the `Fiber`.
-spawnAff ∷ ∀ eff a. Aff eff a → Aff eff (Fiber eff a)
-spawnAff = liftEff <<< launchAff
-
--- | Suspends an unsupervised `Aff`, returning the `Fiber`.
-spawnSuspendedAff ∷ ∀ eff a. Aff eff a → Aff eff (Fiber eff a)
-spawnSuspendedAff = liftEff <<< launchSuspendedAff
+-- | Creates a new supervision context for some `Aff`, guaranteeing fiber
+-- | cleanup when the parent completes. Any pending fibers forked within
+-- | the context will be killed and have their cancelers run.
+supervise ∷ ∀ eff a. Aff eff a → Aff eff a
+supervise aff = Fn.runFn2 _supervise ffiUtil aff
 
 -- | Pauses the running fiber.
 delay ∷ ∀ eff. Milliseconds → Aff eff Unit
@@ -299,6 +294,8 @@ foreign import _parAffMap ∷ ∀ eff a b. (a → b) → ParAff eff a → ParAff
 foreign import _parAffApply ∷ ∀ eff a b. ParAff eff (a → b) → ParAff eff a → ParAff eff b
 foreign import _parAffAlt ∷ ∀ eff a. ParAff eff a → ParAff eff a → ParAff eff a
 foreign import _makeFiber ∷ ∀ eff a. Fn.Fn2 FFIUtil (Aff eff a) (Eff eff (Fiber eff a))
+foreign import _supervise ∷ ∀ eff a. Fn.Fn2 FFIUtil (Aff eff a) (Aff eff a)
+foreign import _sequential ∷ ∀ eff a. ParAff eff a → Aff eff a
 
 type BracketConditions eff a b =
   { killed ∷ Error → a → Aff eff Unit
@@ -319,13 +316,6 @@ foreign import makeAff ∷ ∀ eff a. ((Either Error a → Eff eff Unit) → Eff
 
 makeFiber ∷ ∀ eff a. Aff eff a → Eff eff (Fiber eff a)
 makeFiber aff = Fn.runFn2 _makeFiber ffiUtil aff
-
-foreign import _sequential
-  ∷ ∀ eff a
-  . Fn.Fn2
-      FFIUtil
-      (ParAff eff a)
-      (Aff eff a)
 
 newtype FFIUtil = FFIUtil
   { isLeft ∷ ∀ a b. Either a b → Boolean

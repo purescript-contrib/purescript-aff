@@ -1,5 +1,5 @@
 /* globals setImmediate, clearImmediate, setTimeout, clearTimeout */
-/* jshint -W083, -W098 */
+/* jshint -W083, -W098, -W003 */
 "use strict";
 
 var Aff = function () {
@@ -20,6 +20,7 @@ var Aff = function () {
     | forall b. Bind (Aff eff b) (b -> Aff eff a)
     | forall b. Bracket (Aff eff b) (BracketConditions eff b) (b -> Aff eff a)
     | forall b. Fork Boolean (Aff eff b) ?(Thread eff b -> a)
+    | Sequential (ParAff aff a)
 
   */
   var PURE    = "Pure";
@@ -30,6 +31,7 @@ var Aff = function () {
   var BIND    = "Bind";
   var BRACKET = "Bracket";
   var FORK    = "Fork";
+  var SEQ     = "Sequential";
 
   /*
 
@@ -142,6 +144,74 @@ var Aff = function () {
     };
   }();
 
+  function Supervisor(util) {
+    var fibers  = {};
+    var fiberId = 0;
+    var count   = 0;
+
+    return {
+      register: function (fiber) {
+        var fid = fiberId++;
+        fiber.onComplete({
+          rethrow: true,
+          handler: function (result) {
+            return function () {
+              count--;
+              delete fibers[fid];
+            };
+          }
+        });
+        fibers[fid] = fiber;
+        count++;
+      },
+      isEmpty: function () {
+        return count === 0;
+      },
+      killAll: function (killError, cb) {
+        var killCount = 0;
+        var kills     = {};
+
+        function kill(fid) {
+          kills[fid] = fibers[fid].kill(killError, function (result) {
+            return function () {
+              delete kills[fid];
+              killCount--;
+              if (util.isLeft(result) && util.fromLeft(result)) {
+                setTimeout(function () {
+                  throw util.fromLeft(result);
+                }, 0);
+              }
+              if (killCount === 0) {
+                cb();
+              }
+            };
+          })();
+        }
+
+        for (var k in fibers) {
+          if (fibers.hasOwnProperty(k)) {
+            killCount++;
+            kill(k);
+          }
+        }
+
+        fibers  = {};
+        fiberId = 0;
+        count   = 0;
+
+        return function (error) {
+          return new Aff(SYNC, function () {
+            for (var k in kills) {
+              if (kills.hasOwnProperty(k)) {
+                kills[k]();
+              }
+            }
+          });
+        };
+      }
+    };
+  }
+
   // Fiber state machine
   var SUSPENDED   = 0; // Suspended, pending a join.
   var CONTINUE    = 1; // Interpret the next instruction.
@@ -149,10 +219,9 @@ var Aff = function () {
   var STEP_RESULT = 3; // Handle potential failure from a result.
   var PENDING     = 4; // An async effect is running.
   var RETURN      = 5; // The current stack has returned.
-  var KILLALL     = 6; // Killing supervised forks.
-  var COMPLETED   = 7; // The entire fiber has completed.
+  var COMPLETED   = 6; // The entire fiber has completed.
 
-  function makeFiber(util, aff) {
+  function Fiber(util, supervisor, aff) {
     // Monotonically increasing tick, increased on each asynchronous turn.
     var runTick = 0;
 
@@ -180,77 +249,6 @@ var Aff = function () {
     var joinId  = 0;
     var joins   = null;
     var rethrow = true;
-
-    // Track child forks so they don't outlive the parent thread.
-    var forkCount = 0;
-    var forkId    = 0;
-    var forks     = null;
-
-    function makeChildFiber(childAff) {
-      forkCount++;
-      forks = forks || {};
-
-      var fiberId = forkId++;
-      var fiber   = makeFiber(util, childAff);
-
-      fiber.onComplete({
-        rethrow: true,
-        handler: function (result) {
-          return function () {
-            forkCount--;
-            delete forks[fiberId];
-          };
-        }
-      })();
-
-      forks[fiberId] = fiber;
-      return fiber;
-    }
-
-    function killChildFibers(cb) {
-      return function () {
-        var killError = new Error("[Aff] Child fiber outlived parent");
-        var killCount = 0;
-        var kills     = {};
-
-        function kill(fid) {
-          kills[fid] = forks[fid].kill(killError, function (result) {
-            return function () {
-              delete kills[fid];
-              killCount--;
-              if (util.isLeft(result) && util.fromLeft(result)) {
-                setTimeout(function () {
-                  throw util.fromLeft(result);
-                }, 0);
-              }
-              if (killCount === 0) {
-                cb();
-              }
-            };
-          })();
-        }
-
-        for (var k in forks) {
-          if (forks.hasOwnProperty(k)) {
-            killCount++;
-            kill(k);
-          }
-        }
-
-        forks     = {};
-        forkCount = 0;
-
-        return function (error) {
-          return new Aff(SYNC, function () {
-            for (var k in kills) {
-              if (kills.hasOwnProperty(k)) {
-                kills[k]();
-              }
-            }
-          });
-        };
-      };
-    }
 
     // Each invocation of `run` requires a tick. When an asynchronous effect is
     // resolved, we must check that the local tick coincides with the fiber
@@ -368,11 +366,19 @@ var Aff = function () {
 
           case FORK:
             status = STEP_BIND;
-            result = makeChildFiber(step._2);
-            if (step._1) {
-              result.run();
+            tmp    = Fiber(util, supervisor, step._2);
+            if (supervisor) {
+              supervisor.register(tmp);
             }
-            step = result;
+            if (step._1) {
+              tmp.run();
+            }
+            step = tmp;
+            break;
+
+          case SEQ:
+            status = CONTINUE;
+            step   = sequential(util, supervisor, step._1);
             break;
           }
           break;
@@ -382,7 +388,7 @@ var Aff = function () {
           // resume or finalizers to run, the fiber has halted and we can
           // invoke all join callbacks. Otherwise we need to resume.
           if (attempts === null) {
-            status = KILLALL;
+            status = COMPLETED;
             step   = interrupt || fail || step;
           } else {
             attempt  = attempts._1;
@@ -469,23 +475,9 @@ var Aff = function () {
           }
           break;
 
-        case KILLALL:
-          if (forkCount === 0) {
-            status = COMPLETED;
-          } else {
-            killChildFibers(function () {
-              Scheduler.enqueue(function () {
-                status = COMPLETED;
-                run(++runTick);
-              });
-            })();
-            return;
-          }
-          break;
-
         case COMPLETED:
           for (var k in joins) {
-            if ({}.hasOwnProperty.call(joins, k)) {
+            if (joins.hasOwnProperty(k)) {
               rethrow = rethrow && joins[k].rethrow;
               runEff(joins[k].handler(step));
             }
@@ -548,8 +540,6 @@ var Aff = function () {
         })();
 
         switch (status) {
-        case KILLALL:
-          break;
         case SUSPENDED:
           interrupt = util.left(error);
           status    = COMPLETED;
@@ -620,7 +610,7 @@ var Aff = function () {
     };
   }
 
-  function runPar(util, par, cb) {
+  function runPar(util, supervisor, par, cb) {
     // Table of all forked fibers.
     var fiberId   = 0;
     var fibers    = {};
@@ -873,12 +863,15 @@ var Aff = function () {
             status = RETURN;
             tmp    = step;
             step   = new Aff(FORKED, fid, new Aff(CONS, head, tail), EMPTY);
-            tmp    = makeFiber(util, tmp);
+            tmp    = Fiber(util, supervisor, tmp);
             tmp.onComplete({
               rethrow: false,
               handler: resolve(step)
             })();
             fibers[fid] = tmp;
+            if (supervisor) {
+              supervisor.register(tmp);
+            }
           }
           break;
         case RETURN:
@@ -921,7 +914,7 @@ var Aff = function () {
       interrupt = util.left(error);
 
       for (var kid in kills) {
-        if ({}.prototype.hasOwnProperty.call(kills, kid)) {
+        if (kills.hasOwnProperty(kid)) {
           kills[kid]();
         }
       }
@@ -933,7 +926,7 @@ var Aff = function () {
         return new Aff(ASYNC, function (killCb) {
           return function () {
             for (var kid in newKills) {
-              if ({}.prototype.hasOwnProperty.call(newKills, kid)) {
+              if (newKills.hasOwnProperty(kid)) {
                 newKills[kid]();
               }
             }
@@ -954,21 +947,31 @@ var Aff = function () {
     };
   }
 
-  Aff.EMPTY     = EMPTY;
-  Aff.Pure      = AffCtr(PURE);
-  Aff.Throw     = AffCtr(THROW);
-  Aff.Catch     = AffCtr(CATCH);
-  Aff.Sync      = AffCtr(SYNC);
-  Aff.Async     = AffCtr(ASYNC);
-  Aff.Bind      = AffCtr(BIND);
-  Aff.Bracket   = AffCtr(BRACKET);
-  Aff.Fork      = AffCtr(FORK);
-  Aff.ParMap    = AffCtr(MAP);
-  Aff.ParApply  = AffCtr(APPLY);
-  Aff.ParAlt    = AffCtr(ALT);
-  Aff.makeFiber = makeFiber;
-  Aff.runPar    = runPar;
-  Aff.Scheduler = Scheduler;
+  function sequential(util, supervisor, par) {
+    return new Aff(ASYNC, function (cb) {
+      return function () {
+        return runPar(util, supervisor, par, cb);
+      };
+    });
+  }
+
+  Aff.EMPTY       = EMPTY;
+  Aff.Pure        = AffCtr(PURE);
+  Aff.Throw       = AffCtr(THROW);
+  Aff.Catch       = AffCtr(CATCH);
+  Aff.Sync        = AffCtr(SYNC);
+  Aff.Async       = AffCtr(ASYNC);
+  Aff.Bind        = AffCtr(BIND);
+  Aff.Bracket     = AffCtr(BRACKET);
+  Aff.Fork        = AffCtr(FORK);
+  Aff.Seq         = AffCtr(SEQ);
+  Aff.ParMap      = AffCtr(MAP);
+  Aff.ParApply    = AffCtr(APPLY);
+  Aff.ParAlt      = AffCtr(ALT);
+  Aff.Fiber       = Fiber;
+  Aff.Supervisor  = Supervisor;
+  Aff.Scheduler   = Scheduler;
+  Aff.nonCanceler = nonCanceler;
 
   return Aff;
 }();
@@ -1039,8 +1042,68 @@ exports.generalBracket = function (acquire) {
 
 exports._makeFiber = function (util, aff) {
   return function () {
-    return Aff.makeFiber(util, aff);
+    return Aff.Fiber(util, null, aff);
   };
+};
+
+exports._supervise = function (util, aff) {
+  return Aff.Async(function (cb) {
+    return function () {
+      var supervisor = Aff.Supervisor(util);
+      var fiber      = Aff.Fiber(util, supervisor, aff);
+      var killing    = false;
+      var cancelCb   = fiber.onComplete({
+        rethrow: false,
+        handler: function (result) {
+          return function () {
+            killing = true;
+            supervisor.killAll(new Error("[Aff] Child fiber outlived parent"), cb(result));
+          };
+        }
+      })();
+
+      fiber.run();
+
+      return function (killError) {
+        return Aff.Async(function (killCb) {
+          return function () {
+            if (killing) {
+              return Aff.nonCanceler;
+            }
+            cancelCb();
+
+            var killResult = null;
+            var killedAll  = false;
+
+            var canceler1  = fiber.kill(killError, function (result) {
+              return function () {
+                if (killedAll) {
+                  killCb(result)();
+                } else {
+                  killResult = result;
+                }
+              };
+            })();
+
+            var canceler2  = supervisor.killAll(killError, function () {
+              if (killResult) {
+                killCb(killResult)();
+              } else {
+                killedAll = true;
+              }
+            });
+
+            return function (/* unused */) {
+              return Aff.Sync(function () {
+                canceler1();
+                canceler2();
+              });
+            };
+          };
+        });
+      };
+    };
+  });
 };
 
 exports._delay = function () {
@@ -1074,10 +1137,4 @@ exports._delay = function () {
   };
 }();
 
-exports._sequential = function(util, par) {
-  return Aff.Async(function (cb) {
-    return function () {
-      return Aff.runPar(util, par, cb);
-    };
-  });
-};
+exports._sequential = Aff.Seq;

@@ -3,7 +3,7 @@ module Test.Main where
 import Prelude
 
 import Control.Alt ((<|>))
-import Control.Monad.Aff (Aff, Canceler(..), runAff_, launchAff, makeAff, try, bracket, generalBracket, delay, forkAff, suspendAff, joinFiber, killFiber, never)
+import Control.Monad.Aff (Aff, Canceler(..), runAff_, launchAff, makeAff, try, bracket, generalBracket, delay, forkAff, suspendAff, joinFiber, killFiber, never, supervise)
 import Control.Monad.Eff (Eff, runPure)
 import Control.Monad.Eff.Class (class MonadEff, liftEff)
 import Control.Monad.Eff.Console (CONSOLE)
@@ -324,9 +324,8 @@ test_kill_bracket_nested = assert "kill/bracket/nested" do
     , "foo/bar/run/release/bar/release"
     ]
 
--- You monster!!
-test_kill_child ∷ ∀ eff. TestAff eff Unit
-test_kill_child = assert "kill/child" do
+test_kill_supervise ∷ ∀ eff. TestAff eff Unit
+test_kill_supervise = assert "kill/supervise" do
   ref ← newRef ""
   let
     action s = generalBracket
@@ -338,13 +337,15 @@ test_kill_child = assert "kill/child" do
       (\_ -> do
         delay (Milliseconds 10.0)
         modifyRef ref (_ <> "child" <> s))
-  fiber ← forkAff do
+  fiber ← forkAff $ supervise do
     _ ← forkAff $ action "foo"
     _ ← forkAff $ action "bar"
     delay (Milliseconds 5.0)
     modifyRef ref (_ <> "parent")
+  delay (Milliseconds 1.0)
+  killFiber (error "nope") fiber
   delay (Milliseconds 20.0)
-  eq "acquirefooacquirebarparentkillfookillbar" <$> readRef ref
+  eq "acquirefooacquirebarkillfookillbar" <$> readRef ref
 
 test_parallel ∷ ∀ eff. TestAff eff Unit
 test_parallel = assert "parallel" do
@@ -509,7 +510,7 @@ main = do
     test_kill_canceler
     test_kill_bracket
     test_kill_bracket_nested
-    test_kill_child
+    test_kill_supervise
     test_parallel
     test_kill_parallel
     test_parallel_alt
