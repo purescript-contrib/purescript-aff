@@ -5,9 +5,11 @@ module Control.Monad.Aff
   , Canceler(..)
   , makeAff
   , launchAff
+  , launchAff_
   , launchSuspendedAff
   , runAff
   , runAff_
+  , runSuspendedAff
   , forkAff
   , suspendAff
   , liftEff'
@@ -146,10 +148,10 @@ type OnComplete eff a =
 -- | Represents a forked computation by way of `forkAff`. `Fiber`s are
 -- | memoized, so their results are only computed once.
 newtype Fiber eff a = Fiber
-  { kill ∷ Fn.Fn2 Error (Either Error Unit → Eff eff Unit) (Eff eff (Eff eff Unit))
+  { run ∷ Eff eff Unit
+  , kill ∷ Fn.Fn2 Error (Either Error Unit → Eff eff Unit) (Eff eff (Eff eff Unit))
   , join ∷ (Either Error a → Eff eff Unit) → Eff eff (Eff eff Unit)
   , onComplete ∷ OnComplete eff a → Eff eff (Eff eff Unit)
-  , run ∷ Eff eff Unit
   }
 
 instance functorFiber ∷ Functor (Fiber eff) where
@@ -197,6 +199,10 @@ launchAff aff = do
   case fiber of Fiber f → f.run
   pure fiber
 
+-- | Forks an `Aff` from an `Eff` context, discarding the `Fiber`.
+launchAff_ ∷ ∀ eff a. Aff eff a → Eff eff Unit
+launchAff_ = void <<< launchAff
+
 -- | Suspends an `Aff` from an `Eff` context, returning the `Fiber`.
 launchSuspendedAff ∷ ∀ eff a. Aff eff a → Eff eff (Fiber eff a)
 launchSuspendedAff = makeFiber
@@ -211,11 +217,16 @@ runAff k aff = launchAff $ liftEff <<< k =<< try aff
 runAff_ ∷ ∀ eff a. (Either Error a → Eff eff Unit) → Aff eff a → Eff eff Unit
 runAff_ k aff = void $ runAff k aff
 
+-- | Suspends an `Aff` from an `Eff` context and also takes a callback to run
+-- | when it completes. Returns the suspended `Fiber`.
+runSuspendedAff ∷ ∀ eff a. (Either Error a → Eff eff Unit) → Aff eff a → Eff eff (Fiber eff Unit)
+runSuspendedAff k aff = launchSuspendedAff $ liftEff <<< k =<< try aff
+
 -- | Forks am `Aff` from within a parent `Aff` context, returning the `Fiber`.
 forkAff ∷ ∀ eff a. Aff eff a → Aff eff (Fiber eff a)
 forkAff = _fork true
 
--- | Suspends n `Aff` from within a parent `Aff` context, returning the `Fiber`.
+-- | Suspends an `Aff` from within a parent `Aff` context, returning the `Fiber`.
 -- | A suspended `Aff` is not executed until a consumer observes the result
 -- | with `joinFiber`.
 suspendAff ∷ ∀ eff a. Aff eff a → Aff eff (Fiber eff a)
