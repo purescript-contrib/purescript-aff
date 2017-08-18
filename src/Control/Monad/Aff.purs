@@ -212,6 +212,9 @@ instance semigroupCanceler :: Semigroup (Canceler e) where
 instance monoidCanceler :: Monoid (Canceler e) where
   mempty = Canceler (const (pure true))
 
+instance discardCanceler :: Discard (Canceler e) where
+  discard = bind
+
 newtype ParAff e a = ParAff (Aff e a)
 
 derive instance newtypeParAff :: Newtype (ParAff e a) _
