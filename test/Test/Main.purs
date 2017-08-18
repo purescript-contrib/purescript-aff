@@ -277,6 +277,18 @@ test_syncTailRecM = do
     pure (Done 0)
   go { n, v } = pure (Loop { n: n - 1, v })
 
+test_monadPlusBad :: TestAVar Unit
+test_monadPlusBad = do
+  let f true  = throwError (error "error")
+      f false = pure unit
+  either (const $ log "Success: f throws regardless")
+         (const $ log "Failure: f does not throw")
+    =<< attempt ((pure true <|> pure false) >>= f)
+  either (const $ log "Failure: f exception not caught")
+         (const $ log "Success: f exception is caught")
+    =<< attempt ((pure true >>= f) <|> (pure false >>= f))
+  pure unit
+
 loopAndBounce :: forall eff. Int -> Aff (console :: CONSOLE | eff) Unit
 loopAndBounce n = do
   res <- tailRecM go n
@@ -379,6 +391,9 @@ main = do
 
     log "Testing synchronous tailRecM"
     test_syncTailRecM
+
+    log "Testing that MonadPlus instance would not be lawful"
+    test_monadPlusBad
 
     log "pre-delay"
     delay (Milliseconds 1000.0)

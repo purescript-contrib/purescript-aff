@@ -40,7 +40,7 @@ deleteBlankLines path = do
 
 This looks like ordinary, synchronous, imperative code, but actually operates asynchronously without any callbacks. Error handling is baked in so you only deal with it when you want to.
 
-The library contains instances for `Semigroup`, `Monoid`, `Apply`, `Applicative`, `Bind`, `Monad`, `Alt`, `Plus`, `MonadPlus`, `MonadEff`, and `MonadError`. These instances allow you to compose asynchronous code as easily as `Eff`, as well as interop with existing `Eff` code.
+The library contains instances for `Semigroup`, `Monoid`, `Apply`, `Applicative`, `Bind`, `Monad`, `Alt`, `Plus`, `MonadEff`, and `MonadError`. These instances allow you to compose asynchronous code as easily as `Eff`, as well as interop with existing `Eff` code.
 
 ## Escaping Callback Hell
 
