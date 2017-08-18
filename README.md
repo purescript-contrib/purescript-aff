@@ -37,17 +37,17 @@ asynchronously without any callbacks. Error handling is baked in so you only
 deal with it when you want to.
 
 The library contains instances for `Semigroup`, `Monoid`, `Apply`,
-`Applicative`, `Bind`, `Monad`, `Alt`, `Plus`, `MonadEff`, and `MonadError`.
-These instances allow you to compose asynchronous code as easily as `Eff`, as
-well as interop with existing `Eff` code.
+`Applicative`, `Bind`, `Monad`, `Alt`, `Plus`, `MonadEff`, `MonadError`, and
+`Parallel`. These instances allow you to compose asynchronous code as easily
+as `Eff`, as well as interop with existing `Eff` code.
 
 ## Escaping Callback Hell
 
 Hopefully, you're using libraries that already use the `Aff` type, so you
 don't even have to think about callbacks!
 
-If you're building your own library, then *purescript-aff* provides a
-`makeAff` function:
+If you're building your own library, then you can make an `Aff` from
+low-level `Eff` callbacks with `makeAff`.
 
 ```purescript
 makeAff :: forall eff a. ((Either Error a -> Eff eff Unit) -> Eff eff (Canceler eff)) -> Aff eff a
@@ -60,8 +60,8 @@ You should also return `Canceler`, which is just a cleanup effect. Since
 `Aff` threads may be killed, all asynchronous operations should provide a
 mechanism for unscheduling it.
 
-*purescript-aff* also provides functions for easily binding FFI definitions in
-`Control.Monad.Aff.Compat`.
+`Control.Monad.Aff.Compat` provides functions for easily binding FFI
+definitions:
 
 ```javascript
 exports._ajaxGet = function (request) { // accepts a request
@@ -108,12 +108,9 @@ example = do
 ## Eff
 
 All purely synchronous computations (`Eff`) can be lifted to asynchronous
-computations with `liftEff` defined in `Control.Monad.Eff.Class` (see
-[here](https://github.com/purescript/purescript-eff)).
+computations with `liftEff` defined in `Control.Monad.Eff.Class`.
 
 ```purescript
-import Control.Monad.Eff.Class
-
 liftEff $ log "Hello world!"
 ```
 
@@ -212,18 +209,47 @@ example = do
 ## AVars
 
 The `Control.Monad.Aff.AVar` module contains asynchronous variables, which
-are very similar to Haskell's `MVar`. These can be used as low-level building
-blocks for asynchronous programs.
+are very similar to Haskell's `MVar`.
+
+`AVar`s represent a value that is either full or empty. Calling `takeVar` on
+an empty `AVar` will queue until it is filled by a matching `putVar`.
 
 ```purescript
-example = d
-  v <- makeEmptyVar
+example = do
+  var <- makeEmptyVar
   _ <- forkAff do
-    delay (Milliseconds 50.0)
-    putVar v 1.0
-  a <- takeVar v
-  log ("Succeeded with " <> show a)
+    value <- takeVar var
+    log $ "Got a value: " <> value
+  _ <- forkAff do
+    delay (Milliseconds 100.0)
+    putVar var "hello"
+  pure unit
 ```
+```
+(Waits 100ms)
+> Got a value: hello
+```
+
+Likewise, calling `putVar` will queue until it is taken:
+
+```purescript
+example = do
+  var <- makeEmptyVar
+  _ <- forkAff do
+    delay (Milliseconds 100.0)
+    value <- takeVar var
+    log $ "Got a value: " <> value
+  putVar var "hello"
+  log "Value taken"
+```
+```
+(Waits 100ms)
+> Value taken
+> Got a value: hello
+```
+
+These combinators (and a few more) can be used as the building blocks for
+complex asynchronous coordination.
 
 ## Parallel Execution
 

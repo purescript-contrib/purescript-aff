@@ -4,6 +4,7 @@ import Prelude
 
 import Control.Alt ((<|>))
 import Control.Monad.Aff (Aff, Canceler(..), runAff_, launchAff, makeAff, try, bracket, generalBracket, delay, forkAff, suspendAff, joinFiber, killFiber, never, supervise)
+import Control.Monad.Aff.AVar (AVAR, makeEmptyVar, takeVar, putVar)
 import Control.Monad.Eff (Eff, runPure)
 import Control.Monad.Eff.Class (class MonadEff, liftEff)
 import Control.Monad.Eff.Console (CONSOLE)
@@ -24,7 +25,7 @@ import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse)
 import Test.Assert (assert', ASSERT)
 
-type TestEffects eff = (assert ∷ ASSERT, console ∷ CONSOLE, ref ∷ REF, exception ∷ EXCEPTION | eff)
+type TestEffects eff = (assert ∷ ASSERT, console ∷ CONSOLE, ref ∷ REF, exception ∷ EXCEPTION, avar ∷ AVAR | eff)
 type TestEff eff = Eff (TestEffects eff)
 type TestAff eff = Aff (TestEffects eff)
 
@@ -514,6 +515,19 @@ test_fiber_apply = assert "fiber/apply" do
   n ← readRef ref
   pure (a == 22 && b == 22 && n == 1)
 
+test_avar_order ∷ ∀ eff. TestAff eff Unit
+test_avar_order = assert "avar/order" do
+  ref ← newRef ""
+  var ← makeEmptyVar
+  f1 ← forkAff do
+    delay (Milliseconds 10.0)
+    value ← takeVar var
+    modifyRef ref (_ <> value)
+  putVar var "foo"
+  modifyRef ref (_ <> "taken")
+  joinFiber f1
+  eq "takenfoo" <$> readRef ref
+
 test_parallel_stack ∷ ∀ eff. TestAff eff Unit
 test_parallel_stack = assert "parallel/stack" do
   ref ← newRef 0
@@ -558,6 +572,7 @@ main = do
     test_parallel_alt_sync
     test_parallel_mixed
     test_kill_parallel_alt
+    test_avar_order
     test_fiber_map
     test_fiber_apply
     -- Turn on if we decide to schedule forks
