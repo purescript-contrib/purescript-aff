@@ -32,6 +32,8 @@ import Control.Monad.Rec.Class (class MonadRec, Step(..))
 import Control.MonadPlus (class MonadZero, class MonadPlus)
 import Control.Parallel (class Parallel)
 import Control.Plus (class Plus, empty)
+import Control.Monad.Cont.Trans(ContT(..))
+import Control.Monad.Except.Trans(ExceptT(..))
 
 import Data.Either (Either(..), either)
 import Data.Foldable (class Foldable, foldl)
@@ -95,6 +97,11 @@ launchAff = lowerEx <<< runAff throwException (const (pure unit)) <<< liftEx
 -- | asynchronous computation.
 runAff :: forall e a. (Error -> Eff e Unit) -> (a -> Eff e Unit) -> Aff e a -> Eff e (Canceler e)
 runAff ex f aff = runFn3 _runAff ex f aff
+
+-- | Converts an asynchronous effect to a transformer stack. This does not preserve the
+-- | ability to cancel it.
+toContT :: forall e a . Aff e a -> ExceptT Error (ContT Unit (Eff e)) a
+toContT aff = ExceptT (ContT (\f -> void (runAff (Left >>> f) (Right >>> f) aff)))
 
 -- | Creates an asynchronous effect from a function that accepts error and
 -- | success callbacks. This function can be used for asynchronous computations
