@@ -257,6 +257,25 @@ test_general_bracket = assert "bracket/general" do
   r4 ← readRef ref
   pure (isLeft r1 && isLeft r2 && isRight r3 && r4 == "foofoo/kill/zbarbar/throw/bbazcbaz/release/c")
 
+test_supervise ∷ ∀ eff. TestAff eff Unit
+test_supervise = assert "supervise" do
+  ref ← newRef ""
+  r1 ← supervise do
+    _ ← forkAff do
+      bracket
+        (modifyRef ref (_ <> "acquire"))
+        (\_ → modifyRef ref (_ <> "release"))
+        (\_ → delay (Milliseconds 10.0))
+    _ ← forkAff do
+      delay (Milliseconds 11.0)
+      modifyRef ref (_ <> "delay")
+    delay (Milliseconds 5.0)
+    modifyRef ref (_ <> "done")
+    pure "done"
+  delay (Milliseconds 20.0)
+  r2 ← readRef ref
+  pure (r1 == "done" && r2 == "acquiredonerelease")
+
 test_kill ∷ ∀ eff. TestAff eff Unit
 test_kill = assert "kill" do
   fiber ← forkAff never
@@ -401,7 +420,7 @@ test_parallel_alt = assert "parallel/alt" do
   pure (r1 == "bar" && r2 == "bar")
 
 test_parallel_alt_sync ∷ ∀ eff. TestAff eff Unit
-test_parallel_alt_sync = assert "kill/parallel/alt/sync" do
+test_parallel_alt_sync = assert "parallel/alt/sync" do
   ref ← newRef ""
   let
     action s = do
@@ -415,6 +434,27 @@ test_parallel_alt_sync = assert "kill/parallel/alt/sync" do
     <|> parallel (action "baz")
   r2 ← readRef ref
   pure (r1 == "foo" && r2 == "fookilledfoo")
+
+test_parallel_mixed ∷ ∀ eff. TestAff eff Unit
+test_parallel_mixed = assert "parallel/mixed" do
+  ref ← newRef ""
+  let
+    action n s = parallel do
+      delay (Milliseconds n)
+      modifyRef ref (_ <> s)
+      pure s
+  { r1, r2, r3 } ← sequential $
+    { r1: _, r2: _, r3: _ }
+      <$> action 10.0 "a"
+      <*> (action 15.0 "a"
+            <|> action 12.0 "b"
+            <|> action 16.0 "c")
+      <*> (action 15.0 "a"
+            <|> ((<>) <$> action 13.0 "d" <*> action 14.0 "e")
+            <|> action 16.0 "f")
+  delay (Milliseconds 20.0)
+  r4 ← readRef ref
+  pure (r1 == "a" && r2 == "b" && r3 == "de" && r4 == "abde")
 
 test_kill_parallel_alt ∷ ∀ eff. TestAff eff Unit
 test_kill_parallel_alt = assert "kill/parallel/alt" do
@@ -506,6 +546,7 @@ main = do
     test_bracket
     test_bracket_nested
     test_general_bracket
+    test_supervise
     test_kill
     test_kill_canceler
     test_kill_bracket
@@ -515,6 +556,7 @@ main = do
     test_kill_parallel
     test_parallel_alt
     test_parallel_alt_sync
+    test_parallel_mixed
     test_kill_parallel_alt
     test_fiber_map
     test_fiber_apply
