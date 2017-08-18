@@ -120,9 +120,9 @@ liftEff $ log "Hello world!"
 This lets you write your whole program in `Aff`, and still call out to
 synchronous code.
 
-If your `Eff` code throws exceptions (`err :: Exception`), you can remove the
-exception label using `liftEff'`. Exceptions are part of `Aff`s built-in
-semantics, so they will always be caught and propagated anyway.
+If your `Eff` code throws exceptions (`exception :: EXCEPTION`), you can
+remove the exception label using `liftEff'`. Exceptions are part of `Aff`s
+built-in semantics, so they will always be caught and propagated anyway.
 
 ## Dealing with Failure
 
