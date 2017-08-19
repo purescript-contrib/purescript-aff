@@ -3,21 +3,15 @@
 [![Latest release](http://img.shields.io/github/release/slamdata/purescript-aff.svg)](https://github.com/slamdata/purescript-aff/releases)
 [![Build status](https://travis-ci.org/slamdata/purescript-aff.svg?branch=master)](https://travis-ci.org/slamdata/purescript-aff)
 
-An asynchronous effect monad for PureScript.
-
-The moral equivalent of `ErrorT (ContT Unit (Eff e)) a`, for effects `e`.
-
-`Aff` lets you say goodbye to monad transformers and callback hell!
+An asynchronous effect monad and threading model for PureScript.
 
 # Example
 
 ```purescript
 main = launchAff do
   response <- Ajax.get "http://foo.bar"
-  liftEff $ log response.body
+  log response.body
 ```
-
-See the [tests](https://github.com/slamdata/purescript-aff/blob/master/test/Test/Main.purs) for more examples.
 
 # Getting Started
 
@@ -38,125 +32,154 @@ deleteBlankLines path = do
   saveFile path contents'
 ```
 
-This looks like ordinary, synchronous, imperative code, but actually operates asynchronously without any callbacks. Error handling is baked in so you only deal with it when you want to.
+This looks like ordinary, synchronous, imperative code, but actually operates
+asynchronously without any callbacks. Error handling is baked in so you only
+deal with it when you want to.
 
-The library contains instances for `Semigroup`, `Monoid`, `Apply`, `Applicative`, `Bind`, `Monad`, `Alt`, `Plus`, `MonadPlus`, `MonadEff`, and `MonadError`. These instances allow you to compose asynchronous code as easily as `Eff`, as well as interop with existing `Eff` code.
+The library contains instances for `Semigroup`, `Monoid`, `Apply`,
+`Applicative`, `Bind`, `Monad`, `Alt`, `Plus`, `MonadEff`, `MonadError`, and
+`Parallel`. These instances allow you to compose asynchronous code as easily
+as `Eff`, as well as interop with existing `Eff` code.
 
 ## Escaping Callback Hell
 
-Hopefully, you're using libraries that already use the `Aff` type, so you don't even have to think about callbacks!
+Hopefully, you're using libraries that already use the `Aff` type, so you
+don't even have to think about callbacks!
 
-If you're building your own library, or you have to interact with some native code that expects callbacks, then *purescript-aff* provides a `makeAff` function:
+If you're building your own library, then you can make an `Aff` from
+low-level `Eff` callbacks with `makeAff`.
 
 ```purescript
-makeAff :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> Eff e Unit) -> Aff e a
+makeAff :: forall eff a. ((Either Error a -> Eff eff Unit) -> Eff eff (Canceler eff)) -> Aff eff a
 ```
 
-This function expects you to provide a handler, which should call a user-supplied error callback or success callback with the result of the asynchronous computation.
+This function expects you to provide a handler, which should call the
+supplied callback with the result of the asynchronous computation.
 
-For example, let's say we have an AJAX request function that expects a callback:
+You should also return `Canceler`, which is just a cleanup effect. Since
+`Aff` threads may be killed, all asynchronous operations should provide a
+mechanism for unscheduling it.
+
+`Control.Monad.Aff.Compat` provides functions for easily binding FFI
+definitions:
 
 ```javascript
-exports.ajaxGet = function(callback) { // accepts a callback
-  return function(request) { // and a request
-    return function() { // returns an effect
-      doNativeRequest(request, function(response) {
-        callback(response)(); // callback itself returns an effect
-      });
-    }
-  }
-}
+exports._ajaxGet = function (request) { // accepts a request
+  return function (onError, onSuccess) { // and callbacks
+    var req = doNativeRequest(request, function (err, response) { // make the request
+      if (err != null) {
+        onError(err); // invoke the error callback in case of an error
+      } else {
+        onSuccess(response); // invoke the success callback with the reponse
+      }
+    });
+
+    // Return a canceler, which is just another Aff effect.
+    return function (cancelError) {
+      return function (cancelerError, cancelerSuccess) {
+        req.cancel(); // cancel the request
+        cancelerSuccess(); // invoke the success callback for the canceler
+      };
+    };
+  };
+};
 ```
 
 ```purescript
-foreign import ajaxGet :: forall e. (Response -> Eff e Unit) -> Request -> Eff e Unit
+foreign import _ajaxGet :: forall eff. Request -> EffFnAff (ajax :: AJAX | eff) Response
 ```
 
 We can wrap this into an asynchronous computation like so:
 
 ```purescript
-ajaxGet' :: forall e. Request -> Aff e Response
-ajaxGet' req = makeAff (\error success -> ajaxGet success req)
+ajaxGet :: forall eff. Request -> Aff (ajax :: AJAX | eff) Response
+ajaxGet = fromEffFnAff <<< _ajaxGet
 ```
 
-This eliminates callback hell and allows us to write code simply using `do` notation:
+This eliminates callback hell and allows us to write code simply using `do`
+notation:
 
 ```purescript
-do response <- ajaxGet' req
-   liftEff $ log response.body
+example = do
+  response <- ajaxGet req
+  log response.body
 ```
 
 ## Eff
 
-All purely synchronous computations (`Eff`) can be lifted to asynchronous computations with `liftEff` defined in `Control.Monad.Eff.Class` (see [here](https://github.com/purescript/purescript-eff)).
+All purely synchronous computations (`Eff`) can be lifted to asynchronous
+computations with `liftEff` defined in `Control.Monad.Eff.Class`.
 
 ```purescript
-import Control.Monad.Eff.Class
-
 liftEff $ log "Hello world!"
 ```
 
-This lets you write your whole program in `Aff`, and still call out to synchronous code.
+This lets you write your whole program in `Aff`, and still call out to
+synchronous code.
 
-If your `Eff` code throws exceptions (`err :: Exception`), you can remove the exceptions using `liftEff'`, which brings exceptions to the value level as an `Either Error a`:
-
-```purescript
-do e <- liftEff' myExcFunc
-   liftEff $ either (const $ log "Oh noes!") (const $ log "Yays!") e
-```
+If your `Eff` code throws exceptions (`exception :: EXCEPTION`), you can
+remove the exception label using `liftEff'`. Exceptions are part of `Aff`s
+built-in semantics, so they will always be caught and propagated anyway.
 
 ## Dealing with Failure
 
-The `Aff` monad has error handling baked in, so ordinarily you don't have to worry about it.
+`Aff` has error handling baked in, so ordinarily you don't have to worry
+about it.
 
-When you need to deal with failure, you have several options.
+When you need to deal with failure, you have a few options.
 
- 1. **Attempt**
- 2. **Alt**
- 3. **MonadError**
+ 1. **Alt**
+ 2. **MonadError**
+ 3. **Bracketing**
 
-#### 1. Attempt
+#### 1. Alt
 
-If you want to attempt a computation but recover from failure, you can use the `attempt` function:
-
-```purescript
-attempt :: forall e a. Aff e a -> Aff e (Either Error a)
-```
-
-This returns an `Either Error a` that you can use to recover from failure.
+Because `Aff` has an `Alt` instance, you may also use the operator `<|>` to
+provide an alternative computation in the event of failure:
 
 ```purescript
-do e <- attempt $ Ajax.get "http://foo.com"
-   liftEff $ either (const $ log "Oh noes!") (const $ log "Yays!") e
+example = do
+  result <- Ajax.get "http://foo.com" <|> Ajax.get "http://bar.com"
+  pure result
 ```
 
-#### 2. Alt
+#### 2. MonadError
 
-Because `Aff` has an `Alt` instance, you may also use the operator `<|>` to provide an alternative computation in the event of failure:
+`Aff` has a `MonadError` instance, which comes with two functions:
+`catchError`, and `throwError`.
 
-```purescript
-do result <- Ajax.get "http://foo.com" <|> Ajax.get "http://bar.com"
-   return result
-```
-
-#### 3. MonadError
-
-`Aff` has a `MonadError` instance, which comes with two functions: `catchError`, and `throwError`.
-
-These are defined in [purescript-transformers](http://github.com/purescript/purescript-transformers).
+These are defined in
+[purescript-transformers](http://github.com/purescript/purescript-transformers).
 Here's an example of how you can use them:
 
 ```purescript
-do resp <- (Ajax.get "http://foo.com") `catchError` (const $ pure defaultResponse)
-   if resp.statusCode != 200 then throwError myErr
-   else pure resp.body
+example = do
+  resp <- Ajax.get "http://foo.com" `catchError` \_ -> pure defaultResponse
+  when (resp.statusCode /= 200) do
+    throwError myErr
+  pure resp.body
 ```
 
-Thrown exceptions are propagated on the error channel, and can be recovered from using `attempt` or `catchError`.
+#### 3. Bracketing
+
+`Aff` threads can be cancelled, but sometimes we need to guarantee an action
+gets run even in the presence of exceptions or cancellation. Use `bracket` to
+acquire resources and clean them up.
+
+```purescript
+example =
+  bracket
+    (openFile myFile)
+    (\file -> closeFile file)
+    (\file -> appendFile "hello" file)
+```
+
+In this case, `closeFile` will always be called regardless of exceptions once
+`openFile` completes.
 
 ## Forking
 
-Using the `forkAff`, you can "fork" an asynchronous computation, which means
+Using `forkAff`, you can "fork" an asynchronous computation, which means
 that its activities will not block the current thread of execution:
 
 ```purescript
@@ -167,66 +190,111 @@ Because Javascript is single-threaded, forking does not actually cause the
 computation to be run in a separate thread. Forking just allows the subsequent
 actions to execute without waiting for the forked computation to complete.
 
-If the asynchronous computation supports it, you can "kill" a forked computation
-using the returned canceler:
+Forking returns a `Fiber eff a`, representing the deferred computation. You can
+kill a `Fiber` with `killFiber`, which will run any cancelers and cleanup, and
+you can observe a `Fiber`'s final value with `joinFiber`. If a `Fiber` threw
+an exception, it will be rethrown upon joining.
 
 ```purescript
-canceler <- forkAff myAff
-canceled <- canceler `cancel` (error "Just had to cancel")
-_        <- liftEff $ if canceled then (log "Canceled") else (log "Not Canceled")
+example = do
+  fiber <- forkAff myAff
+  killFiber (error "Just had to cancel") fiber
+  result <- try (joinFiber fiber)
+  if isLeft result
+    then (log "Canceled")
+    else (log "Not Canceled")
 ```
 
-If you want to run a custom canceler if some other asynchronous computation is
-cancelled, you can use the `cancelWith` combinator:
-
-```purescript
-otherAff `cancelWith` myCanceler
-```
 
 ## AVars
 
-The `Control.Monad.Aff.AVar` module contains asynchronous variables, which are very similar to Haskell's `MVar` construct. These can be used as low-level building blocks for asynchronous programs.
+The `Control.Monad.Aff.AVar` module contains asynchronous variables, which
+are very similar to Haskell's `MVar`.
+
+`AVar`s represent a value that is either full or empty. Calling `takeVar` on
+an empty `AVar` will queue until it is filled by a matching `putVar`.
 
 ```purescript
-do v <- makeVar
-   _ <- forkAff do
-     delay (Milliseconds 50.0)
-     putVar v 1.0
-   a <- takeVar v
-   liftEff $ log ("Succeeded with " ++ show a)
+example = do
+  var <- makeEmptyVar
+  _ <- forkAff do
+    value <- takeVar var
+    log $ "Got a value: " <> value
+  _ <- forkAff do
+    delay (Milliseconds 100.0)
+    putVar var "hello"
+  pure unit
+```
+```
+(Waits 100ms)
+> Got a value: hello
 ```
 
-You can use these constructs as one-sided blocking queues, which suspend (if
-necessary) on `take` operations, or as asynchronous, empty-or-full variables.
+Likewise, calling `putVar` will queue until it is taken:
+
+```purescript
+example = do
+  var <- makeEmptyVar
+  _ <- forkAff do
+    delay (Milliseconds 100.0)
+    value <- takeVar var
+    log $ "Got a value: " <> value
+  putVar var "hello"
+  log "Value taken"
+```
+```
+(Waits 100ms)
+> Value taken
+> Got a value: hello
+```
+
+These combinators (and a few more) can be used as the building blocks for
+complex asynchronous coordination.
 
 ## Parallel Execution
 
-There are `MonadPar` and `MonadRace` instances defined for `Aff`, allowing for parallel execution of `Aff` computations.
+The `Parallel` instance for `Aff` makes writing parallel computations a breeze.
 
-There are two ways of taking advantage of these instances - directly through the `par` and `race` functions from these classes, or by using the `Parallel` newtype wrapper that enables parallel behaviours through the `Applicative` and `Alternative` operators.
-
-In the following example, using the newtype, two Ajax requests are initiated simultaneously (rather than in sequence, as they would be for `Aff`):
-
-```purescript
-runParallel (f <$> parallel (Ajax.get "http://foo.com") <*> parallel (Ajax.get "http://foo.com"))
-```
-
-And the equivalent using the `MonadPar` function directly:
+Using `parallel` from `Control.Parallel` will turn a regular `Aff` into
+`ParAff`. `ParAff` has an `Applicative` instance which will run effects in
+parallel, and an `Alternative` instance which will race effects, returning the
+one which completes first (canceling the others). To get an `Aff` back, just
+run it with `sequential`.
 
 ```purescript
-par f (Ajax.get "http://foo.com") (Ajax.get "http://foo.com")
+-- Make two requests in parallel
+example =
+  sequential $
+    Tuple <$> parallel (Ajax.get "https://foo.com")
+          <*> parallel (Ajax.get "https://bar.com")
 ```
 
-The `race` function from `MonadPar` or the `(<|>)` operator of the `Alt` instance of `Parallel` allows you to race two asynchronous computations, and use whichever value comes back first (or the first error, if both err).
+```purescript
+-- Make a request with a 3 second timeout
+example =
+  sequential $ oneOf
+    [ parallel (Just <$> Ajax.get "https://foo.com")
+    , parallel (Nothing <$ delay (Milliseconds 3000.0))
+    ]
+```
 
-The `runParallel` function allows you to unwrap the `Aff` and return to normal monadic (sequential) composition.
+```purescript
+tvShows =
+  [ "Stargate_SG-1"
+  , "Battlestar_Galactics"
+  , "Farscape"
+  ]
 
-A parallel computation can be canceled if both of its individual components can be canceled.
+getPage page =
+  Ajax.get $ "https://wikipedia.org/wiki/" <> page
+
+-- Get all pages in parallel
+allPages = parTraverse getPage tvShows
+
+-- Get the page that loads the fastest
+fastestPage = parOneOfMap getPage tvShows
+```
 
 # API Docs
 
 API documentation is [published on Pursuit](http://pursuit.purescript.org/packages/purescript-aff).
-
-# See also
-
-[A good overview of Aff](https://github.com/degoes-consulting/lambdaconf-2015/blob/master/speakers/jdegoes/async-purescript/presentation.pdf) was provided during LambdaConf 2015 conference

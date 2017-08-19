@@ -1,314 +1,388 @@
 module Control.Monad.Aff
   ( Aff
-  , Canceler(..)
-  , PureAff(..)
-  , apathize
-  , attempt
-  , cancel
-  , cancelWith
-  , finally
-  , forkAff
-  , forkAll
-  , delay
-  , launchAff
-  , liftEff'
-  , makeAff
-  , makeAff'
-  , nonCanceler
-  , runAff
+  , Fiber
   , ParAff(..)
+  , Canceler(..)
+  , makeAff
+  , launchAff
+  , launchAff_
+  , launchSuspendedAff
+  , runAff
+  , runAff_
+  , runSuspendedAff
+  , forkAff
+  , suspendAff
+  , liftEff'
+  , supervise
+  , attempt
+  , delay
+  , never
+  , finally
+  , atomically
+  , killFiber
+  , joinFiber
+  , cancelWith
+  , bracket
+  , BracketConditions
+  , generalBracket
+  , nonCanceler
+  , module Exports
   ) where
 
 import Prelude
 
 import Control.Alt (class Alt)
 import Control.Alternative (class Alternative)
-import Control.Monad.Aff.Internal (AVBox, AVar, _killVar, _putVar, _takeVar, _makeVar)
+import Control.Apply (lift2)
 import Control.Monad.Eff (Eff, kind Effect)
-import Control.Monad.Eff.Class (class MonadEff)
-import Control.Monad.Eff.Exception (Error, EXCEPTION, throwException, error)
-import Control.Monad.Error.Class (class MonadThrow, class MonadError, throwError)
+import Control.Monad.Eff.Class (class MonadEff, liftEff)
+import Control.Monad.Eff.Exception (Error, EXCEPTION, error)
+import Control.Monad.Eff.Unsafe (unsafeCoerceEff, unsafePerformEff)
+import Control.Monad.Error.Class (class MonadError, class MonadThrow, throwError, catchError, try)
+import Control.Monad.Error.Class (try) as Exports
 import Control.Monad.Rec.Class (class MonadRec, Step(..))
-import Control.MonadPlus (class MonadZero, class MonadPlus)
-import Control.Parallel (class Parallel)
+import Control.Parallel (parSequence_, parallel)
+import Control.Parallel.Class (class Parallel)
 import Control.Plus (class Plus, empty)
-
-import Data.Either (Either(..), either)
-import Data.Foldable (class Foldable, foldl)
-import Data.Function.Uncurried (Fn2, Fn3, runFn2, runFn3)
+import Data.Either (Either(..))
+import Data.Function.Uncurried as Fn
 import Data.Monoid (class Monoid, mempty)
 import Data.Newtype (class Newtype)
 import Data.Time.Duration (Milliseconds(..))
-import Data.Tuple (Tuple(..), fst, snd)
-
+import Partial.Unsafe (unsafeCrashWith)
 import Unsafe.Coerce (unsafeCoerce)
 
--- | An asynchronous computation with effects `e`. The computation either
--- | errors or produces a value of type `a`.
--- |
--- | This is moral equivalent of `ErrorT (ContT Unit (Eff e)) a`.
-foreign import data Aff :: # Effect -> Type -> Type
+-- | An `Aff eff a` is an asynchronous computation with effects `eff`. The
+-- | computation may either error with an exception, or produce a result of
+-- | type `a`. `Aff` effects are assembled from primitive `Eff` effects using
+-- | `makeAff` or `liftEff`.
+foreign import data Aff ∷ # Effect → Type → Type
 
--- | A pure asynchronous computation, having no effects other than
--- | asynchronous computation.
-type PureAff a = forall e. Aff e a
+instance functorAff ∷ Functor (Aff eff) where
+  map = _map
 
--- | A canceler is an asynchronous function that can be used to attempt the
--- | cancelation of a computation. Returns a boolean flag indicating whether
--- | or not the cancellation was successful. Many computations may be composite,
--- | in such cases the flag indicates whether any part of the computation was
--- | successfully canceled. The flag should not be used for communication.
-newtype Canceler e = Canceler (Error -> Aff e Boolean)
+instance applyAff ∷ Apply (Aff eff) where
+  apply = ap
 
--- | Unwraps the canceler function from the newtype that wraps it.
-cancel :: forall e. Canceler e -> Error -> Aff e Boolean
-cancel (Canceler f) = f
+instance applicativeAff ∷ Applicative (Aff eff) where
+  pure = _pure
 
--- | This function allows you to attach a custom canceler to an asynchronous
--- | computation. If the computation is canceled, then the custom canceler
--- | will be run along side the computation's own canceler.
-cancelWith :: forall e a. Aff e a -> Canceler e -> Aff e a
-cancelWith aff c = runFn3 _cancelWith nonCanceler aff c
+instance bindAff ∷ Bind (Aff eff) where
+  bind = _bind
 
--- | Converts the asynchronous computation into a synchronous one. All values
--- | are ignored, and if the computation produces an error, it is thrown.
--- |
--- | Catching exceptions by using `catchException` with the resulting Eff
--- | computation is not recommended, as exceptions may end up being thrown
--- | asynchronously, in which case they cannot be caught.
--- |
--- | If you do need to handle exceptions, you can use `runAff` instead, or
--- | you can handle the exception within the Aff computation, using
--- | `catchError` (or any of the other mechanisms).
-launchAff :: forall e a. Aff e a -> Eff (exception :: EXCEPTION | e) (Canceler e)
-launchAff = lowerEx <<< runAff throwException (const (pure unit)) <<< liftEx
-  where
-  liftEx :: Aff e a -> Aff (exception :: EXCEPTION | e) a
-  liftEx = _unsafeInterleaveAff
-  lowerEx :: Eff (exception :: EXCEPTION | e) (Canceler (exception :: EXCEPTION | e)) -> Eff (exception :: EXCEPTION | e) (Canceler e)
-  lowerEx = map (Canceler <<< map _unsafeInterleaveAff <<< cancel)
+instance monadAff ∷ Monad (Aff eff)
 
--- | Runs the asynchronous computation. You must supply an error callback and a
--- | success callback.
--- |
--- | Returns a canceler that can be used to attempt cancellation of the
--- | asynchronous computation.
-runAff :: forall e a. (Error -> Eff e Unit) -> (a -> Eff e Unit) -> Aff e a -> Eff e (Canceler e)
-runAff ex f aff = runFn3 _runAff ex f aff
+instance semigroupAff ∷ Semigroup a ⇒ Semigroup (Aff eff a) where
+  append = lift2 append
 
--- | Creates an asynchronous effect from a function that accepts error and
--- | success callbacks. This function can be used for asynchronous computations
--- | that cannot be canceled.
-makeAff :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> Eff e Unit) -> Aff e a
-makeAff h = makeAff' (\e a -> const nonCanceler <$> h e a)
+instance monoidAff ∷ Monoid a ⇒ Monoid (Aff eff a) where
+  mempty = pure mempty
 
--- | Creates an asynchronous effect from a function that accepts error and
--- | success callbacks, and returns a canceler for the computation. This
--- | function can be used for asynchronous computations that can be canceled.
-makeAff' :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> Eff e (Canceler e)) -> Aff e a
-makeAff' h = _makeAff h
+instance altAff ∷ Alt (Aff eff) where
+  alt a1 a2 = catchError a1 (const a2)
 
--- | Pauses execuation of the current computation for the specified number of milliseconds.
-delay :: forall e. Milliseconds -> Aff e Unit
-delay (Milliseconds n) = runFn2 _delay nonCanceler n
+instance plusAff ∷ Plus (Aff eff) where
+  empty = throwError (error "Always fails")
 
--- | Compute `aff1`, followed by `aff2` regardless of whether `aff1` terminated successfully.
-finally :: forall e a b. Aff e a -> Aff e b -> Aff e a
-finally aff1 aff2 = do
-  x <- attempt aff1
-  _ <- aff2
-  either throwError pure x
+-- | This instance is provided for compatibility. `Aff` is always stack-safe
+-- | within a given fiber. This instance will just result in unnecessary
+-- | bind overhead.
+instance monadRecAff ∷ MonadRec (Aff eff) where
+  tailRecM k = go
+    where
+    go a = do
+      res ← k a
+      case res of
+        Done r → pure r
+        Loop b → go b
 
--- | Forks the specified asynchronous computation so subsequent computations
--- | will not block on the result of the computation.
--- |
--- | Returns a canceler that can be used to attempt cancellation of the
--- | forked computation.
-forkAff :: forall e a. Aff e a -> Aff e (Canceler e)
-forkAff aff = runFn2 _forkAff nonCanceler aff
+instance monadThrowAff ∷ MonadThrow Error (Aff eff) where
+  throwError = _throwError
 
--- | Forks many asynchronous computation in a synchronous manner while being
--- | stack-safe up to the selected Foldable instance.
--- |
--- | Returns a canceler that can be used to attempt cancellation of all
--- | forked computations.
-forkAll :: forall f e a. (Foldable f) => f (Aff e a) -> Aff e (Canceler e)
-forkAll affs = runFn3 _forkAll nonCanceler foldl affs
+instance monadErrorAff ∷ MonadError Error (Aff eff) where
+  catchError = _catchError
 
--- | Promotes any error to the value level of the asynchronous monad.
-attempt :: forall e a. Aff e a -> Aff e (Either Error a)
-attempt aff = runFn3 _attempt Left Right aff
+instance monadEffAff ∷ MonadEff eff (Aff eff) where
+  liftEff = _liftEff
+
+-- | Applicative for running parallel effects. Any `Aff` can be coerced to a
+-- | `ParAff` and back using the `Parallel` class.
+foreign import data ParAff ∷ # Effect → Type → Type
+
+instance functorParAff ∷ Functor (ParAff eff) where
+  map = _parAffMap
+
+-- | Runs effects in parallel, combining their results.
+instance applyParAff ∷ Apply (ParAff eff) where
+  apply = _parAffApply
+
+instance applicativeParAff ∷ Applicative (ParAff eff) where
+  pure = parallel <<< pure
+
+instance semigroupParAff ∷ Semigroup a ⇒ Semigroup (ParAff eff a) where
+  append = lift2 append
+
+instance monoidParAff ∷ Monoid a ⇒ Monoid (ParAff eff a) where
+  mempty = pure mempty
+
+-- | Races effects in parallel. Returns the first successful result or the
+-- | first error if all fail with an exception. Losing branches will be
+-- | cancelled.
+instance altParAff ∷ Alt (ParAff eff) where
+  alt = _parAffAlt
+
+instance plusParAff ∷ Plus (ParAff e) where
+  empty = parallel empty
+
+instance alternativeParAff ∷ Alternative (ParAff e)
+
+instance parallelAff ∷ Parallel (ParAff eff) (Aff eff) where
+  parallel = (unsafeCoerce ∷ ∀ a. Aff eff a → ParAff eff a)
+  sequential = _sequential
+
+type OnComplete eff a =
+  { rethrow ∷ Boolean
+  , handler ∷ (Either Error a → Eff eff Unit) → Eff eff Unit
+  }
+
+-- | Represents a forked computation by way of `forkAff`. `Fiber`s are
+-- | memoized, so their results are only computed once.
+newtype Fiber eff a = Fiber
+  { run ∷ Eff eff Unit
+  , kill ∷ Fn.Fn2 Error (Either Error Unit → Eff eff Unit) (Eff eff (Eff eff Unit))
+  , join ∷ (Either Error a → Eff eff Unit) → Eff eff (Eff eff Unit)
+  , onComplete ∷ OnComplete eff a → Eff eff (Eff eff Unit)
+  }
+
+instance functorFiber ∷ Functor (Fiber eff) where
+  map f t = unsafePerformEff (makeFiber (f <$> joinFiber t))
+
+instance applyFiber ∷ Apply (Fiber eff) where
+  apply t1 t2 = unsafePerformEff (makeFiber (joinFiber t1 <*> joinFiber t2))
+
+instance applicativeFiber ∷ Applicative (Fiber eff) where
+  pure a = unsafePerformEff (makeFiber (pure a))
+
+-- | Invokes pending cancelers in a fiber and runs cleanup effects. Blocks
+-- | until the fiber has fully exited.
+killFiber ∷ ∀ eff a. Error → Fiber eff a → Aff eff Unit
+killFiber e (Fiber t) = makeAff \k → Canceler <<< const <<< liftEff <$> Fn.runFn2 t.kill e k
+
+-- | Blocks until the fiber completes, yielding the result. If the fiber
+-- | throws an exception, it is rethrown in the current fiber.
+joinFiber ∷ ∀ eff a. Fiber eff a → Aff eff a
+joinFiber (Fiber t) = makeAff \k → Canceler <<< const <<< liftEff <$> t.join k
+
+-- | A cancellation effect for actions run via `makeAff`. If a `Fiber` is
+-- | killed, and an async action is pending, the canceler will be called to
+-- | clean it up.
+newtype Canceler eff = Canceler (Error → Aff eff Unit)
+
+derive instance newtypeCanceler ∷ Newtype (Canceler eff) _
+
+instance semigroupCanceler ∷ Semigroup (Canceler eff) where
+  append (Canceler c1) (Canceler c2) =
+    Canceler \err → parSequence_ [ c1 err, c2 err ]
+
+-- | A no-op `Canceler` can be constructed with `mempty`.
+instance monoidCanceler ∷ Monoid (Canceler eff) where
+  mempty = nonCanceler
+
+-- | A canceler which does not cancel anything.
+nonCanceler ∷ ∀ eff. Canceler eff
+nonCanceler = Canceler (const (pure unit))
+
+-- | Forks an `Aff` from an `Eff` context, returning the `Fiber`.
+launchAff ∷ ∀ eff a. Aff eff a → Eff eff (Fiber eff a)
+launchAff aff = do
+  fiber ← makeFiber aff
+  case fiber of Fiber f → f.run
+  pure fiber
+
+-- | Forks an `Aff` from an `Eff` context, discarding the `Fiber`.
+launchAff_ ∷ ∀ eff a. Aff eff a → Eff eff Unit
+launchAff_ = void <<< launchAff
+
+-- | Suspends an `Aff` from an `Eff` context, returning the `Fiber`.
+launchSuspendedAff ∷ ∀ eff a. Aff eff a → Eff eff (Fiber eff a)
+launchSuspendedAff = makeFiber
+
+-- | Forks an `Aff` from an `Eff` context and also takes a callback to run when
+-- | it completes. Returns the pending `Fiber`.
+runAff ∷ ∀ eff a. (Either Error a → Eff eff Unit) → Aff eff a → Eff eff (Fiber eff Unit)
+runAff k aff = launchAff $ liftEff <<< k =<< try aff
+
+-- | Forks an `Aff` from an `Eff` context and also takes a callback to run when
+-- | it completes, discarding the `Fiber`.
+runAff_ ∷ ∀ eff a. (Either Error a → Eff eff Unit) → Aff eff a → Eff eff Unit
+runAff_ k aff = void $ runAff k aff
+
+-- | Suspends an `Aff` from an `Eff` context and also takes a callback to run
+-- | when it completes. Returns the suspended `Fiber`.
+runSuspendedAff ∷ ∀ eff a. (Either Error a → Eff eff Unit) → Aff eff a → Eff eff (Fiber eff Unit)
+runSuspendedAff k aff = launchSuspendedAff $ liftEff <<< k =<< try aff
+
+-- | Forks am `Aff` from within a parent `Aff` context, returning the `Fiber`.
+forkAff ∷ ∀ eff a. Aff eff a → Aff eff (Fiber eff a)
+forkAff = _fork true
+
+-- | Suspends an `Aff` from within a parent `Aff` context, returning the `Fiber`.
+-- | A suspended `Aff` is not executed until a consumer observes the result
+-- | with `joinFiber`.
+suspendAff ∷ ∀ eff a. Aff eff a → Aff eff (Fiber eff a)
+suspendAff = _fork false
+
+-- | Pauses the running fiber.
+delay ∷ ∀ eff. Milliseconds → Aff eff Unit
+delay (Milliseconds n) = Fn.runFn2 _delay Right n
+
+-- | An async computation which does not resolve.
+never ∷ ∀ eff a. Aff eff a
+never = makeAff \_ → pure mempty
+
+-- | All `Eff` exceptions are implicitly caught within an `Aff` context, but
+-- | standard `liftEff` won't remove the effect label.
+liftEff' ∷ ∀ eff a. Eff (exception ∷ EXCEPTION | eff) a → Aff eff a
+liftEff' = liftEff <<< unsafeCoerceEff
+
+-- | A monomorphic version of `try`. Catches thrown errors and lifts them
+-- | into an `Either`.
+attempt ∷ ∀ eff a. Aff eff a → Aff eff (Either Error a)
+attempt = try
 
 -- | Ignores any errors.
-apathize :: forall e a. Aff e a -> Aff e Unit
-apathize a = const unit <$> attempt a
+apathize ∷ ∀ eff a. Aff eff a → Aff eff Unit
+apathize = attempt >>> map (const unit)
 
--- | Lifts a synchronous computation and makes explicit any failure from exceptions.
-liftEff' :: forall e a. Eff (exception :: EXCEPTION | e) a -> Aff e (Either Error a)
-liftEff' eff = attempt (_unsafeInterleaveAff (runFn2 _liftEff nonCanceler eff))
+-- | Runs the first effect after the second, regardless of whether it completed
+-- | successfully or the fiber was cancelled.
+finally ∷ ∀ eff a. Aff eff Unit → Aff eff a → Aff eff a
+finally fin a = bracket (pure unit) (const fin) (const a)
 
--- | A constant canceller that always returns false.
-nonCanceler :: forall e. Canceler e
-nonCanceler = Canceler (const (pure false))
+-- | Runs an effect such that it cannot be killed.
+atomically ∷ ∀ eff a. Aff eff a → Aff eff a
+atomically a = bracket a (const (pure unit)) pure
 
--- | A constant canceller that always returns true.
-alwaysCanceler :: forall e. Canceler e
-alwaysCanceler = Canceler (const (pure true))
+-- | Attaches a custom `Canceler` to an action. If the computation is canceled,
+-- | then the custom `Canceler` will be run afterwards.
+cancelWith ∷ ∀ eff a. Aff eff a → Canceler eff → Aff eff a
+cancelWith aff (Canceler cancel) =
+  generalBracket (pure unit)
+    { killed: \e _ → cancel e
+    , failed: const pure
+    , completed: const pure
+    }
+    (const aff)
 
-instance semigroupAff :: (Semigroup a) => Semigroup (Aff e a) where
-  append a b = (<>) <$> a <*> b
+-- | Guarantees resource acquisition and cleanup. The first effect may acquire
+-- | some resource, while the second will dispose of it. The third effect makes
+-- | use of the resource. Disposal is always run last, regardless. Neither
+-- | acquisition nor disposal may be cancelled and are guaranteed to run until
+-- | they complete.
+bracket ∷ ∀ eff a b. Aff eff a → (a → Aff eff Unit) → (a → Aff eff b) → Aff eff b
+bracket acquire completed =
+  generalBracket acquire
+    { killed: const completed
+    , failed: const completed
+    , completed: const completed
+    }
 
-instance monoidAff :: (Monoid a) => Monoid (Aff e a) where
-  mempty = pure mempty
+type Supervised eff a =
+  { fiber ∷ Fiber eff a
+  , supervisor ∷ Supervisor eff
+  }
 
-instance functorAff :: Functor (Aff e) where
-  map f fa = runFn2 _fmap f fa
+-- | Creates a new supervision context for some `Aff`, guaranteeing fiber
+-- | cleanup when the parent completes. Any pending fibers forked within
+-- | the context will be killed and have their cancelers run.
+supervise ∷ ∀ eff a. Aff eff a → Aff eff a
+supervise aff =
+  generalBracket (liftEff acquire)
+    { killed: \err sup → parSequence_ [ killFiber err sup.fiber, killAll err sup ]
+    , failed: const (killAll killError)
+    , completed: const (killAll killError)
+    }
+    (joinFiber <<< _.fiber)
+  where
+  killError ∷ Error
+  killError =
+    error "[Aff] Child fiber outlived parent"
 
-instance applyAff :: Apply (Aff e) where
-  apply ff fa = runFn3 _bind alwaysCanceler ff (\f -> f <$> fa)
+  killAll ∷ Error → Supervised eff a → Aff eff Unit
+  killAll err sup = makeAff \k →
+    Fn.runFn3 _killAll err sup.supervisor (k (pure unit))
 
-instance applicativeAff :: Applicative (Aff e) where
-  pure v = runFn2 _pure nonCanceler v
+  acquire ∷ Eff eff (Supervised eff a)
+  acquire = do
+    sup ← Fn.runFn2 _makeSupervisedFiber ffiUtil aff
+    case sup.fiber of Fiber f → f.run
+    pure sup
 
-instance bindAff :: Bind (Aff e) where
-  bind fa f = runFn3 _bind alwaysCanceler fa f
+foreign import data Supervisor ∷ # Effect → Type
+foreign import _pure ∷ ∀ eff a. a → Aff eff a
+foreign import _throwError ∷ ∀ eff a. Error → Aff eff a
+foreign import _catchError ∷ ∀ eff a. Aff eff a → (Error → Aff eff a) → Aff eff a
+foreign import _fork ∷ ∀ eff a. Boolean → Aff eff a → Aff eff (Fiber eff a)
+foreign import _map ∷ ∀ eff a b. (a → b) → Aff eff a → Aff eff b
+foreign import _bind ∷ ∀ eff a b. Aff eff a → (a → Aff eff b) → Aff eff b
+foreign import _delay ∷ ∀ a eff. Fn.Fn2 (Unit → Either a Unit) Number (Aff eff Unit)
+foreign import _liftEff ∷ ∀ eff a. Eff eff a → Aff eff a
+foreign import _parAffMap ∷ ∀ eff a b. (a → b) → ParAff eff a → ParAff eff b
+foreign import _parAffApply ∷ ∀ eff a b. ParAff eff (a → b) → ParAff eff a → ParAff eff b
+foreign import _parAffAlt ∷ ∀ eff a. ParAff eff a → ParAff eff a → ParAff eff a
+foreign import _makeFiber ∷ ∀ eff a. Fn.Fn2 FFIUtil (Aff eff a) (Eff eff (Fiber eff a))
+foreign import _makeSupervisedFiber ∷ ∀ eff a. Fn.Fn2 FFIUtil (Aff eff a) (Eff eff (Supervised eff a))
+foreign import _killAll ∷ ∀ eff. Fn.Fn3 Error (Supervisor eff) (Eff eff Unit) (Eff eff (Canceler eff))
+foreign import _sequential ∷ ∀ eff a. ParAff eff a → Aff eff a
 
-instance monadAff :: Monad (Aff e)
+type BracketConditions eff a b =
+  { killed ∷ Error → a → Aff eff Unit
+  , failed ∷ Error → a → Aff eff Unit
+  , completed ∷ b → a → Aff eff Unit
+  }
 
-instance monadEffAff :: MonadEff e (Aff e) where
-  liftEff eff = runFn2 _liftEff nonCanceler eff
+-- | A general purpose bracket which lets you observe the status of the
+-- | bracketed action. The bracketed action may have been killed with an
+-- | exception, thrown an exception, or completed successfully.
+foreign import generalBracket ∷ ∀ eff a b. Aff eff a → BracketConditions eff a b → (a → Aff eff b) → Aff eff b
 
--- | Allows users to throw errors on the error channel of the
--- | asynchronous computation. See documentation in `purescript-transformers`.
-instance monadThrowAff :: MonadThrow Error (Aff e) where
-  throwError e = runFn2 _throwError nonCanceler e
+-- | Constructs an `Aff` from low-level `Eff` effects using a callback. A
+-- | `Canceler` effect should be returned to cancel the pending action. The
+-- | supplied callback may be invoked only once. Subsequent invocation are
+-- | ignored.
+foreign import makeAff ∷ ∀ eff a. ((Either Error a → Eff eff Unit) → Eff eff (Canceler eff)) → Aff eff a
 
--- | Allows users to catch errors on the error channel of the
--- | asynchronous computation. See documentation in `purescript-transformers`.
-instance monadErrorAff :: MonadError Error (Aff e) where
-  catchError aff ex = attempt aff >>= either ex pure
+makeFiber ∷ ∀ eff a. Aff eff a → Eff eff (Fiber eff a)
+makeFiber aff = Fn.runFn2 _makeFiber ffiUtil aff
 
-instance altAff :: Alt (Aff e) where
-  alt a1 a2 = attempt a1 >>= either (const a2) pure
+newtype FFIUtil = FFIUtil
+  { isLeft ∷ ∀ a b. Either a b → Boolean
+  , fromLeft ∷ ∀ a b. Either a b → a
+  , fromRight ∷ ∀ a b. Either a b → b
+  , left ∷ ∀ a b. a → Either a b
+  , right ∷ ∀ a b. b → Either a b
+  }
 
-instance plusAff :: Plus (Aff e) where
-  empty = throwError $ error "Always fails"
+ffiUtil ∷ FFIUtil
+ffiUtil = FFIUtil
+  { isLeft
+  , fromLeft: unsafeFromLeft
+  , fromRight: unsafeFromRight
+  , left: Left
+  , right: Right
+  }
+  where
+  isLeft ∷ ∀ a b. Either a b → Boolean
+  isLeft = case _ of
+    Left _ -> true
+    Right _ → false
 
-instance alternativeAff :: Alternative (Aff e)
+  unsafeFromLeft ∷ ∀ a b. Either a b → a
+  unsafeFromLeft = case _ of
+    Left a  → a
+    Right _ → unsafeCrashWith "unsafeFromLeft: Right"
 
-instance monadZero :: MonadZero (Aff e)
-
-instance monadPlusAff :: MonadPlus (Aff e)
-
-instance monadRecAff :: MonadRec (Aff e) where
-  tailRecM f a = runFn3 _tailRecM isLoop f a
-    where
-    isLoop (Loop _) = true
-    isLoop _ = false
-
-instance semigroupCanceler :: Semigroup (Canceler e) where
-  append (Canceler f1) (Canceler f2) = Canceler (\e -> (||) <$> f1 e <*> f2 e)
-
-instance monoidCanceler :: Monoid (Canceler e) where
-  mempty = Canceler (const (pure true))
-
-newtype ParAff e a = ParAff (Aff e a)
-
-derive instance newtypeParAff :: Newtype (ParAff e a) _
-
-instance semigroupParAff :: (Semigroup a) => Semigroup (ParAff e a) where
-  append a b = append <$> a <*> b
-
-instance monoidParAff :: (Monoid a) => Monoid (ParAff e a) where
-  mempty = pure mempty
-
-derive newtype instance functorParAff :: Functor (ParAff e)
-
-instance applyParAff :: Apply (ParAff e) where
-  apply (ParAff ff) (ParAff fa) = ParAff do
-    va <- makeVar
-    vb <- makeVar
-    c1 <- forkAff (putOrKill va =<< attempt ff)
-    c2 <- forkAff (putOrKill vb =<< attempt fa)
-    (takeVar va <*> takeVar vb) `cancelWith` (c1 <> c2)
-    where
-    putOrKill :: forall a. AVar a -> Either Error a -> Aff e Unit
-    putOrKill v = either (killVar v) (putVar v)
-
-instance applicativeParAff :: Applicative (ParAff e) where
-  pure = ParAff <<< pure
-
--- | Returns the first value, or the first error if both error.
-instance altParAff :: Alt (ParAff e) where
-  alt (ParAff a1) (ParAff a2) = ParAff do
-    va <- makeVar -- the `a` value
-    ve <- makeVar -- the error count (starts at 0)
-    cs <- makeVar -- the cancelers
-    putVar ve 0
-    c1 <- forkAff $ either (maybeKill va ve) (done cs snd va) =<< attempt a1
-    c2 <- forkAff $ either (maybeKill va ve) (done cs fst va) =<< attempt a2
-    putVar cs (Tuple c1 c2)
-    takeVar va `cancelWith` (c1 <> c2)
-    where
-    done :: forall a. AVar (Tuple (Canceler e) (Canceler e)) -> (forall x. Tuple x x -> x) -> AVar a -> a -> Aff e Unit
-    done cs get va x = do
-      putVar va x
-      c <- get <$> takeVar cs
-      void $ cancel c (error "Alt early exit")
-    maybeKill :: forall a. AVar a -> AVar Int -> Error -> Aff e Unit
-    maybeKill va ve err = do
-      e <- takeVar ve
-      when (e == 1) $ killVar va err
-      putVar ve (e + 1)
-
-instance plusParAff :: Plus (ParAff e) where
-  empty = ParAff empty
-
-instance alternativeParAff :: Alternative (ParAff e)
-
-instance parallelParAff :: Parallel (ParAff e) (Aff e) where
-  parallel = ParAff
-  sequential (ParAff ma) = ma
-
-makeVar :: forall e a. Aff e (AVar a)
-makeVar = fromAVBox $ _makeVar nonCanceler
-
-takeVar :: forall e a. AVar a -> Aff e a
-takeVar q = fromAVBox $ runFn2 _takeVar nonCanceler q
-
-putVar :: forall e a. AVar a -> a -> Aff e Unit
-putVar q a = fromAVBox $ runFn3 _putVar nonCanceler q a
-
-killVar :: forall e a. AVar a -> Error -> Aff e Unit
-killVar q e = fromAVBox $ runFn3 _killVar nonCanceler q e
-
-fromAVBox :: forall a e. AVBox a -> Aff e a
-fromAVBox = unsafeCoerce
-
-foreign import _cancelWith :: forall e a. Fn3 (Canceler e) (Aff e a) (Canceler e) (Aff e a)
-
-foreign import _delay :: forall e a. Fn2 (Canceler e) Number (Aff e a)
-
-foreign import _unsafeInterleaveAff :: forall e1 e2 a. Aff e1 a -> Aff e2 a
-
-foreign import _forkAff :: forall e a. Fn2 (Canceler e) (Aff e a) (Aff e (Canceler e))
-
-foreign import _forkAll :: forall f e a b. Fn3 (Canceler e) ((b -> a -> b) -> b -> f a -> b) (f (Aff e a)) (Aff e (Canceler e))
-
-foreign import _makeAff :: forall e a. ((Error -> Eff e Unit) -> (a -> Eff e Unit) -> Eff e (Canceler e)) -> Aff e a
-
-foreign import _pure :: forall e a. Fn2 (Canceler e) a (Aff e a)
-
-foreign import _throwError :: forall e a. Fn2 (Canceler e) Error (Aff e a)
-
-foreign import _fmap :: forall e a b. Fn2 (a -> b) (Aff e a) (Aff e b)
-
-foreign import _bind :: forall e a b. Fn3 (Canceler e) (Aff e a) (a -> Aff e b) (Aff e b)
-
-foreign import _attempt :: forall e a. Fn3 (forall x y. x -> Either x y) (forall x y. y -> Either x y) (Aff e a) (Aff e (Either Error a))
-
-foreign import _runAff :: forall e a. Fn3 (Error -> Eff e Unit) (a -> Eff e Unit) (Aff e a) (Eff e (Canceler e))
-
-foreign import _liftEff :: forall e a. Fn2 (Canceler e) (Eff e a) (Aff e a)
-
-foreign import _tailRecM :: forall e a b. Fn3 (Step a b -> Boolean) (a -> Aff e (Step a b)) a (Aff e b)
+  unsafeFromRight ∷ ∀ a b. Either a b → b
+  unsafeFromRight = case _ of
+    Right a → a
+    Left  _ → unsafeCrashWith "unsafeFromRight: Left"

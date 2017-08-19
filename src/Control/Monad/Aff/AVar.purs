@@ -1,77 +1,81 @@
--- | A low-level primitive for building asynchronous code.
 module Control.Monad.Aff.AVar
-  ( AffAVar
-  , AVAR
+  ( module Control.Monad.Eff.AVar
   , makeVar
-  , makeVar'
+  , makeEmptyVar
+  , isEmptyVar
   , takeVar
-  , peekVar
-  , putVar
-  , modifyVar
-  , killVar
   , tryTakeVar
-  , tryPeekVar
-  , module Exports
+  , putVar
+  , tryPutVar
+  , readVar
+  , tryReadVar
+  , killVar
   ) where
 
 import Prelude
+import Control.Monad.Aff (Aff, Canceler(..), makeAff)
+import Control.Monad.Eff (Eff)
+import Control.Monad.Eff.AVar (AVar, AVAR)
+import Control.Monad.Eff.AVar as AVar
+import Control.Monad.Eff.Class (liftEff)
+import Control.Monad.Eff.Exception (Error)
+import Data.Maybe (Maybe)
 
-import Control.Monad.Aff (Aff, nonCanceler)
-import Control.Monad.Aff.Internal (AVar) as Exports
-import Control.Monad.Aff.Internal (AVBox, AVar, _killVar, _putVar, _takeVar, _peekVar, _makeVar, _tryTakeVar, _tryPeekVar)
-import Control.Monad.Eff (kind Effect)
-import Control.Monad.Eff.Exception (Error())
+toCanceler ∷ ∀ eff. Eff eff Unit → Canceler eff
+toCanceler = Canceler <<< const <<< liftEff
 
-import Data.Function.Uncurried (runFn4, runFn3, runFn2)
-import Data.Maybe (Maybe(..))
+-- | Creates a fresh AVar with an initial value.
+makeVar ∷ ∀ eff a. a → Aff (avar ∷ AVAR | eff) (AVar a)
+makeVar = liftEff <<< AVar.makeVar
 
-import Unsafe.Coerce (unsafeCoerce)
+-- | Creates a fresh AVar.
+makeEmptyVar ∷ ∀ eff a. Aff (avar ∷ AVAR | eff) (AVar a)
+makeEmptyVar = liftEff AVar.makeEmptyVar
 
-foreign import data AVAR :: Effect
+-- | Synchronously checks whether an AVar currently has a value.
+isEmptyVar ∷ ∀ eff a. AVar a → Aff (avar ∷ AVAR | eff) Boolean
+isEmptyVar = liftEff <<< AVar.isEmptyVar
 
-type AffAVar e a = Aff (avar :: AVAR | e) a
+-- | Takes the AVar value, leaving it empty. If the AVar is already empty,
+-- | the callback will be queued until the AVar is filled. Multiple takes will
+-- | resolve in order as the AVar fills.
+takeVar ∷ ∀ eff a. AVar a → Aff (avar ∷ AVAR | eff) a
+takeVar avar = makeAff \k → do
+  c ← AVar.takeVar avar k
+  pure (toCanceler c)
 
--- | Makes a new asynchronous avar.
-makeVar :: forall e a. AffAVar e (AVar a)
-makeVar = fromAVBox $ _makeVar nonCanceler
+-- | Attempts to synchronously take an AVar value, leaving it empty. If the
+-- | AVar is empty, this will return `Nothing`.
+tryTakeVar ∷ ∀ eff a. AVar a → Aff (avar ∷ AVAR | eff) (Maybe a)
+tryTakeVar = liftEff <<< AVar.tryTakeVar
 
--- | Makes a avar and sets it to some value.
-makeVar' :: forall e a. a -> AffAVar e (AVar a)
-makeVar' a = do
-  v <- makeVar
-  putVar v a
-  pure v
+-- | Sets the value of the AVar. If the AVar is already filled, it will be
+-- | queued until the value is emptied. Multiple puts will resolve in order as
+-- | the AVar becomes available.
+putVar ∷ ∀ eff a. AVar a → a → Aff (avar ∷ AVAR | eff) Unit
+putVar avar value = makeAff \k → do
+  c ← AVar.putVar avar value k
+  pure (toCanceler c)
 
--- | Takes the next value from the asynchronous avar.
-takeVar :: forall e a. AVar a -> AffAVar e a
-takeVar q = fromAVBox $ runFn2 _takeVar nonCanceler q
+-- | Attempts to synchronously fill an AVar. If the AVar is already filled,
+-- | this will do nothing. Returns true or false depending on if it succeeded.
+tryPutVar ∷ ∀ eff a. AVar a → a → Aff (avar ∷ AVAR | eff) Boolean
+tryPutVar avar = liftEff <<< AVar.tryPutVar avar
 
--- | A variant of `takeVar` which return immediately if the asynchronous avar
--- | was empty. Nothing if the avar empty and `Just a` if the avar have contents `a`.
-tryTakeVar :: forall e a. AVar a -> AffAVar e (Maybe a)
-tryTakeVar q = fromAVBox $ runFn4 _tryTakeVar Nothing Just nonCanceler q
+-- | Reads the AVar value. Unlike `takeVar`, this will not leave the AVar empty.
+-- | If the AVar is empty, this will queue until it is filled. Multiple reads
+-- | will resolve at the same time, as soon as possible.
+readVar ∷ ∀ eff a. AVar a → Aff (avar ∷ AVAR | eff) a
+readVar avar = makeAff \k → do
+  c ← AVar.readVar avar k
+  pure (toCanceler c)
 
--- | Reads a value from the asynchronous var but does not consume it.
-peekVar :: forall e a. AVar a -> AffAVar e a
-peekVar q = fromAVBox $ runFn2 _peekVar nonCanceler q
+-- | Attempts to synchronously read an AVar. If the AVar is empty, this will
+-- | return `Nothing`.
+tryReadVar ∷ ∀ eff a. AVar a → Aff (avar ∷ AVAR | eff) (Maybe a)
+tryReadVar = liftEff <<< AVar.tryReadVar
 
--- | A variant of `peekVar` which return immediately when the asynchronous avar
--- | was empty. Nothing if the avar empty and `Just a` if the avar have contents `a`.
-tryPeekVar :: forall e a. AVar a -> AffAVar e (Maybe a)
-tryPeekVar q = fromAVBox $ runFn4 _tryPeekVar Nothing Just nonCanceler q
-
--- | Puts a new value into the asynchronous avar. If the avar has
--- | been killed, this will result in an error.
-putVar :: forall e a. AVar a -> a -> AffAVar e Unit
-putVar q a = fromAVBox $ runFn3 _putVar nonCanceler q a
-
--- | Modifies the value at the head of the avar (will suspend until one is available).
-modifyVar :: forall e a. (a -> a) -> AVar a -> AffAVar e Unit
-modifyVar f v = takeVar v >>= (f >>> putVar v)
-
--- | Kills an asynchronous avar.
-killVar :: forall e a. AVar a -> Error -> AffAVar e Unit
-killVar q e = fromAVBox $ runFn3 _killVar nonCanceler q e
-
-fromAVBox :: forall a e. AVBox a -> AffAVar e a
-fromAVBox = unsafeCoerce
+-- | Kills the AVar with an exception. All pending and future actions will
+-- | resolve immediately with the provided exception.
+killVar ∷ ∀ eff a. AVar a → Error → Aff (avar ∷ AVAR | eff) Unit
+killVar avar = liftEff <<< AVar.killVar avar

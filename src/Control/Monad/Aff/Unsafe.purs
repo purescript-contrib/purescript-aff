@@ -1,7 +1,9 @@
-module Control.Monad.Aff.Unsafe where
+module Control.Monad.Aff.Unsafe
+  ( unsafeCoerceAff
+  ) where
 
 import Control.Monad.Aff (Aff)
 import Unsafe.Coerce (unsafeCoerce)
 
-unsafeCoerceAff :: forall e1 e2 a. Aff e1 a -> Aff e2 a
+unsafeCoerceAff ∷ ∀ eff1 eff2 a. Aff eff1 a -> Aff eff2 a
 unsafeCoerceAff = unsafeCoerce
