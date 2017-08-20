@@ -420,6 +420,14 @@ test_parallel_alt = assert "parallel/alt" do
   r2 ← joinFiber f1
   pure (r1 == "bar" && r2 == "bar")
 
+test_parallel_alt_throw ∷ ∀ eff. TestAff eff Unit
+test_parallel_alt_throw = assert "parallel/alt/throw" do
+  r1 ← sequential $
+    parallel (delay (Milliseconds 10.0) *> throwError (error "Nope."))
+    <|> parallel (delay (Milliseconds 11.0) $> "foo")
+    <|> parallel (delay (Milliseconds 12.0) $> "bar")
+  pure (r1 == "foo")
+
 test_parallel_alt_sync ∷ ∀ eff. TestAff eff Unit
 test_parallel_alt_sync = assert "parallel/alt/sync" do
   ref ← newRef ""
@@ -569,6 +577,7 @@ main = do
     test_parallel
     test_kill_parallel
     test_parallel_alt
+    test_parallel_alt_throw
     test_parallel_alt_sync
     test_parallel_mixed
     test_kill_parallel_alt
