@@ -485,9 +485,15 @@ var Aff = function () {
             }
           }
           joins = null;
+          // If we have an interrupt and a fail, then the thread threw while
+          // running finalizers. This should always rethrow in a fresh stack.
+          if (interrupt && fail) {
+            setTimeout(function () {
+              throw util.fromLeft(fail);
+            }, 0);
           // If we have an unhandled exception, and no other fiber has joined
           // then we need to throw the exception in a fresh stack.
-          if (util.isLeft(step) && rethrow) {
+          } else if (util.isLeft(step) && rethrow) {
             setTimeout(function () {
               // Guard on reathrow because a completely synchronous fiber can
               // still have an observer which was added after-the-fact.
@@ -532,12 +538,8 @@ var Aff = function () {
 
         var canceler = onComplete({
           rethrow: false,
-          handler: function (result) {
-            if (fail) {
-              return cb(fail);
-            } else {
-              return cb(util.right(void 0));
-            }
+          handler: function (/* unused */) {
+            return cb(util.right(void 0));
           }
         })();
 
@@ -634,7 +636,6 @@ var Aff = function () {
     // cancellation fibers.
     function kill(error, par, cb) {
       var step  = par;
-      var fail  = null;
       var head  = null;
       var tail  = null;
       var count = 0;
@@ -651,11 +652,8 @@ var Aff = function () {
             kills[count++] = tmp.kill(error, function (result) {
               return function () {
                 count--;
-                if (fail === null && util.isLeft(result)) {
-                  fail = result;
-                }
                 if (count === 0) {
-                  cb(fail || util.right(void 0))();
+                  cb(result)();
                 }
               };
             });
@@ -688,7 +686,7 @@ var Aff = function () {
       }
 
       if (count === 0) {
-        cb(fail || util.right(void 0))();
+        cb(util.right(void 0))();
       } else {
         // Run the cancelation effects. We alias `count` because it's mutable.
         kid = 0;
@@ -795,19 +793,15 @@ var Aff = function () {
             kid     = killId++;
             // Once a side has resolved, we need to cancel the side that is still
             // pending before we can continue.
-            kills[kid] = kill(early, step === lhs ? head._2 : head._1, function (killResult) {
+            kills[kid] = kill(early, step === lhs ? head._2 : head._1, function (/* unused */) {
               return function () {
                 delete kills[kid];
-                if (util.isLeft(killResult)) {
-                  fail = killResult;
-                  step = null;
-                }
                 if (tmp) {
                   tmp = false;
                 } else if (tail === null) {
-                  join(fail || step, null, null);
+                  join(step, null, null);
                 } else {
-                  join(fail || step, tail._1, tail._2);
+                  join(step, tail._1, tail._2);
                 }
               };
             });
