@@ -13,7 +13,7 @@ import Control.Monad.Eff.Exception (Error, EXCEPTION, throwException, error, mes
 import Control.Monad.Eff.Ref (REF, Ref)
 import Control.Monad.Eff.Ref as Ref
 import Control.Monad.Eff.Ref.Unsafe (unsafeRunRef)
-import Control.Monad.Error.Class (throwError)
+import Control.Monad.Error.Class (throwError, catchError)
 import Control.Parallel (parallel, sequential, parTraverse_)
 import Data.Array as Array
 import Data.Bifunctor (lmap)
@@ -367,6 +367,31 @@ test_kill_supervise = assert "kill/supervise" do
   delay (Milliseconds 20.0)
   eq "acquirefooacquirebarkillfookillbar" <$> readRef ref
 
+test_kill_finalizer_catch ∷ ∀ eff. TestAff eff Unit
+test_kill_finalizer_catch = assert "kill/finalizer/catch" do
+  ref ← newRef ""
+  fiber ← forkAff $ bracket
+    (delay (Milliseconds 10.0))
+    (\_ → throwError (error "Finalizer") `catchError` \_ → writeRef ref "caught")
+    (\_ → pure unit)
+  killFiber (error "Nope") fiber
+  eq "caught" <$> readRef ref
+
+test_kill_finalizer_bracket ∷ ∀ eff. TestAff eff Unit
+test_kill_finalizer_bracket = assert "kill/finalizer/bracket" do
+  ref ← newRef ""
+  fiber ← forkAff $ bracket
+    (delay (Milliseconds 10.0))
+    (\_ → generalBracket (pure unit)
+      { killed: \_ _ → writeRef ref "killed"
+      , failed: \_ _ → writeRef ref "failed"
+      , completed: \_ _ → writeRef ref "completed"
+      }
+      (\_ → pure unit))
+    (\_ → pure unit)
+  killFiber (error "Nope") fiber
+  eq "completed" <$> readRef ref
+
 test_parallel ∷ ∀ eff. TestAff eff Unit
 test_parallel = assert "parallel" do
   ref ← newRef ""
@@ -574,6 +599,8 @@ main = do
     test_kill_bracket
     test_kill_bracket_nested
     test_kill_supervise
+    test_kill_finalizer_catch
+    test_kill_finalizer_bracket
     test_parallel
     test_kill_parallel
     test_parallel_alt
