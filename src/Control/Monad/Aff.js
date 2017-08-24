@@ -48,9 +48,9 @@ var Aff = function () {
 
   // Various constructors used in interpretation
   var CONS      = "Cons";      // Cons-list, for stacks
-  var RECOVER   = "Recover";   // Continue with error handler
   var RESUME    = "Resume";    // Continue indiscriminately
   var RELEASE   = "Release";   // Continue with bracket finalizers
+  var FINALIZER = "Finalizer"; // A non-interruptible effect
   var FINALIZED = "Finalized"; // Marker for finalization
   var FORKED    = "Forked";    // Reference to a forked fiber, with resumption stack
   var FIBER     = "Fiber";     // Actual fiber reference
@@ -239,7 +239,9 @@ var Aff = function () {
     var bhead = null;
     var btail = null;
 
-    // Stack of attempts and finalizers for error recovery.
+    // Stack of attempts and finalizers for error recovery. Every `Cons` is also
+    // tagged with current `interrupt` state. We use this to track which items
+    // should be ignored or evaluated as a result of a kill.
     var attempts = null;
 
     // A special state is needed for Bracket, because it cannot be killed. When
@@ -335,30 +337,33 @@ var Aff = function () {
             return;
 
           case THROW:
-            bhead  = null;
-            btail  = null;
             status = RETURN;
             fail   = util.left(step._1);
             step   = null;
             break;
 
-          // Enqueue the current stack of binds and continue
+          // Enqueue the Catch so that we can call the error handler later on
+          // in case of an exception.
           case CATCH:
-            attempts = new Aff(CONS, new Aff(RECOVER, step._2, bhead, btail), attempts);
+            if (bhead === null) {
+              attempts = new Aff(CONS, step, attempts, interrupt);
+            } else {
+              attempts = new Aff(CONS, step, new Aff(CONS, new Aff(RESUME, bhead, btail), attempts, interrupt), interrupt);
+            }
             bhead    = null;
             btail    = null;
             status   = CONTINUE;
             step     = step._1;
             break;
 
-          // When we evaluate a Bracket, we also enqueue the instruction so we
-          // can fullfill it later once we return from the acquisition.
+          // Enqueue the Bracket so that we can call the appropriate handlers
+          // after resource acquisition.
           case BRACKET:
             bracketCount++;
             if (bhead === null) {
-              attempts = new Aff(CONS, step, attempts);
+              attempts = new Aff(CONS, step, attempts, interrupt);
             } else {
-              attempts = new Aff(CONS, step, new Aff(CONS, new Aff(RESUME, bhead, btail), attempts));
+              attempts = new Aff(CONS, step, new Aff(CONS, new Aff(RESUME, bhead, btail), attempts, interrupt), interrupt);
             }
             bhead  = null;
             btail  = null;
@@ -386,6 +391,8 @@ var Aff = function () {
           break;
 
         case RETURN:
+          bhead = null;
+          btail = null;
           // If the current stack has returned, and we have no other stacks to
           // resume or finalizers to run, the fiber has halted and we can
           // invoke all join callbacks. Otherwise we need to resume.
@@ -393,6 +400,8 @@ var Aff = function () {
             status = COMPLETED;
             step   = interrupt || fail || step;
           } else {
+            // The interrupt status for the enqueued item.
+            tmp      = attempts._3;
             attempt  = attempts._1;
             attempts = attempts._2;
 
@@ -400,26 +409,24 @@ var Aff = function () {
             // We cannot recover from an interrupt. Otherwise we should
             // continue stepping, or run the exception handler if an exception
             // was raised.
-            case RECOVER:
-              if (interrupt) {
+            case CATCH:
+              // We should compare the interrupt status as well because we
+              // only want it to apply if there has been an interrupt since
+              // enqueuing the catch.
+              if (interrupt && interrupt !== tmp) {
                 status = RETURN;
-              } else {
-                bhead  = attempt._2;
-                btail  = attempt._3;
-                if (fail) {
-                  status = CONTINUE;
-                  step   = attempt._1(util.fromLeft(fail));
-                  fail   = null;
-                } else {
-                  status = STEP_BIND;
-                  step   = util.fromRight(step);
-                }
+              } else if (fail) {
+                status = CONTINUE;
+                step   = attempt._2(util.fromLeft(fail));
+                fail   = null;
               }
               break;
 
             // We cannot resume from an interrupt or exception.
             case RESUME:
-              if (interrupt || fail) {
+              // As with Catch, we only want to ignore in the case of an
+              // interrupt since enqueing the item.
+              if (interrupt && interrupt !== tmp || fail) {
                 status = RETURN;
               } else {
                 bhead  = attempt._1;
@@ -437,8 +444,12 @@ var Aff = function () {
               bracketCount--;
               if (fail === null) {
                 result   = util.fromRight(step);
-                attempts = new Aff(CONS, new Aff(RELEASE, attempt._2, result), attempts);
-                if (interrupt === null || bracketCount > 0) {
+                // We need to enqueue the Release with the same interrupt
+                // status as the Bracket that is initiating it.
+                attempts = new Aff(CONS, new Aff(RELEASE, attempt._2, result), attempts, tmp);
+                // We should only coninue as long as the interrupt status has not changed or
+                // we are currently within a non-interruptable finalizer.
+                if (interrupt === tmp || bracketCount > 0) {
                   status = CONTINUE;
                   step   = attempt._3(result);
                 }
@@ -446,18 +457,27 @@ var Aff = function () {
               break;
 
             // Enqueue the appropriate handler. We increase the bracket count
-            // because it should be cancelled.
+            // because it should not be cancelled.
             case RELEASE:
               bracketCount++;
-              attempts = new Aff(CONS, new Aff(FINALIZED, step), attempts);
+              attempts = new Aff(CONS, new Aff(FINALIZED, step), attempts, interrupt);
               status   = CONTINUE;
-              if (interrupt !== null) {
+              // It has only been killed if the interrupt status has changed
+              // since we enqueued the item.
+              if (interrupt && interrupt !== tmp) {
                 step = attempt._1.killed(util.fromLeft(interrupt))(attempt._2);
-              } else if (fail !== null) {
+              } else if (fail) {
                 step = attempt._1.failed(util.fromLeft(fail))(attempt._2);
               } else {
                 step = attempt._1.completed(util.fromRight(step))(attempt._2);
               }
+              break;
+
+            case FINALIZER:
+              bracketCount++;
+              attempts = new Aff(CONS, new Aff(FINALIZED, step), attempts, interrupt);
+              status   = CONTINUE;
+              step     = attempt._1;
               break;
 
             case FINALIZED:
@@ -465,14 +485,6 @@ var Aff = function () {
               status = RETURN;
               step   = attempt._1;
               break;
-
-            // Otherwise we need to run a finalizer, which cannot be interrupted.
-            // We insert a FINALIZED marker to know when we can release it.
-            default:
-              bracketCount++;
-              attempts = new Aff(CONS, new Aff(FINALIZED, step), attempts);
-              status   = CONTINUE;
-              step     = attempt;
             }
           }
           break;
@@ -485,9 +497,15 @@ var Aff = function () {
             }
           }
           joins = null;
+          // If we have an interrupt and a fail, then the thread threw while
+          // running finalizers. This should always rethrow in a fresh stack.
+          if (interrupt && fail) {
+            setTimeout(function () {
+              throw util.fromLeft(fail);
+            }, 0);
           // If we have an unhandled exception, and no other fiber has joined
           // then we need to throw the exception in a fresh stack.
-          if (util.isLeft(step) && rethrow) {
+          } else if (util.isLeft(step) && rethrow) {
             setTimeout(function () {
               // Guard on reathrow because a completely synchronous fiber can
               // still have an observer which was added after-the-fact.
@@ -532,12 +550,8 @@ var Aff = function () {
 
         var canceler = onComplete({
           rethrow: false,
-          handler: function (result) {
-            if (fail) {
-              return cb(fail);
-            } else {
-              return cb(util.right(void 0));
-            }
+          handler: function (/* unused */) {
+            return cb(util.right(void 0));
           }
         })();
 
@@ -554,10 +568,8 @@ var Aff = function () {
           }
           if (bracketCount === 0) {
             if (status === PENDING) {
-              attempts = new Aff(CONS, step(error), attempts);
+              attempts = new Aff(CONS, new Aff(FINALIZER, step(error)), attempts, interrupt);
             }
-            bhead    = null;
-            btail    = null;
             status   = RETURN;
             step     = null;
             fail     = null;
@@ -569,8 +581,6 @@ var Aff = function () {
             interrupt = util.left(error);
           }
           if (bracketCount === 0) {
-            bhead  = null;
-            btail  = null;
             status = RETURN;
             step   = null;
             fail   = null;
@@ -634,7 +644,6 @@ var Aff = function () {
     // cancellation fibers.
     function kill(error, par, cb) {
       var step  = par;
-      var fail  = null;
       var head  = null;
       var tail  = null;
       var count = 0;
@@ -651,11 +660,8 @@ var Aff = function () {
             kills[count++] = tmp.kill(error, function (result) {
               return function () {
                 count--;
-                if (fail === null && util.isLeft(result)) {
-                  fail = result;
-                }
                 if (count === 0) {
-                  cb(fail || util.right(void 0))();
+                  cb(result)();
                 }
               };
             });
@@ -688,7 +694,7 @@ var Aff = function () {
       }
 
       if (count === 0) {
-        cb(fail || util.right(void 0))();
+        cb(util.right(void 0))();
       } else {
         // Run the cancelation effects. We alias `count` because it's mutable.
         kid = 0;
@@ -795,19 +801,15 @@ var Aff = function () {
             kid     = killId++;
             // Once a side has resolved, we need to cancel the side that is still
             // pending before we can continue.
-            kills[kid] = kill(early, step === lhs ? head._2 : head._1, function (killResult) {
+            kills[kid] = kill(early, step === lhs ? head._2 : head._1, function (/* unused */) {
               return function () {
                 delete kills[kid];
-                if (util.isLeft(killResult)) {
-                  fail = killResult;
-                  step = null;
-                }
                 if (tmp) {
                   tmp = false;
                 } else if (tail === null) {
-                  join(fail || step, null, null);
+                  join(step, null, null);
                 } else {
-                  join(fail || step, tail._1, tail._2);
+                  join(step, tail._1, tail._2);
                 }
               };
             });

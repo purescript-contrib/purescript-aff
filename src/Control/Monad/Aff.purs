@@ -15,6 +15,7 @@ module Control.Monad.Aff
   , liftEff'
   , supervise
   , attempt
+  , apathize
   , delay
   , never
   , finally
