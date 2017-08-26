@@ -38,6 +38,7 @@ import Control.Apply (lift2)
 import Control.Monad.Eff (Eff, kind Effect)
 import Control.Monad.Eff.Class (class MonadEff, liftEff)
 import Control.Monad.Eff.Exception (Error, EXCEPTION, error)
+import Control.Monad.Eff.Exception (Error, error, message) as Exports
 import Control.Monad.Eff.Unsafe (unsafeCoerceEff, unsafePerformEff)
 import Control.Monad.Error.Class (class MonadError, class MonadThrow, throwError, catchError, try)
 import Control.Monad.Error.Class (try) as Exports
