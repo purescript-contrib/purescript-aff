@@ -212,7 +212,7 @@ The `Control.Monad.Aff.AVar` module contains asynchronous variables, which
 are very similar to Haskell's `MVar`.
 
 `AVar`s represent a value that is either full or empty. Calling `takeVar` on
-an empty `AVar` will queue until it is filled by a matching `putVar`.
+an empty `AVar` will queue until it is filled by a `putVar`.
 
 ```purescript
 example = do
@@ -230,22 +230,23 @@ example = do
 > Got a value: hello
 ```
 
-Likewise, calling `putVar` will queue until it is taken:
+Likewise, calling `putVar` on a filled `AVar` will queue until it is emptied by
+a `takeVar`.
 
 ```purescript
 example = do
-  var <- makeEmptyVar
+  var <- makeVar "hello"
   _ <- forkAff do
     delay (Milliseconds 100.0)
     value <- takeVar var
     log $ "Got a value: " <> value
-  putVar var "hello"
-  log "Value taken"
+  putVar var "next"
+  log "Value put"
 ```
 ```
 (Waits 100ms)
-> Value taken
 > Got a value: hello
+> Value put
 ```
 
 These combinators (and a few more) can be used as the building blocks for
