@@ -556,7 +556,7 @@ test_avar_order = assert "avar/order" do
     delay (Milliseconds 10.0)
     value ← takeVar var
     modifyRef ref (_ <> value)
-  putVar var "foo"
+  putVar "foo" var
   modifyRef ref (_ <> "taken")
   joinFiber f1
   eq "takenfoo" <$> readRef ref
