@@ -41,7 +41,7 @@ import Control.Monad.Eff.Exception (Error, EXCEPTION, error)
 import Control.Monad.Eff.Exception (Error, error, message) as Exports
 import Control.Monad.Eff.Unsafe (unsafeCoerceEff, unsafePerformEff)
 import Control.Monad.Error.Class (class MonadError, class MonadThrow, throwError, catchError, try)
-import Control.Monad.Error.Class (try) as Exports
+import Control.Monad.Error.Class (try, throwError, catchError) as Exports
 import Control.Monad.Rec.Class (class MonadRec, Step(..))
 import Control.Parallel (parSequence_, parallel)
 import Control.Parallel.Class (class Parallel)
