@@ -4,7 +4,7 @@ module Control.Monad.Aff.Compat
   ( EffFnAff(..)
   , EffFnCanceler(..)
   , EffFnCb
-  , toAff
+  , fromEffFnAff
   , module Control.Monad.Eff.Uncurried
   ) where
 
@@ -45,8 +45,8 @@ newtype EffFnCanceler eff = EffFnCanceler (EffFn3 eff Error (EffFnCb eff Error) 
 -- | myAff :: forall eff. Aff (myeffect :: MYEFFECT | eff) String
 -- | myAff = fromEffFnAff _myAff
 -- | ````
-toAff ∷ ∀ eff a. EffFnAff eff a → Aff eff a
-toAff (EffFnAff eff) = makeAff \k → do
+fromEffFnAff ∷ ∀ eff a. EffFnAff eff a → Aff eff a
+fromEffFnAff (EffFnAff eff) = makeAff \k → do
   EffFnCanceler canceler ← runEffFn2 eff (mkEffFn1 (k <<< Left)) (mkEffFn1 (k <<< Right))
   pure $ Canceler \e → makeAff \k2 → do
     runEffFn3 canceler e (mkEffFn1 (k2 <<< Left)) (mkEffFn1 (k2 <<< Right))

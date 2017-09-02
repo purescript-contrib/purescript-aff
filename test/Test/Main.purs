@@ -567,7 +567,7 @@ test_efffn ∷ ∀ eff. TestAff eff Unit
 test_efffn = assert "efffn" do
   ref ← newRef ""
   let
-    jsDelay ms = AC.toAff $ AC.EffFnAff $ AC.mkEffFn2 \ke kc → do
+    jsDelay ms = AC.fromEffFnAff $ AC.EffFnAff $ AC.mkEffFn2 \ke kc → do
       tid ← setTimeout ms (AC.runEffFn1 kc unit)
       pure $ AC.EffFnCanceler $ AC.mkEffFn3 \e cke ckc → do
         clearTimeout tid
