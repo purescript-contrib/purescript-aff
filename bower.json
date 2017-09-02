@@ -32,6 +32,7 @@
   "devDependencies": {
     "purescript-partial": "^1.2.0",
     "purescript-minibench": "^1.0.0",
-    "purescript-assert": "^3.0.0"
+    "purescript-assert": "^3.0.0",
+    "purescript-js-timers": "^3.0.0"
   }
 }
