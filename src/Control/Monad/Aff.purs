@@ -27,6 +27,7 @@ module Control.Monad.Aff
   , BracketConditions
   , generalBracket
   , nonCanceler
+  , effCanceler
   , module Exports
   ) where
 
@@ -154,6 +155,7 @@ newtype Fiber eff a = Fiber
   , kill ∷ Fn.Fn2 Error (Either Error Unit → Eff eff Unit) (Eff eff (Eff eff Unit))
   , join ∷ (Either Error a → Eff eff Unit) → Eff eff (Eff eff Unit)
   , onComplete ∷ OnComplete eff a → Eff eff (Eff eff Unit)
+  , isSuspended ∷ Eff eff Boolean
   }
 
 instance functorFiber ∷ Functor (Fiber eff) where
@@ -168,12 +170,14 @@ instance applicativeFiber ∷ Applicative (Fiber eff) where
 -- | Invokes pending cancelers in a fiber and runs cleanup effects. Blocks
 -- | until the fiber has fully exited.
 killFiber ∷ ∀ eff a. Error → Fiber eff a → Aff eff Unit
-killFiber e (Fiber t) = makeAff \k → Canceler <<< const <<< liftEff <$> Fn.runFn2 t.kill e k
+killFiber e (Fiber t) = liftEff t.isSuspended >>= if _
+  then liftEff $ void $ Fn.runFn2 t.kill e (const (pure unit))
+  else makeAff \k → effCanceler <$> Fn.runFn2 t.kill e k
 
 -- | Blocks until the fiber completes, yielding the result. If the fiber
 -- | throws an exception, it is rethrown in the current fiber.
 joinFiber ∷ ∀ eff a. Fiber eff a → Aff eff a
-joinFiber (Fiber t) = makeAff \k → Canceler <<< const <<< liftEff <$> t.join k
+joinFiber (Fiber t) = makeAff \k → effCanceler <$> t.join k
 
 -- | A cancellation effect for actions run via `makeAff`. If a `Fiber` is
 -- | killed, and an async action is pending, the canceler will be called to
@@ -193,6 +197,10 @@ instance monoidCanceler ∷ Monoid (Canceler eff) where
 -- | A canceler which does not cancel anything.
 nonCanceler ∷ ∀ eff. Canceler eff
 nonCanceler = Canceler (const (pure unit))
+
+-- | A canceler from an Eff action.
+effCanceler ∷ ∀ eff. Eff eff Unit → Canceler eff
+effCanceler = Canceler <<< const <<< liftEff
 
 -- | Forks an `Aff` from an `Eff` context, returning the `Fiber`.
 launchAff ∷ ∀ eff a. Aff eff a → Eff eff (Fiber eff a)
