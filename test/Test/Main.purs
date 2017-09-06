@@ -5,6 +5,7 @@ import Prelude
 import Control.Alt ((<|>))
 import Control.Monad.Aff (Aff, Canceler(..), runAff_, launchAff, makeAff, try, bracket, generalBracket, delay, forkAff, suspendAff, joinFiber, killFiber, never, supervise, Error, error, message)
 import Control.Monad.Aff.AVar (AVAR, makeEmptyVar, takeVar, putVar)
+import Control.Monad.Aff.Compat as AC
 import Control.Monad.Eff (Eff, runPure)
 import Control.Monad.Eff.Class (class MonadEff, liftEff)
 import Control.Monad.Eff.Console (CONSOLE)
@@ -13,6 +14,7 @@ import Control.Monad.Eff.Exception (throwException, EXCEPTION)
 import Control.Monad.Eff.Ref (REF, Ref)
 import Control.Monad.Eff.Ref as Ref
 import Control.Monad.Eff.Ref.Unsafe (unsafeRunRef)
+import Control.Monad.Eff.Timer (TIMER, setTimeout, clearTimeout)
 import Control.Monad.Error.Class (throwError, catchError)
 import Control.Parallel (parallel, sequential, parTraverse_)
 import Data.Array as Array
@@ -25,7 +27,7 @@ import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse)
 import Test.Assert (assert', ASSERT)
 
-type TestEffects eff = (assert ∷ ASSERT, console ∷ CONSOLE, ref ∷ REF, exception ∷ EXCEPTION, avar ∷ AVAR | eff)
+type TestEffects eff = (assert ∷ ASSERT, console ∷ CONSOLE, ref ∷ REF, exception ∷ EXCEPTION, avar ∷ AVAR, timer ∷ TIMER | eff)
 type TestEff eff = Eff (TestEffects eff)
 type TestAff eff = Aff (TestEffects eff)
 
@@ -561,6 +563,24 @@ test_avar_order = assert "avar/order" do
   joinFiber f1
   eq "takenfoo" <$> readRef ref
 
+test_efffn ∷ ∀ eff. TestAff eff Unit
+test_efffn = assert "efffn" do
+  ref ← newRef ""
+  let
+    jsDelay ms = AC.fromEffFnAff $ AC.EffFnAff $ AC.mkEffFn2 \ke kc → do
+      tid ← setTimeout ms (AC.runEffFn1 kc unit)
+      pure $ AC.EffFnCanceler $ AC.mkEffFn3 \e cke ckc → do
+        clearTimeout tid
+        AC.runEffFn1 ckc unit
+    action = do
+      jsDelay 10
+      modifyRef ref (_ <> "done")
+  f1 ← forkAff action
+  f2 ← forkAff action
+  killFiber (error "Nope.") f2
+  delay (Milliseconds 20.0)
+  eq "done" <$> readRef ref
+
 test_parallel_stack ∷ ∀ eff. TestAff eff Unit
 test_parallel_stack = assert "parallel/stack" do
   ref ← newRef 0
@@ -609,6 +629,7 @@ main = do
     test_parallel_mixed
     test_kill_parallel_alt
     test_avar_order
+    test_efffn
     test_fiber_map
     test_fiber_apply
     -- Turn on if we decide to schedule forks

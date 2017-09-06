@@ -75,11 +75,9 @@ exports._ajaxGet = function (request) { // accepts a request
     });
 
     // Return a canceler, which is just another Aff effect.
-    return function (cancelError) {
-      return function (cancelerError, cancelerSuccess) {
-        req.cancel(); // cancel the request
-        cancelerSuccess(); // invoke the success callback for the canceler
-      };
+    return function (cancelError, cancelerError, cancelerSuccess) {
+      req.cancel(); // cancel the request
+      cancelerSuccess(); // invoke the success callback for the canceler
     };
   };
 };

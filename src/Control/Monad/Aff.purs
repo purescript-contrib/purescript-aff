@@ -19,7 +19,7 @@ module Control.Monad.Aff
   , delay
   , never
   , finally
-  , atomically
+  , invincible
   , killFiber
   , joinFiber
   , cancelWith
@@ -41,7 +41,7 @@ import Control.Monad.Eff.Exception (Error, EXCEPTION, error)
 import Control.Monad.Eff.Exception (Error, error, message) as Exports
 import Control.Monad.Eff.Unsafe (unsafeCoerceEff, unsafePerformEff)
 import Control.Monad.Error.Class (class MonadError, class MonadThrow, throwError, catchError, try)
-import Control.Monad.Error.Class (try) as Exports
+import Control.Monad.Error.Class (try, throwError, catchError) as Exports
 import Control.Monad.Rec.Class (class MonadRec, Step(..))
 import Control.Parallel (parSequence_, parallel)
 import Control.Parallel.Class (class Parallel)
@@ -262,8 +262,8 @@ finally ∷ ∀ eff a. Aff eff Unit → Aff eff a → Aff eff a
 finally fin a = bracket (pure unit) (const fin) (const a)
 
 -- | Runs an effect such that it cannot be killed.
-atomically ∷ ∀ eff a. Aff eff a → Aff eff a
-atomically a = bracket a (const (pure unit)) pure
+invincible ∷ ∀ eff a. Aff eff a → Aff eff a
+invincible a = bracket a (const (pure unit)) pure
 
 -- | Attaches a custom `Canceler` to an action. If the computation is canceled,
 -- | then the custom `Canceler` will be run afterwards.
