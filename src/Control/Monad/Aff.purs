@@ -19,7 +19,7 @@ module Control.Monad.Aff
   , delay
   , never
   , finally
-  , invulnerable
+  , invincible
   , killFiber
   , joinFiber
   , cancelWith
@@ -262,8 +262,8 @@ finally ∷ ∀ eff a. Aff eff Unit → Aff eff a → Aff eff a
 finally fin a = bracket (pure unit) (const fin) (const a)
 
 -- | Runs an effect such that it cannot be killed.
-invulnerable ∷ ∀ eff a. Aff eff a → Aff eff a
-invulnerable a = bracket a (const (pure unit)) pure
+invincible ∷ ∀ eff a. Aff eff a → Aff eff a
+invincible a = bracket a (const (pure unit)) pure
 
 -- | Attaches a custom `Canceler` to an action. If the computation is canceled,
 -- | then the custom `Canceler` will be run afterwards.
