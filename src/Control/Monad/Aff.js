@@ -608,6 +608,9 @@ var Aff = function () {
       kill: kill,
       join: join,
       onComplete: onComplete,
+      isSuspended: function () {
+        return status === SUSPENDED;
+      },
       run: function () {
         if (status === SUSPENDED) {
           if (!Scheduler.isDraining()) {

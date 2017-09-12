@@ -16,16 +16,12 @@ module Control.Monad.Aff.AVar
   ) where
 
 import Prelude
-import Control.Monad.Aff (Aff, Canceler(..), makeAff)
-import Control.Monad.Eff (Eff)
+import Control.Monad.Aff (Aff, makeAff, effCanceler)
 import Control.Monad.Eff.AVar (AVar, AVAR, AVarStatus(..), isEmpty, isFilled, isKilled)
 import Control.Monad.Eff.AVar as AVar
 import Control.Monad.Eff.Class (liftEff)
 import Control.Monad.Eff.Exception (Error)
 import Data.Maybe (Maybe)
-
-toCanceler ∷ ∀ eff. Eff eff Unit → Canceler eff
-toCanceler = Canceler <<< const <<< liftEff
 
 -- | Creates a fresh AVar with an initial value.
 makeVar ∷ ∀ eff a. a → Aff (avar ∷ AVAR | eff) (AVar a)
@@ -57,7 +53,7 @@ isKilledVar = liftEff <<< AVar.isKilledVar
 takeVar ∷ ∀ eff a. AVar a → Aff (avar ∷ AVAR | eff) a
 takeVar avar = makeAff \k → do
   c ← AVar.takeVar avar k
-  pure (toCanceler c)
+  pure (effCanceler c)
 
 -- | Attempts to synchronously take an AVar value, leaving it empty. If the
 -- | AVar is empty, this will return `Nothing`.
@@ -70,7 +66,7 @@ tryTakeVar = liftEff <<< AVar.tryTakeVar
 putVar ∷ ∀ eff a. a → AVar a → Aff (avar ∷ AVAR | eff) Unit
 putVar value avar = makeAff \k → do
   c ← AVar.putVar value avar k
-  pure (toCanceler c)
+  pure (effCanceler c)
 
 -- | Attempts to synchronously fill an AVar. If the AVar is already filled,
 -- | this will do nothing. Returns true or false depending on if it succeeded.
@@ -83,7 +79,7 @@ tryPutVar value = liftEff <<< AVar.tryPutVar value
 readVar ∷ ∀ eff a. AVar a → Aff (avar ∷ AVAR | eff) a
 readVar avar = makeAff \k → do
   c ← AVar.readVar avar k
-  pure (toCanceler c)
+  pure (effCanceler c)
 
 -- | Attempts to synchronously read an AVar. If the AVar is empty, this will
 -- | return `Nothing`.
