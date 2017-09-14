@@ -46,12 +46,14 @@ import Control.Monad.Error.Class (try, throwError, catchError) as Exports
 import Control.Monad.Rec.Class (class MonadRec, Step(..))
 import Control.Parallel (parSequence_, parallel)
 import Control.Parallel.Class (class Parallel)
+import Control.Parallel.Class (sequential, parallel) as Exports
 import Control.Plus (class Plus, empty)
 import Data.Either (Either(..))
 import Data.Function.Uncurried as Fn
 import Data.Monoid (class Monoid, mempty)
 import Data.Newtype (class Newtype)
 import Data.Time.Duration (Milliseconds(..))
+import Data.Time.Duration (Milliseconds(..)) as Exports
 import Partial.Unsafe (unsafeCrashWith)
 import Unsafe.Coerce (unsafeCoerce)
 
