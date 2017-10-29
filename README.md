@@ -280,7 +280,7 @@ example =
 ```purescript
 tvShows =
   [ "Stargate_SG-1"
-  , "Battlestar_Galactics"
+  , "Battlestar_Galactica"
   , "Farscape"
   ]
 
