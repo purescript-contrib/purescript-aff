@@ -513,6 +513,25 @@ test_kill_parallel_alt = assert "kill/parallel/alt" do
   _ ← try $ joinFiber f2
   eq "killedfookilledbardone" <$> readRef ref
 
+test_kill_parallel_alt_finalizer ∷ ∀ eff. TestAff eff Unit
+test_kill_parallel_alt_finalizer = assert "kill/parallel/alt/finalizer" do
+  ref ← newRef ""
+  f1 ← forkAff $ sequential $
+    parallel (delay (Milliseconds 10.0)) <|> parallel do
+      bracket
+        (pure unit)
+        (\_ → do
+          delay (Milliseconds 10.0)
+          modifyRef ref (_ <> "killed"))
+        (\_ → delay (Milliseconds 20.0))
+  f2 ← forkAff do
+    delay (Milliseconds 15.0)
+    killFiber (error "Nope") f1
+    modifyRef ref (_ <> "done")
+  _ ← try $ joinFiber f1
+  _ ← try $ joinFiber f2
+  eq "killeddone" <$> readRef ref
+
 test_fiber_map ∷ ∀ eff. TestAff eff Unit
 test_fiber_map = assert "fiber/map" do
   ref ← newRef 0
@@ -628,6 +647,7 @@ main = do
     test_parallel_alt_sync
     test_parallel_mixed
     test_kill_parallel_alt
+    test_kill_parallel_alt_finalizer
     test_avar_order
     test_efffn
     test_fiber_map

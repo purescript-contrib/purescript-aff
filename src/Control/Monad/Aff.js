@@ -536,7 +536,9 @@ var Aff = function () {
         joins[jid] = join;
 
         return function() {
-          delete joins[jid];
+          if (joins !== null) {
+            delete joins[jid];
+          }
         };
       };
     }
@@ -937,14 +939,20 @@ var Aff = function () {
     }
 
     // Cancels the entire tree. If there are already subtrees being canceled,
-    // we need to first cancel those joins. This is important so that errors
-    // don't accidentally get swallowed by irrelevant join callbacks.
+    // we need to first cancel those joins. We will then add fresh joins for
+    // all pending branches including those that were in the process of being
+    // canceled.
     function cancel(error, cb) {
       interrupt = util.left(error);
-
+      var innerKills;
       for (var kid in kills) {
         if (kills.hasOwnProperty(kid)) {
-          kills[kid]();
+          innerKills = kills[kid];
+          for (kid in innerKills) {
+            if (innerKills.hasOwnProperty(kid)) {
+              innerKills[kid]();
+            }
+          }
         }
       }
 
