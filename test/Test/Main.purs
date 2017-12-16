@@ -411,6 +411,21 @@ test_parallel = assert "parallel" do
   r2 ← joinFiber f1
   pure (r1 == "foobar" && r2.a == "foo" && r2.b == "bar")
 
+test_parallel_throw ∷ ∀ eff. TestAff eff Unit
+test_parallel_throw = assert "parallel/throw" do
+  ref ← newRef ""
+  let
+    action n s = do
+      delay (Milliseconds n)
+      modifyRef ref (_ <> s)
+      pure s
+  r1 ← try $ sequential $
+    { a: _, b: _ }
+      <$> parallel (action 10.0 "foo" *> throwError (error "Nope"))
+      <*> parallel (action 20.0 "bar")
+  r2 ← readRef ref
+  pure (isLeft r1 && r2 == "foo")
+
 test_kill_parallel ∷ ∀ eff. TestAff eff Unit
 test_kill_parallel = assert "kill/parallel" do
   ref ← newRef ""
@@ -641,6 +656,7 @@ main = do
     test_kill_finalizer_catch
     test_kill_finalizer_bracket
     test_parallel
+    test_parallel_throw
     test_kill_parallel
     test_parallel_alt
     test_parallel_alt_throw

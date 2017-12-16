@@ -19,7 +19,7 @@ var Aff = function () {
     | Async ((Either Error a -> Eff eff Unit) -> Eff eff (Canceler eff))
     | forall b. Bind (Aff eff b) (b -> Aff eff a)
     | forall b. Bracket (Aff eff b) (BracketConditions eff b) (b -> Aff eff a)
-    | forall b. Fork Boolean (Aff eff b) ?(Thread eff b -> a)
+    | forall b. Fork Boolean (Aff eff b) ?(Fiber eff b -> a)
     | Sequential (ParAff aff a)
 
   */
@@ -762,26 +762,33 @@ var Aff = function () {
         case APPLY:
           lhs = head._1._3;
           rhs = head._2._3;
-          // We can only proceed if both sides have resolved.
-          if (lhs === EMPTY || rhs === EMPTY) {
-            return;
-          }
-          // If either side resolve with an error, we should continue with
-          // the first error.
-          if (util.isLeft(lhs)) {
-            if (util.isLeft(rhs)) {
-              if (fail === lhs) {
-                fail = rhs;
-              }
-            } else {
-              fail = lhs;
+          // If we have a failure we should kill the other side because we
+          // can't possible yield a result anymore.
+          if (fail) {
+            head._3 = fail;
+            tmp     = true;
+            kid     = killId++;
+
+            kills[kid] = kill(early, fail === lhs ? head._2 : head._1, function (/* unused */) {
+              return function () {
+                delete kills[kid];
+                if (tmp) {
+                  tmp = false;
+                } else if (tail === null) {
+                  join(step, null, null);
+                } else {
+                  join(step, tail._1, tail._2);
+                }
+              };
+            });
+
+            if (tmp) {
+              tmp = false;
+              return;
             }
-            step    = null;
-            head._3 = fail;
-          } else if (util.isLeft(rhs)) {
-            step    = null;
-            fail    = rhs;
-            head._3 = fail;
+          } else if (lhs === EMPTY || rhs === EMPTY) {
+            // We can only proceed if both sides have resolved.
+            return;
           } else {
             step    = util.right(util.fromRight(lhs)(util.fromRight(rhs)));
             head._3 = step;
