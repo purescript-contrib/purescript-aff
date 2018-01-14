@@ -19,7 +19,7 @@ import Control.Monad.Error.Class (throwError, catchError)
 import Control.Parallel (parallel, sequential, parTraverse_)
 import Data.Array as Array
 import Data.Bifunctor (lmap)
-import Data.Either (Either(..), isLeft, isRight)
+import Data.Either (Either(..), either, isLeft, isRight)
 import Data.Foldable (sum)
 import Data.Maybe (Maybe(..))
 import Data.Monoid (mempty)
@@ -63,6 +63,11 @@ assertEq s a aff = liftEff <<< assertEff s <<< map (eq a) =<< try aff
 
 assert ∷ ∀ eff. String → TestAff eff Boolean → TestAff eff Unit
 assert s aff = liftEff <<< assertEff s =<< try aff
+
+withTimeout ∷ ∀ eff a. Milliseconds → TestAff eff a → TestAff eff a
+withTimeout ms aff =
+  either throwError pure =<< sequential do
+    parallel (try aff) <|> parallel (delay ms $> Left (error "Timed out"))
 
 test_pure ∷ ∀ eff. TestEff eff Unit
 test_pure = runAssertEq "pure" 42 (pure 42)
@@ -411,6 +416,21 @@ test_parallel = assert "parallel" do
   r2 ← joinFiber f1
   pure (r1 == "foobar" && r2.a == "foo" && r2.b == "bar")
 
+test_parallel_throw ∷ ∀ eff. TestAff eff Unit
+test_parallel_throw = assert "parallel/throw" $ withTimeout (Milliseconds 100.0) do
+  ref ← newRef ""
+  let
+    action n s = do
+      delay (Milliseconds n)
+      modifyRef ref (_ <> s)
+      pure s
+  r1 ← try $ sequential $
+    { a: _, b: _ }
+      <$> parallel (action 10.0 "foo" *> throwError (error "Nope"))
+      <*> parallel never
+  r2 ← readRef ref
+  pure (isLeft r1 && r2 == "foo")
+
 test_kill_parallel ∷ ∀ eff. TestAff eff Unit
 test_kill_parallel = assert "kill/parallel" do
   ref ← newRef ""
@@ -641,6 +661,7 @@ main = do
     test_kill_finalizer_catch
     test_kill_finalizer_bracket
     test_parallel
+    test_parallel_throw
     test_kill_parallel
     test_parallel_alt
     test_parallel_alt_throw
