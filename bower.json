@@ -17,17 +17,15 @@
     "package.json"
   ],
   "dependencies": {
-    "purescript-console": "^3.0.0",
-    "purescript-exceptions": "^3.0.0",
+    "purescript-console": "https://github.com/natefaubion/purescript-console.git#eff-off",
+    "purescript-exceptions": "https://github.com/natefaubion/purescript-exceptions.git#eff-off",
     "purescript-functions": "^3.0.0",
     "purescript-parallel": "^3.0.0",
-    "purescript-transformers": "^3.0.0",
+    "purescript-transformers": "https://github.com/natefaubion/purescript-transformers.git#eff-off",
     "purescript-unsafe-coerce": "^3.0.0",
     "purescript-datetime": "^3.0.0",
     "purescript-free": "^4.0.1",
-    "purescript-st": "^3.0.0",
-    "purescript-type-equality": "^2.1.0",
-    "purescript-avar": "^2.0.0"
+    "purescript-effect": "^0.1.0"
   },
   "devDependencies": {
     "purescript-partial": "^1.2.0",

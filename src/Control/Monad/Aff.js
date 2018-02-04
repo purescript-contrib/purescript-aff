@@ -1054,7 +1054,7 @@ exports._fork = function (immediate) {
   };
 };
 
-exports._liftEff = Aff.Sync;
+exports._liftEffect = Aff.Sync;
 
 exports._parAffMap = function (f) {
   return function (aff) {

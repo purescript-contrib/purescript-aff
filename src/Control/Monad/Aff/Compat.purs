@@ -1,27 +1,27 @@
 -- | This module provides compatability functions for constructing `Aff`s which
 -- | are defined via the FFI.
 module Control.Monad.Aff.Compat
-  ( EffFnAff(..)
-  , EffFnCanceler(..)
-  , EffFnCb
-  , fromEffFnAff
-  , module Control.Monad.Eff.Uncurried
+  ( EffectFnAff(..)
+  , EffectFnCanceler(..)
+  , EffectFnCb
+  , fromEffectFnAff
+  , module Control.Monad.Effect.Uncurried
   ) where
 
 import Prelude
 import Control.Monad.Aff (Aff, Canceler(..), makeAff, nonCanceler)
-import Control.Monad.Eff.Exception (Error)
-import Control.Monad.Eff.Uncurried (EffFn1, EffFn2, EffFn3, mkEffFn1, mkEffFn2, mkEffFn3, runEffFn1, runEffFn2, runEffFn3)
+import Control.Monad.Effect.Exception (Error)
+import Control.Monad.Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, mkEffectFn1, mkEffectFn2, mkEffectFn3, runEffectFn1, runEffectFn2, runEffectFn3)
 import Data.Either (Either(..))
 
-type EffFnCb eff a = EffFn1 eff a Unit
+type EffectFnCb a = EffectFn1 a Unit
 
-newtype EffFnAff eff a = EffFnAff (EffFn2 eff (EffFnCb eff Error) (EffFnCb eff a) (EffFnCanceler eff))
+newtype EffectFnAff a = EffectFnAff (EffectFn2 (EffectFnCb Error) (EffectFnCb a) EffectFnCanceler)
 
-newtype EffFnCanceler eff = EffFnCanceler (EffFn3 eff Error (EffFnCb eff Error) (EffFnCb eff Unit) Unit)
+newtype EffectFnCanceler = EffectFnCanceler (EffectFn3 Error (EffectFnCb Error) (EffectFnCb Unit) Unit)
 
--- | Lift a FFI definition into an `Aff`. `EffFnAff` makes use of `EffFn` so
--- | `Eff` thunks are unnecessary. A definition might follow this example:
+-- | Lift a FFI definition into an `Aff`. `EffectFnAff` makes use of `EffectFn` so
+-- | `Effect` thunks are unnecessary. A definition might follow this example:
 -- |
 -- | ```javascript
 -- | exports._myAff = function (onError, onSuccess) {
@@ -40,14 +40,14 @@ newtype EffFnCanceler eff = EffFnCanceler (EffFn3 eff Error (EffFnCb eff Error) 
 -- | ```
 -- |
 -- | ```purescript
--- | foreign import _myAff :: forall eff. EffFnAff (myeffect :: MYEFFECT | eff) String
+-- | foreign import _myAff :: EffectFnAff String
 -- |
--- | myAff :: forall eff. Aff (myeffect :: MYEFFECT | eff) String
--- | myAff = fromEffFnAff _myAff
+-- | myAff :: Aff String
+-- | myAff = fromEffectFnAff _myAff
 -- | ````
-fromEffFnAff ∷ ∀ eff a. EffFnAff eff a → Aff eff a
-fromEffFnAff (EffFnAff eff) = makeAff \k → do
-  EffFnCanceler canceler ← runEffFn2 eff (mkEffFn1 (k <<< Left)) (mkEffFn1 (k <<< Right))
+fromEffectFnAff ∷ EffectFnAff ~> Aff
+fromEffectFnAff (EffectFnAff eff) = makeAff \k → do
+  EffectFnCanceler canceler ← runEffectFn2 eff (mkEffectFn1 (k <<< Left)) (mkEffectFn1 (k <<< Right))
   pure $ Canceler \e → makeAff \k2 → do
-    runEffFn3 canceler e (mkEffFn1 (k2 <<< Left)) (mkEffFn1 (k2 <<< Right))
+    runEffectFn3 canceler e (mkEffectFn1 (k2 <<< Left)) (mkEffectFn1 (k2 <<< Right))
     pure nonCanceler
