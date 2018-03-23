@@ -205,9 +205,9 @@ effCanceler ∷ ∀ eff. Eff eff Unit → Canceler eff
 effCanceler = Canceler <<< const <<< liftEff
 
 -- | Forks an `Aff` from an `Eff` context, returning the `Fiber`.
--- | To kill the resulting `Fiber`, launch a new Aff:
+-- | To kill the resulting `Fiber`, launch a new Aff. For example:
 -- | > someLaunchedAff :: Eff eff (Fiber eff a)
--- | > launchAff_ (killFiber (error "fiber killed") =<< someLaunchedAff
+-- | > (launchAff_ <<< killFiber (error "fiber killed"))) =<< someLaunchedAff
 launchAff ∷ ∀ eff a. Aff eff a → Eff eff (Fiber eff a)
 launchAff aff = do
   fiber ← makeFiber aff
