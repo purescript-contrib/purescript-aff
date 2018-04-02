@@ -635,24 +635,23 @@ test_scheduler_size = assert "scheduler" do
 
 test_lazy ∷ ∀ eff. TestAff eff Unit
 test_lazy = assert "Lazy Aff" do
-  varDone ← makeEmptyVar
   varA ← makeEmptyVar
   varB ← makeEmptyVar
   fiberA <- forkAff $ fix \loop -> do
     a <- takeVar varA
     putVar (a + 1) varB
     loop
-  _ <- forkAff $ fix \loop -> do
+  fiberB <- forkAff $ fix \loop -> do
     b <- takeVar varB
     if (b > 100)
       then do
         killFiber (error "finished") fiberA
-        putVar "done" varDone
+        pure "done"
       else do
         putVar (b + 1) varA
         loop
   putVar 0 varA
-  eq "done" <$> takeVar varDone
+  eq "done" <$> joinFiber fiberB
 
 main ∷ TestEff () Unit
 main = do
