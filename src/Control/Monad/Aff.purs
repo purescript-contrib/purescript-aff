@@ -36,6 +36,7 @@ import Prelude
 import Control.Alt (class Alt)
 import Control.Alternative (class Alternative)
 import Control.Apply (lift2)
+import Control.Lazy (class Lazy)
 import Control.Monad.Eff (Eff, kind Effect)
 import Control.Monad.Eff.Class (class MonadEff, liftEff)
 import Control.Monad.Eff.Exception (Error, EXCEPTION, error)
@@ -109,6 +110,9 @@ instance monadErrorAff ∷ MonadError Error (Aff eff) where
 
 instance monadEffAff ∷ MonadEff eff (Aff eff) where
   liftEff = _liftEff
+
+instance lazyAff ∷ Lazy (Aff eff a) where
+  defer f = pure unit >>= f
 
 -- | Applicative for running parallel effects. Any `Aff` can be coerced to a
 -- | `ParAff` and back using the `Parallel` class.
