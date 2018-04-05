@@ -662,7 +662,6 @@ main = do
   test_liftEff
 
   void $ launchAff do
-    test_lazy
     test_delay
     test_fork
     test_join
@@ -692,6 +691,7 @@ main = do
     test_kill_parallel_alt
     test_kill_parallel_alt_finalizer
     test_avar_order
+    test_lazy
     test_efffn
     test_fiber_map
     test_fiber_apply
