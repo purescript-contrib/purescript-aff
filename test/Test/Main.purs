@@ -634,7 +634,7 @@ test_scheduler_size = assert "scheduler" do
   eq 100000 <$> readRef ref
 
 test_lazy ∷ ∀ eff. TestAff eff Unit
-test_lazy = assert "Lazy Aff" do
+test_lazy = assert "lazy" do
   varA ← makeEmptyVar
   varB ← makeEmptyVar
   fiberA <- forkAff $ fix \loop -> do
@@ -652,6 +652,13 @@ test_lazy = assert "Lazy Aff" do
         loop
   putVar 0 varA
   eq "done" <$> joinFiber fiberB
+
+test_regression_return_fork ∷ ∀ eff. TestAff eff Unit
+test_regression_return_fork = assert "regression/return-fork" do
+  bracket
+    (forkAff (pure unit))
+    (const (pure unit))
+    (const (pure true))
 
 main ∷ TestEff () Unit
 main = do
@@ -698,3 +705,4 @@ main = do
     -- Turn on if we decide to schedule forks
     -- test_scheduler_size
     test_parallel_stack
+    test_regression_return_fork
