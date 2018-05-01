@@ -30,7 +30,6 @@
     "purescript-partial": "#compiler/0.12",
     "purescript-minibench": "#compiler/0.12",
     "purescript-assert": "#compiler/0.12",
-    "purescript-free": "#compiler/0.12",
-    "purescript-js-timers": "#compiler/0.12"
+    "purescript-free": "#compiler/0.12"
   }
 }

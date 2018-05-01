@@ -2,11 +2,11 @@ module Test.Bench where
 
 import Prelude
 import Control.Monad.Aff as Aff
-import Control.Monad.Effect (Effect)
-import Control.Monad.Effect.Unsafe (unsafePerformEffect)
-import Control.Monad.Effect.Console as Console
 import Control.Monad.Rec.Class (Step(..), tailRecM)
 import Performance.Minibench (bench)
+import Effect (Effect)
+import Effect.Unsafe (unsafePerformEffect)
+import Effect.Console as Console
 
 loop1 ∷ Int → Aff.Aff Int
 loop1 = tailRecM go

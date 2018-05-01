@@ -4,16 +4,8 @@ import Prelude
 
 import Control.Alt ((<|>))
 import Control.Lazy (fix)
-import Control.Monad.Aff (Aff, Canceler(..), runAff_, launchAff, makeAff, try, bracket, generalBracket, delay, forkAff, suspendAff, joinFiber, killFiber, never, supervise, Error, error, message)
+import Control.Monad.Aff (Aff, Canceler(..), runAff, runAff_, launchAff, makeAff, try, bracket, generalBracket, delay, forkAff, suspendAff, joinFiber, killFiber, never, supervise, Error, error, message)
 import Control.Monad.Aff.Compat as AC
-import Control.Monad.Effect (Effect)
-import Control.Monad.Effect.Class (class MonadEffect, liftEffect)
-import Control.Monad.Effect.Console as Console
-import Control.Monad.Effect.Exception (throwException)
-import Control.Monad.Effect.Ref (Ref)
-import Control.Monad.Effect.Ref as Ref
-import Control.Monad.Effect.Timer (setTimeout, clearTimeout)
-import Control.Monad.Effect.Unsage (unsafePerformEffect)
 import Control.Monad.Error.Class (throwError, catchError)
 import Control.Parallel (parallel, sequential, parTraverse_)
 import Data.Array as Array
@@ -21,22 +13,28 @@ import Data.Bifunctor (lmap)
 import Data.Either (Either(..), either, isLeft, isRight)
 import Data.Foldable (sum)
 import Data.Maybe (Maybe(..))
-import Data.Monoid (mempty)
 import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse)
+import Effect (Effect)
+import Effect.Class (class MonadEffect, liftEffect)
+import Effect.Console as Console
+import Effect.Exception (throwException)
+import Effect.Ref (Ref)
+import Effect.Ref as Ref
+import Effect.Unsafe (unsafePerformEffect)
 import Test.Assert (assert')
 
 newRef ∷ ∀ m a. MonadEffect m ⇒ a → m (Ref a)
-newRef = liftEffect <<< Ref.newRef
+newRef = liftEffect <<< Ref.new
 
 readRef ∷ ∀ m a. MonadEffect m ⇒ Ref a → m a
-readRef = liftEffect <<< Ref.readRef
+readRef = liftEffect <<< Ref.read
 
 writeRef ∷ ∀ m a. MonadEffect m ⇒ Ref a → a → m Unit
-writeRef r = liftEffect <<< Ref.writeRef r
+writeRef r = liftEffect <<< flip Ref.write r
 
 modifyRef ∷ ∀ m a. MonadEffect m ⇒ Ref a → (a → a) → m Unit
-modifyRef r = liftEffect <<< Ref.modifyRef r
+modifyRef r = liftEffect <<< flip Ref.modify r
 
 assertEff ∷ String → Either Error Boolean → Effect Unit
 assertEff s = case _ of
@@ -552,7 +550,7 @@ test_fiber_map = assert "fiber/map" do
   ref ← newRef 0
   let
     mapFn a = unsafePerformEffect do
-      Ref.modifyRef ref (_ + 1)
+      Ref.modify (_ + 1) ref
       pure (a + 1)
   f1 ← forkAff do
     delay (Milliseconds 10.0)
@@ -569,7 +567,7 @@ test_fiber_apply = assert "fiber/apply" do
   ref ← newRef 0
   let
     applyFn a b = unsafePerformEffect do
-      Ref.modifyRef ref (_ + 1)
+      Ref.modify (_ + 1) ref
       pure (a + b)
   f1 ← forkAff do
     delay (Milliseconds 10.0)
@@ -584,30 +582,16 @@ test_fiber_apply = assert "fiber/apply" do
   n ← readRef ref
   pure (a == 22 && b == 22 && n == 1)
 
-test_avar_order ∷ Aff Unit
-test_avar_order = assert "avar/order" do
-  ref ← newRef ""
-  var ← makeEmptyVar
-  f1 ← forkAff do
-    delay (Milliseconds 10.0)
-    value ← takeVar var
-    modifyRef ref (_ <> value)
-  putVar "foo" var
-  modifyRef ref (_ <> "taken")
-  joinFiber f1
-  eq "takenfoo" <$> readRef ref
-
 test_efffn ∷ Aff Unit
 test_efffn = assert "efffn" do
   ref ← newRef ""
   let
-    jsDelay ms = AC.fromEffectFnAff $ AC.EffFnAff $ AC.mkEffectFn2 \ke kc → do
-      tid ← setTimeout ms (AC.runEffectFn1 kc unit)
+    effectDelay ms = AC.fromEffectFnAff $ AC.EffectFnAff $ AC.mkEffectFn2 \ke kc → do
+      fiber ← runAff (either (AC.runEffectFn1 ke) (AC.runEffectFn1 kc)) (delay ms)
       pure $ AC.EffectFnCanceler $ AC.mkEffectFn3 \e cke ckc → do
-        clearTimeout tid
-        AC.runEffectFn1 ckc unit
+        runAff_ (either (AC.runEffectFn1 cke) (AC.runEffectFn1 ckc)) (killFiber e fiber)
     action = do
-      jsDelay 10
+      effectDelay (Milliseconds 10.0)
       modifyRef ref (_ <> "done")
   f1 ← forkAff action
   f2 ← forkAff action
@@ -629,23 +613,16 @@ test_scheduler_size = assert "scheduler" do
 
 test_lazy ∷ Aff Unit
 test_lazy = assert "Lazy Aff" do
-  varA ← makeEmptyVar
-  varB ← makeEmptyVar
-  fiberA <- forkAff $ fix \loop -> do
-    a <- takeVar varA
-    putVar (a + 1) varB
-    loop
-  fiberB <- forkAff $ fix \loop -> do
-    b <- takeVar varB
-    if (b > 100)
+  ref ← newRef 0
+  fix \loop -> do
+    val ← readRef ref
+    if val < 10
       then do
-        killFiber (error "finished") fiberA
-        pure "done"
-      else do
-        putVar (b + 1) varA
+        writeRef ref (val + 1)
         loop
-  putVar 0 varA
-  eq "done" <$> joinFiber fiberB
+      else
+        pure unit
+  eq 10 <$> readRef ref
 
 main ∷ Effect Unit
 main = do
@@ -684,7 +661,6 @@ main = do
     test_parallel_mixed
     test_kill_parallel_alt
     test_kill_parallel_alt_finalizer
-    test_avar_order
     test_lazy
     test_efffn
     test_fiber_map
