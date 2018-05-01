@@ -35,11 +35,7 @@ import Prelude
 import Control.Alt (class Alt)
 import Control.Alternative (class Alternative)
 import Control.Apply (lift2)
-import Control.Monad.Effect (Effect)
-import Control.Monad.Effect.Class (class MonadEffect, liftEffect)
-import Control.Monad.Effect.Exception (Error, error)
-import Control.Monad.Effect.Exception (Error, error, message) as Exports
-import Control.Monad.Effect.Unsafe (unsafePerformEffect)
+import Control.Lazy (class Lazy)
 import Control.Monad.Error.Class (class MonadError, class MonadThrow, throwError, catchError, try)
 import Control.Monad.Error.Class (try, throwError, catchError) as Exports
 import Control.Monad.Rec.Class (class MonadRec, Step(..))
@@ -53,6 +49,11 @@ import Data.Monoid (class Monoid, mempty)
 import Data.Newtype (class Newtype)
 import Data.Time.Duration (Milliseconds(..))
 import Data.Time.Duration (Milliseconds(..)) as Exports
+import Effect (Effect)
+import Effect.Class (class MonadEffect, liftEffect)
+import Effect.Exception (Error, error)
+import Effect.Exception (Error, error, message) as Exports
+import Effect.Unsafe (unsafePerformEffect)
 import Partial.Unsafe (unsafeCrashWith)
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -108,6 +109,9 @@ instance monadErrorAff ∷ MonadError Error Aff where
 
 instance monadEffectAff ∷ MonadEffect Aff where
   liftEffect = _liftEffect
+
+instance lazyAff ∷ Lazy (Aff a) where
+  defer f = pure unit >>= f
 
 -- | Applicative for running parallel effects. Any `Aff` can be coerced to a
 -- | `ParAff` and back using the `Parallel` class.

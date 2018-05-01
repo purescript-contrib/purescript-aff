@@ -3,7 +3,6 @@ module Control.Monad.Aff.Class where
 import Prelude
 import Control.Monad.Aff (Aff)
 import Control.Monad.Cont.Trans (ContT)
-import Control.Monad.Effect.Class (class MonadEffect)
 import Control.Monad.Except.Trans (ExceptT)
 import Control.Monad.List.Trans (ListT)
 import Control.Monad.Maybe.Trans (MaybeT)
@@ -12,13 +11,13 @@ import Control.Monad.RWS.Trans (RWST)
 import Control.Monad.State.Trans (StateT)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Writer.Trans (WriterT)
-import Data.Monoid (class Monoid)
+import Effect.Class (class MonadEffect)
 
 class MonadEffect m ⇐ MonadAff m where
   liftAff ∷ Aff ~> m
 
 instance monadAffAff ∷ MonadAff Aff where
-  liftAff = id
+  liftAff = identity
 
 instance monadAffContT ∷ MonadAff m ⇒ MonadAff (ContT r m) where
   liftAff = lift <<< liftAff

@@ -17,20 +17,20 @@
     "package.json"
   ],
   "dependencies": {
-    "purescript-console": "https://github.com/natefaubion/purescript-console.git#eff-off",
-    "purescript-exceptions": "https://github.com/natefaubion/purescript-exceptions.git#eff-off",
-    "purescript-functions": "^3.0.0",
-    "purescript-parallel": "^3.0.0",
-    "purescript-transformers": "https://github.com/natefaubion/purescript-transformers.git#eff-off",
-    "purescript-unsafe-coerce": "^3.0.0",
-    "purescript-datetime": "^3.0.0",
-    "purescript-free": "^4.0.1",
-    "purescript-effect": "^0.1.0"
+    "purescript-console": "#compiler/0.12",
+    "purescript-exceptions": "#compiler/0.12",
+    "purescript-functions": "#compiler/0.12",
+    "purescript-parallel": "#compiler/0.12",
+    "purescript-transformers": "#compiler/0.12",
+    "purescript-unsafe-coerce": "#compiler/0.12",
+    "purescript-datetime": "#compiler/0.12",
+    "purescript-effect": "#compiler/0.12"
   },
   "devDependencies": {
-    "purescript-partial": "^1.2.0",
-    "purescript-minibench": "^1.0.0",
-    "purescript-assert": "^3.0.0",
-    "purescript-js-timers": "^3.0.0"
+    "purescript-partial": "#compiler/0.12",
+    "purescript-minibench": "#compiler/0.12",
+    "purescript-assert": "#compiler/0.12",
+    "purescript-free": "#compiler/0.12",
+    "purescript-js-timers": "#compiler/0.12"
   }
 }

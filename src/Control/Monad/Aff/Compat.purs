@@ -5,14 +5,14 @@ module Control.Monad.Aff.Compat
   , EffectFnCanceler(..)
   , EffectFnCb
   , fromEffectFnAff
-  , module Control.Monad.Effect.Uncurried
+  , module Effect.Uncurried
   ) where
 
 import Prelude
 import Control.Monad.Aff (Aff, Canceler(..), makeAff, nonCanceler)
-import Control.Monad.Effect.Exception (Error)
-import Control.Monad.Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, mkEffectFn1, mkEffectFn2, mkEffectFn3, runEffectFn1, runEffectFn2, runEffectFn3)
 import Data.Either (Either(..))
+import Effect.Exception (Error)
+import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, mkEffectFn1, mkEffectFn2, mkEffectFn3, runEffectFn1, runEffectFn2, runEffectFn3)
 
 type EffectFnCb a = EffectFn1 a Unit
 

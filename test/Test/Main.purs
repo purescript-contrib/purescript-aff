@@ -3,6 +3,7 @@ module Test.Main where
 import Prelude
 
 import Control.Alt ((<|>))
+import Control.Lazy (fix)
 import Control.Monad.Aff (Aff, Canceler(..), runAff_, launchAff, makeAff, try, bracket, generalBracket, delay, forkAff, suspendAff, joinFiber, killFiber, never, supervise, Error, error, message)
 import Control.Monad.Aff.Compat as AC
 import Control.Monad.Effect (Effect)
@@ -626,6 +627,26 @@ test_scheduler_size = assert "scheduler" do
   _ ← traverse joinFiber =<< traverse forkAff (Array.replicate 100000 (modifyRef ref (add 1)))
   eq 100000 <$> readRef ref
 
+test_lazy ∷ Aff Unit
+test_lazy = assert "Lazy Aff" do
+  varA ← makeEmptyVar
+  varB ← makeEmptyVar
+  fiberA <- forkAff $ fix \loop -> do
+    a <- takeVar varA
+    putVar (a + 1) varB
+    loop
+  fiberB <- forkAff $ fix \loop -> do
+    b <- takeVar varB
+    if (b > 100)
+      then do
+        killFiber (error "finished") fiberA
+        pure "done"
+      else do
+        putVar (b + 1) varA
+        loop
+  putVar 0 varA
+  eq "done" <$> joinFiber fiberB
+
 main ∷ Effect Unit
 main = do
   test_pure
@@ -664,6 +685,7 @@ main = do
     test_kill_parallel_alt
     test_kill_parallel_alt_finalizer
     test_avar_order
+    test_lazy
     test_efffn
     test_fiber_map
     test_fiber_apply
