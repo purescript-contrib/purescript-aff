@@ -45,7 +45,6 @@ import Control.Parallel.Class (sequential, parallel) as Exports
 import Control.Plus (class Plus, empty)
 import Data.Either (Either(..))
 import Data.Function.Uncurried as Fn
-import Data.Monoid (class Monoid, mempty)
 import Data.Newtype (class Newtype)
 import Data.Time.Duration (Milliseconds(..))
 import Data.Time.Duration (Milliseconds(..)) as Exports
