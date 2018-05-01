@@ -624,6 +624,13 @@ test_lazy = assert "Lazy Aff" do
         pure unit
   eq 10 <$> readRef ref
 
+test_regression_return_fork ∷ Aff Unit
+test_regression_return_fork = assert "regression/return-fork" do
+  bracket
+    (forkAff (pure unit))
+    (const (pure unit))
+    (const (pure true))
+
 main ∷ Effect Unit
 main = do
   test_pure
@@ -668,3 +675,4 @@ main = do
     -- Turn on if we decide to schedule forks
     -- test_scheduler_size
     test_parallel_stack
+    test_regression_return_fork

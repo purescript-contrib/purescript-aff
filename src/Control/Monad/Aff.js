@@ -372,7 +372,7 @@ var Aff = function () {
             break;
 
           case FORK:
-            status = STEP_BIND;
+            status = STEP_RESULT;
             tmp    = Fiber(util, supervisor, step._2);
             if (supervisor) {
               supervisor.register(tmp);
@@ -380,7 +380,7 @@ var Aff = function () {
             if (step._1) {
               tmp.run();
             }
-            step = tmp;
+            step = util.right(tmp);
             break;
 
           case SEQ:
