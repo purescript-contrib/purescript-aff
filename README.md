@@ -37,9 +37,9 @@ asynchronously without any callbacks. Error handling is baked in so you only
 deal with it when you want to.
 
 The library contains instances for `Semigroup`, `Monoid`, `Apply`,
-`Applicative`, `Bind`, `Monad`, `Alt`, `Plus`, `MonadEff`, `MonadError`, and
+`Applicative`, `Bind`, `Monad`, `Alt`, `Plus`, `MonadEffect`, `MonadError`, and
 `Parallel`. These instances allow you to compose asynchronous code as easily
-as `Eff`, as well as interop with existing `Eff` code.
+as `Effect`, as well as interop with existing `Effect` code.
 
 ## Escaping Callback Hell
 
@@ -47,10 +47,10 @@ Hopefully, you're using libraries that already use the `Aff` type, so you
 don't even have to think about callbacks!
 
 If you're building your own library, then you can make an `Aff` from
-low-level `Eff` callbacks with `makeAff`.
+low-level `Effect` callbacks with `makeAff`.
 
 ```purescript
-makeAff :: forall eff a. ((Either Error a -> Eff eff Unit) -> Eff eff (Canceler eff)) -> Aff eff a
+makeAff :: forall a. ((Either Error a -> Effect Unit) -> Effect Canceler) -> Aff a
 ```
 
 This function expects you to provide a handler, which should call the
@@ -60,7 +60,7 @@ You should also return `Canceler`, which is just a cleanup effect. Since
 `Aff` threads may be killed, all asynchronous operations should provide a
 mechanism for unscheduling it.
 
-`Control.Monad.Aff.Compat` provides functions for easily binding FFI
+`Effect.Aff.Compat` provides functions for easily binding FFI
 definitions:
 
 ```javascript
@@ -84,14 +84,14 @@ exports._ajaxGet = function (request) { // accepts a request
 ```
 
 ```purescript
-foreign import _ajaxGet :: forall eff. Request -> EffFnAff (ajax :: AJAX | eff) Response
+foreign import _ajaxGet :: Request -> EffectFnAff Response
 ```
 
 We can wrap this into an asynchronous computation like so:
 
 ```purescript
-ajaxGet :: forall eff. Request -> Aff (ajax :: AJAX | eff) Response
-ajaxGet = fromEffFnAff <<< _ajaxGet
+ajaxGet :: Request -> Aff Response
+ajaxGet = fromEffectFnAff <<< _ajaxGet
 ```
 
 This eliminates callback hell and allows us to write code simply using `do`
@@ -103,21 +103,17 @@ example = do
   log response.body
 ```
 
-## Eff
+## Effect
 
-All purely synchronous computations (`Eff`) can be lifted to asynchronous
-computations with `liftEff` defined in `Control.Monad.Eff.Class`.
+All purely synchronous computations (`Effect`) can be lifted to asynchronous
+computations with `liftEffect` defined in `Effect.Class`.
 
 ```purescript
-liftEff $ log "Hello world!"
+liftEffect $ log "Hello world!"
 ```
 
 This lets you write your whole program in `Aff`, and still call out to
 synchronous code.
-
-If your `Eff` code throws exceptions (`exception :: EXCEPTION`), you can
-remove the exception label using `liftEff'`. Exceptions are part of `Aff`s
-built-in semantics, so they will always be caught and propagated anyway.
 
 ## Dealing with Failure
 
@@ -188,7 +184,7 @@ Because Javascript is single-threaded, forking does not actually cause the
 computation to be run in a separate thread. Forking just allows the subsequent
 actions to execute without waiting for the forked computation to complete.
 
-Forking returns a `Fiber eff a`, representing the deferred computation. You can
+Forking returns a `Fiber a`, representing the deferred computation. You can
 kill a `Fiber` with `killFiber`, which will run any cancelers and cleanup, and
 you can observe a `Fiber`'s final value with `joinFiber`. If a `Fiber` threw
 an exception, it will be rethrown upon joining.
@@ -202,53 +198,6 @@ example = do
     then (log "Canceled")
     else (log "Not Canceled")
 ```
-
-
-## AVars
-
-The `Control.Monad.Aff.AVar` module contains asynchronous variables, which
-are very similar to Haskell's `MVar`.
-
-`AVar`s represent a value that is either full or empty. Calling `takeVar` on
-an empty `AVar` will queue until it is filled by a `putVar`.
-
-```purescript
-example = do
-  var <- makeEmptyVar
-  _ <- forkAff do
-    value <- takeVar var
-    log $ "Got a value: " <> value
-  _ <- forkAff do
-    delay (Milliseconds 100.0)
-    putVar var "hello"
-  pure unit
-```
-```
-(Waits 100ms)
-> Got a value: hello
-```
-
-Likewise, calling `putVar` on a filled `AVar` will queue until it is emptied by
-a `takeVar`.
-
-```purescript
-example = do
-  var <- makeVar "hello"
-  _ <- forkAff do
-    delay (Milliseconds 100.0)
-    value <- takeVar var
-    log $ "Got a value: " <> value
-  putVar var "next"
-  log "Value put"
-```
-```
-(Waits 100ms)
-> Got a value: hello
-> Value put
-```
-
-These combinators (and a few more) can be used as the building blocks for
-complex asynchronous coordination.
 
 ## Parallel Execution
 
