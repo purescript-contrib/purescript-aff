@@ -1,4 +1,4 @@
-module Control.Monad.Aff
+module Effect.Aff
   ( Aff
   , Fiber
   , ParAff(..)

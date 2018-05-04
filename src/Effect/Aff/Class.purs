@@ -1,7 +1,6 @@
-module Control.Monad.Aff.Class where
+module Effect.Aff.Class where
 
 import Prelude
-import Control.Monad.Aff (Aff)
 import Control.Monad.Cont.Trans (ContT)
 import Control.Monad.Except.Trans (ExceptT)
 import Control.Monad.List.Trans (ListT)
@@ -11,6 +10,7 @@ import Control.Monad.RWS.Trans (RWST)
 import Control.Monad.State.Trans (StateT)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Writer.Trans (WriterT)
+import Effect.Aff (Aff)
 import Effect.Class (class MonadEffect)
 
 class MonadEffect m ⇐ MonadAff m where

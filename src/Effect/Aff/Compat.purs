@@ -1,6 +1,6 @@
 -- | This module provides compatability functions for constructing `Aff`s which
 -- | are defined via the FFI.
-module Control.Monad.Aff.Compat
+module Effect.Aff.Compat
   ( EffectFnAff(..)
   , EffectFnCanceler(..)
   , EffectFnCb
@@ -9,8 +9,8 @@ module Control.Monad.Aff.Compat
   ) where
 
 import Prelude
-import Control.Monad.Aff (Aff, Canceler(..), makeAff, nonCanceler)
 import Data.Either (Either(..))
+import Effect.Aff (Aff, Canceler(..), makeAff, nonCanceler)
 import Effect.Exception (Error)
 import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, mkEffectFn1, mkEffectFn2, mkEffectFn3, runEffectFn1, runEffectFn2, runEffectFn3)
 

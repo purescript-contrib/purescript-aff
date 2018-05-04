@@ -4,8 +4,6 @@ import Prelude
 
 import Control.Alt ((<|>))
 import Control.Lazy (fix)
-import Control.Monad.Aff (Aff, Canceler(..), runAff, runAff_, launchAff, makeAff, try, bracket, generalBracket, delay, forkAff, suspendAff, joinFiber, killFiber, never, supervise, Error, error, message)
-import Control.Monad.Aff.Compat as AC
 import Control.Monad.Error.Class (throwError, catchError)
 import Control.Parallel (parallel, sequential, parTraverse_)
 import Data.Array as Array
@@ -16,6 +14,8 @@ import Data.Maybe (Maybe(..))
 import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse)
 import Effect (Effect)
+import Effect.Aff (Aff, Canceler(..), runAff, runAff_, launchAff, makeAff, try, bracket, generalBracket, delay, forkAff, suspendAff, joinFiber, killFiber, never, supervise, Error, error, message)
+import Effect.Aff.Compat as AC
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Console as Console
 import Effect.Exception (throwException)
