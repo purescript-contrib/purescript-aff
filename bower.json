@@ -17,7 +17,6 @@
     "package.json"
   ],
   "dependencies": {
-    "purescript-console": "#compiler/0.12",
     "purescript-exceptions": "#compiler/0.12",
     "purescript-functions": "#compiler/0.12",
     "purescript-parallel": "#compiler/0.12",
@@ -27,6 +26,7 @@
     "purescript-effect": "#compiler/0.12"
   },
   "devDependencies": {
+    "purescript-console": "#compiler/0.12",
     "purescript-partial": "#compiler/0.12",
     "purescript-minibench": "#compiler/0.12",
     "purescript-assert": "#compiler/0.12",
