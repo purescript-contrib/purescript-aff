@@ -24,9 +24,6 @@
     "purescript-transformers": "^3.0.0",
     "purescript-unsafe-coerce": "^3.0.0",
     "purescript-datetime": "^3.0.0",
-    "purescript-free": "^4.0.1",
-    "purescript-st": "^3.0.0",
-    "purescript-type-equality": "^2.1.0",
     "purescript-avar": "^2.0.0"
   },
   "devDependencies": {
