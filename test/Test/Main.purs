@@ -33,7 +33,7 @@ readRef = liftEffect <<< Ref.read
 writeRef ∷ ∀ m a. MonadEffect m ⇒ Ref a → a → m Unit
 writeRef r = liftEffect <<< flip Ref.write r
 
-modifyRef ∷ ∀ m a. MonadEffect m ⇒ Ref a → (a → a) → m Unit
+modifyRef ∷ ∀ m a. MonadEffect m ⇒ Ref a → (a → a) → m a
 modifyRef r = liftEffect <<< flip Ref.modify r
 
 assertEff ∷ String → Either Error Boolean → Effect Unit
@@ -102,9 +102,9 @@ test_fork = assert "fork" do
   fiber ← forkAff do
     delay (Milliseconds 10.0)
     modifyRef ref (_ <> "child")
-  modifyRef ref (_ <> "go")
+  _ ← modifyRef ref (_ <> "go")
   delay (Milliseconds 20.0)
-  modifyRef ref (_ <> "parent")
+  _ ← modifyRef ref (_ <> "parent")
   eq "gochildparent" <$> readRef ref
 
 test_join ∷ Aff Unit
@@ -112,9 +112,9 @@ test_join = assert "join" do
   ref ← newRef ""
   fiber ← forkAff do
     delay (Milliseconds 10.0)
-    modifyRef ref (_ <> "child")
+    _ ← modifyRef ref (_ <> "child")
     readRef ref
-  modifyRef ref (_ <> "parent")
+  _ ← modifyRef ref (_ <> "parent")
   eq "parentchild" <$> joinFiber fiber
 
 test_join_throw ∷ Aff Unit
@@ -134,11 +134,11 @@ test_multi_join = assert "join/multi" do
   ref ← newRef 1
   f1 ← forkAff do
     delay (Milliseconds 10.0)
-    modifyRef ref (_ + 1)
+    _ ← modifyRef ref (_ + 1)
     pure 10
   f2 ← forkAff do
     delay (Milliseconds 20.0)
-    modifyRef ref (_ + 1)
+    _ ← modifyRef ref (_ + 1)
     pure 20
   n1 ← traverse joinFiber
     [ f1
@@ -155,9 +155,9 @@ test_suspend = assert "suspend" do
   fiber ← suspendAff do
     delay (Milliseconds 10.0)
     modifyRef ref (_ <> "child")
-  modifyRef ref (_ <> "go")
+  _ ← modifyRef ref (_ <> "go")
   delay (Milliseconds 20.0)
-  modifyRef ref (_ <> "parent")
+  _ ← modifyRef ref (_ <> "parent")
   _ ← joinFiber fiber
   eq "goparentchild" <$> readRef ref
 
@@ -185,7 +185,7 @@ test_bracket = assert "bracket" do
   let
     action s = do
       delay (Milliseconds 10.0)
-      modifyRef ref (_ <> [ s ])
+      _ ← modifyRef ref (_ <> [ s ])
       pure s
   fiber ← forkAff do
     delay (Milliseconds 40.0)
@@ -206,7 +206,7 @@ test_bracket_nested = assert "bracket/nested" do
   let
     action s = do
       delay (Milliseconds 10.0)
-      modifyRef ref (_ <> [ s ])
+      _ ← modifyRef ref (_ <> [ s ])
       pure s
     bracketAction s =
       bracket
@@ -235,7 +235,7 @@ test_general_bracket = assert "bracket/general" do
   let
     action s = do
       delay (Milliseconds 10.0)
-      modifyRef ref (_ <> s)
+      _ ← modifyRef ref (_ <> s)
       pure s
     bracketAction s =
       generalBracket (action s)
@@ -265,13 +265,13 @@ test_supervise = assert "supervise" do
     _ ← forkAff do
       bracket
         (modifyRef ref (_ <> "acquire"))
-        (\_ → modifyRef ref (_ <> "release"))
+        (\_ → void $ modifyRef ref (_ <> "release"))
         (\_ → delay (Milliseconds 10.0))
     _ ← forkAff do
       delay (Milliseconds 11.0)
-      modifyRef ref (_ <> "delay")
+      void $ modifyRef ref (_ <> "delay")
     delay (Milliseconds 5.0)
-    modifyRef ref (_ <> "done")
+    _ ← modifyRef ref (_ <> "done")
     pure "done"
   delay (Milliseconds 20.0)
   r2 ← readRef ref
@@ -303,7 +303,7 @@ test_kill_bracket = assert "kill/bracket" do
   let
     action n = do
       delay (Milliseconds 10.0)
-      modifyRef ref (_ <> n)
+      void $ modifyRef ref (_ <> n)
   fiber ←
     forkAff $ bracket
       (action "a")
@@ -320,7 +320,7 @@ test_kill_bracket_nested = assert "kill/bracket/nested" do
   let
     action s = do
       delay (Milliseconds 10.0)
-      modifyRef ref (_ <> [ s ])
+      _ ← modifyRef ref (_ <> [ s ])
       pure s
     bracketAction s =
       bracket
@@ -350,13 +350,13 @@ test_kill_supervise = assert "kill/supervise" do
   let
     action s = generalBracket
       (modifyRef ref (_ <> "acquire" <> s))
-      { failed: \_ _ → modifyRef ref (_ <> "throw" <> s)
-      , killed: \_ _ → modifyRef ref (_ <> "kill" <> s)
-      , completed: \_ _ → modifyRef ref (_ <> "complete" <> s)
+      { failed: \_ _ → void $ modifyRef ref (_ <> "throw" <> s)
+      , killed: \_ _ → void $ modifyRef ref (_ <> "kill" <> s)
+      , completed: \_ _ → void $ modifyRef ref (_ <> "complete" <> s)
       }
       (\_ -> do
         delay (Milliseconds 10.0)
-        modifyRef ref (_ <> "child" <> s))
+        void $ modifyRef ref (_ <> "child" <> s))
   fiber ← forkAff $ supervise do
     _ ← forkAff $ action "foo"
     _ ← forkAff $ action "bar"
@@ -398,7 +398,7 @@ test_parallel = assert "parallel" do
   let
     action s = do
       delay (Milliseconds 10.0)
-      modifyRef ref (_ <> s)
+      _ ← modifyRef ref (_ <> s)
       pure s
   f1 ← forkAff $ sequential $
     { a: _, b: _ }
@@ -415,7 +415,7 @@ test_parallel_throw = assert "parallel/throw" $ withTimeout (Milliseconds 100.0)
   let
     action n s = do
       delay (Milliseconds n)
-      modifyRef ref (_ <> s)
+      _ ← modifyRef ref (_ <> s)
       pure s
   r1 ← try $ sequential $
     { a: _, b: _ }
@@ -431,10 +431,10 @@ test_kill_parallel = assert "kill/parallel" do
     action s = do
       bracket
         (pure unit)
-        (\_ → modifyRef ref (_ <> "killed" <> s))
+        (\_ → void $ modifyRef ref (_ <> "killed" <> s))
         (\_ → do
           delay (Milliseconds 10.0)
-          modifyRef ref (_ <> s))
+          void $ modifyRef ref (_ <> s))
   f1 ← forkAff $ sequential $
     parallel (action "foo") *> parallel (action "bar")
   f2 ← forkAff do
@@ -451,7 +451,7 @@ test_parallel_alt = assert "parallel/alt" do
   let
     action n s = do
       delay (Milliseconds n)
-      modifyRef ref (_ <> s)
+      _ ← modifyRef ref (_ <> s)
       pure s
   f1 ← forkAff $ sequential $
     parallel (action 10.0 "foo") <|> parallel (action 5.0 "bar")
@@ -475,7 +475,7 @@ test_parallel_alt_sync = assert "parallel/alt/sync" do
     action s = do
       bracket
         (pure unit)
-        (\_ → modifyRef ref (_ <> "killed" <> s))
+        (\_ → void $ modifyRef ref (_ <> "killed" <> s))
         (\_ → modifyRef ref (_ <> s) $> s)
   r1 ← sequential $
     parallel (action "foo")
@@ -490,7 +490,7 @@ test_parallel_mixed = assert "parallel/mixed" do
   let
     action n s = parallel do
       delay (Milliseconds n)
-      modifyRef ref (_ <> s)
+      _ ← modifyRef ref (_ <> s)
       pure s
   { r1, r2, r3 } ← sequential $
     { r1: _, r2: _, r3: _ }
@@ -512,10 +512,10 @@ test_kill_parallel_alt = assert "kill/parallel/alt" do
     action n s = do
       bracket
         (pure unit)
-        (\_ → modifyRef ref (_ <> "killed" <> s))
+        (\_ → void $ modifyRef ref (_ <> "killed" <> s))
         (\_ → do
           delay (Milliseconds n)
-          modifyRef ref (_ <> s))
+          void $ modifyRef ref (_ <> s))
   f1 ← forkAff $ sequential $
     parallel (action 10.0 "foo") <|> parallel (action 20.0 "bar")
   f2 ← forkAff do
@@ -535,7 +535,7 @@ test_kill_parallel_alt_finalizer = assert "kill/parallel/alt/finalizer" do
         (pure unit)
         (\_ → do
           delay (Milliseconds 10.0)
-          modifyRef ref (_ <> "killed"))
+          void $ modifyRef ref (_ <> "killed"))
         (\_ → delay (Milliseconds 20.0))
   f2 ← forkAff do
     delay (Milliseconds 15.0)
@@ -550,7 +550,7 @@ test_fiber_map = assert "fiber/map" do
   ref ← newRef 0
   let
     mapFn a = unsafePerformEffect do
-      Ref.modify (_ + 1) ref
+      _ ← Ref.modify (_ + 1) ref
       pure (a + 1)
   f1 ← forkAff do
     delay (Milliseconds 10.0)
@@ -567,7 +567,7 @@ test_fiber_apply = assert "fiber/apply" do
   ref ← newRef 0
   let
     applyFn a b = unsafePerformEffect do
-      Ref.modify (_ + 1) ref
+      _ ← Ref.modify (_ + 1) ref
       pure (a + b)
   f1 ← forkAff do
     delay (Milliseconds 10.0)
@@ -592,7 +592,7 @@ test_efffn = assert "efffn" do
         runAff_ (either (AC.runEffectFn1 cke) (AC.runEffectFn1 ckc)) (killFiber e fiber)
     action = do
       effectDelay (Milliseconds 10.0)
-      modifyRef ref (_ <> "done")
+      void $ modifyRef ref (_ <> "done")
   f1 ← forkAff action
   f2 ← forkAff action
   killFiber (error "Nope.") f2
