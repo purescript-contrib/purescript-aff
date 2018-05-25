@@ -17,22 +17,19 @@
     "package.json"
   ],
   "dependencies": {
-    "purescript-console": "^3.0.0",
-    "purescript-exceptions": "^3.0.0",
-    "purescript-functions": "^3.0.0",
-    "purescript-parallel": "^3.0.0",
-    "purescript-transformers": "^3.0.0",
-    "purescript-unsafe-coerce": "^3.0.0",
-    "purescript-datetime": "^3.0.0",
-    "purescript-free": "^4.0.1",
-    "purescript-st": "^3.0.0",
-    "purescript-type-equality": "^2.1.0",
-    "purescript-avar": "^2.0.0"
+    "purescript-exceptions": "^4.0.0",
+    "purescript-functions": "^4.0.0",
+    "purescript-parallel": "^4.0.0",
+    "purescript-transformers": "^4.0.0",
+    "purescript-unsafe-coerce": "^4.0.0",
+    "purescript-datetime": "^4.0.0",
+    "purescript-effect": "^2.0.0"
   },
   "devDependencies": {
-    "purescript-partial": "^1.2.0",
-    "purescript-minibench": "^1.0.0",
-    "purescript-assert": "^3.0.0",
-    "purescript-js-timers": "^3.0.0"
+    "purescript-console": "^4.1.0",
+    "purescript-partial": "^2.0.0",
+    "purescript-minibench": "^2.0.0",
+    "purescript-assert": "^4.0.0",
+    "purescript-free": "^5.0.0"
   }
 }
