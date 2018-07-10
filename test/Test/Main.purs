@@ -5,20 +5,21 @@ import Prelude
 import Control.Alt ((<|>))
 import Control.Lazy (fix)
 import Control.Monad.Error.Class (throwError, catchError)
-import Control.Parallel (parallel, sequential, parTraverse_)
+import Control.Parallel (parSequence, parSequence_, parTraverse_, parallel, sequential)
 import Data.Array as Array
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..), either, isLeft, isRight)
-import Data.Foldable (sum)
+import Data.Foldable (all, sum)
 import Data.Maybe (Maybe(..))
 import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse)
 import Effect (Effect)
-import Effect.Aff (Aff, Canceler(..), runAff, runAff_, launchAff, makeAff, try, bracket, generalBracket, delay, forkAff, suspendAff, joinFiber, killFiber, never, supervise, Error, error, message)
+import Effect.Aff (Aff, Canceler(..), runAff, runAff_, launchAff, makeAff, try, bracket, generalBracket, delay, forkAff, suspendAff, joinFiber, killFiber, never, supervise, Error, error, message, invincible)
 import Effect.Aff.Compat as AC
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Console as Console
 import Effect.Exception (throwException)
+import Effect.Exception as Error
 import Effect.Ref (Ref)
 import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
@@ -392,6 +393,15 @@ test_kill_finalizer_bracket = assert "kill/finalizer/bracket" do
   killFiber (error "Nope") fiber
   eq "completed" <$> readRef ref
 
+test_kill_invincible ∷ Aff Unit
+test_kill_invincible = assert "kill/invincible" do
+  true <$ do
+    f <- forkAff $
+      invincible $
+        delay $ Milliseconds 50.0
+    delay $ Milliseconds 10.0
+    killFiber (error "crash") f
+
 test_parallel ∷ Aff Unit
 test_parallel = assert "parallel" do
   ref ← newRef ""
@@ -423,6 +433,17 @@ test_parallel_throw = assert "parallel/throw" $ withTimeout (Milliseconds 100.0)
       <*> parallel never
   r2 ← readRef ref
   pure (isLeft r1 && r2 == "foo")
+
+test_parallel_throw_invincible ∷ Aff Unit
+test_parallel_throw_invincible = assert "parallel/throw/invincible" do
+  map (all identity) $ parSequence
+    [ false <$ do
+        invincible $ delay $ Milliseconds 50.0
+    , false <$ do
+        delay $ Milliseconds 10.0
+        throwError $ error "crash"
+    ] `catchError` \e ->
+      pure $ [ Error.message e == "crash" ]
 
 test_kill_parallel ∷ Aff Unit
 test_kill_parallel = assert "kill/parallel" do
@@ -463,8 +484,8 @@ test_parallel_alt = assert "parallel/alt" do
 test_parallel_alt_throw ∷ Aff Unit
 test_parallel_alt_throw = assert "parallel/alt/throw" do
   r1 ← sequential $
-    parallel (delay (Milliseconds 10.0) *> throwError (error "Nope."))
-    <|> parallel (delay (Milliseconds 11.0) $> "foo")
+        parallel (invincible $ delay (Milliseconds 11.0) $> "foo")
+    <|> parallel (delay (Milliseconds 10.0) *> throwError (error "Nope."))
     <|> parallel (delay (Milliseconds 12.0) $> "bar")
   pure (r1 == "foo")
 
@@ -659,8 +680,10 @@ main = do
     test_kill_supervise
     test_kill_finalizer_catch
     test_kill_finalizer_bracket
+    test_kill_invincible
     test_parallel
     test_parallel_throw
+    test_parallel_throw_invincible
     test_kill_parallel
     test_parallel_alt
     test_parallel_alt_throw
