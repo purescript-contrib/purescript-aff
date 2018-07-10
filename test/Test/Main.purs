@@ -5,11 +5,11 @@ import Prelude
 import Control.Alt ((<|>))
 import Control.Lazy (fix)
 import Control.Monad.Error.Class (throwError, catchError)
-import Control.Parallel (parSequence_, parTraverse_, parallel, sequential)
+import Control.Parallel (parSequence, parSequence_, parTraverse_, parallel, sequential)
 import Data.Array as Array
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..), either, isLeft, isRight)
-import Data.Foldable (sum)
+import Data.Foldable (all, sum)
 import Data.Maybe (Maybe(..))
 import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse)
@@ -19,6 +19,7 @@ import Effect.Aff.Compat as AC
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Console as Console
 import Effect.Exception (throwException)
+import Effect.Exception as Error
 import Effect.Ref (Ref)
 import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
@@ -435,12 +436,14 @@ test_parallel_throw = assert "parallel/throw" $ withTimeout (Milliseconds 100.0)
 
 test_parallel_throw_invincible ∷ Aff Unit
 test_parallel_throw_invincible = assert "parallel/throw/invincible" do
-  true <$ parSequence_
-    [ invincible $ delay $ Milliseconds 50.0
-    , do
+  map (all identity) $ parSequence
+    [ false <$ do
+        invincible $ delay $ Milliseconds 50.0
+    , false <$ do
         delay $ Milliseconds 10.0
         throwError $ error "crash"
-    ]
+    ] `catchError` \e ->
+      pure $ [ Error.message e == "crash" ]
 
 test_kill_parallel ∷ Aff Unit
 test_kill_parallel = assert "kill/parallel" do
