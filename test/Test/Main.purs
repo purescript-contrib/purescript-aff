@@ -392,6 +392,15 @@ test_kill_finalizer_bracket = assert "kill/finalizer/bracket" do
   killFiber (error "Nope") fiber
   eq "completed" <$> readRef ref
 
+test_kill_invincible ∷ Aff Unit
+test_kill_invincible = assert "kill/invincible" do
+  true <$ do
+    f <- forkAff $
+      invincible $
+        delay $ Milliseconds 50.0
+    delay $ Milliseconds 10.0
+    killFiber (error "crash") f
+
 test_parallel ∷ Aff Unit
 test_parallel = assert "parallel" do
   ref ← newRef ""
@@ -427,7 +436,7 @@ test_parallel_throw = assert "parallel/throw" $ withTimeout (Milliseconds 100.0)
 test_parallel_throw_invincible ∷ Aff Unit
 test_parallel_throw_invincible = assert "parallel/throw/invincible" do
   true <$ parSequence_
-    [ invincible $ delay $ Milliseconds 11.0
+    [ invincible $ delay $ Milliseconds 50.0
     , do
         delay $ Milliseconds 10.0
         throwError $ error "crash"
@@ -668,6 +677,7 @@ main = do
     test_kill_supervise
     test_kill_finalizer_catch
     test_kill_finalizer_bracket
+    test_kill_invincible
     test_parallel
     test_parallel_throw
     test_parallel_throw_invincible
