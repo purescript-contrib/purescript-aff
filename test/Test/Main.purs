@@ -631,6 +631,26 @@ test_regression_return_fork = assert "regression/return-fork" do
     (const (pure unit))
     (const (pure true))
 
+test_regression_par_apply_async_canceler ∷ Aff Unit
+test_regression_par_apply_async_canceler = assert "regression/par-apply-async-canceler" do
+  ref ← newRef ""
+  let
+    action1 = makeAff \_ →
+      pure $ Canceler \_ → do
+        delay (Milliseconds 10.0)
+        void $ modifyRef ref (_ <> "done")
+
+    action2 = do
+      delay (Milliseconds 5.0)
+      void $ modifyRef ref (_ <> "throw")
+      throwError (error "Nope.")
+
+  catchError
+    (sequential (parallel action1 *> parallel action2))
+    \err -> do
+      val <- readRef ref
+      pure (val == "throwdone" && message err == "Nope.")
+
 main ∷ Effect Unit
 main = do
   test_pure
@@ -676,3 +696,4 @@ main = do
     -- test_scheduler_size
     test_parallel_stack
     test_regression_return_fork
+    test_regression_par_apply_async_canceler
