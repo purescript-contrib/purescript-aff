@@ -775,9 +775,9 @@ var Aff = function () {
                 if (tmp) {
                   tmp = false;
                 } else if (tail === null) {
-                  join(step, null, null);
+                  join(fail, null, null);
                 } else {
-                  join(step, tail._1, tail._2);
+                  join(fail, tail._1, tail._2);
                 }
               };
             });
