@@ -460,7 +460,7 @@ var Aff = function () {
             // because it should not be cancelled.
             case RELEASE:
               bracketCount++;
-              attempts = new Aff(CONS, new Aff(FINALIZED, step), attempts, interrupt);
+              attempts = new Aff(CONS, new Aff(FINALIZED, step, fail), attempts, interrupt);
               status   = CONTINUE;
               // It has only been killed if the interrupt status has changed
               // since we enqueued the item.
@@ -484,6 +484,7 @@ var Aff = function () {
               bracketCount--;
               status = RETURN;
               step   = attempt._1;
+              fail   = attempt._2;
               break;
             }
           }

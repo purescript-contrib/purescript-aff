@@ -651,6 +651,15 @@ test_regression_par_apply_async_canceler = assert "regression/par-apply-async-ca
       val <- readRef ref
       pure (val == "throwdone" && message err == "Nope.")
 
+test_regression_bracket_catch_cleanup ∷ Aff Unit
+test_regression_bracket_catch_cleanup = assert "regression/bracket-catch-cleanup" do
+  res :: Either Error Unit ←
+    try $ bracket
+      (pure unit)
+      (\_ → catchError (pure unit) (const (pure unit)))
+      (\_ → throwError (error "Nope."))
+  pure $ lmap message res == Left "Nope."
+
 main ∷ Effect Unit
 main = do
   test_pure
@@ -697,3 +706,4 @@ main = do
     test_parallel_stack
     test_regression_return_fork
     test_regression_par_apply_async_canceler
+    test_regression_bracket_catch_cleanup
