@@ -327,6 +327,12 @@ var Aff = function () {
                 }
                 runTick++;
                 Scheduler.enqueue(function () {
+                  // It's possible to interrupt the fiber between enqueuing and
+                  // resuming, so we need to check that the runTick is still
+                  // valid.
+                  if (runTick !== localRunTick + 1) {
+                    return;
+                  }
                   status = STEP_RESULT;
                   step   = result;
                   run(runTick);

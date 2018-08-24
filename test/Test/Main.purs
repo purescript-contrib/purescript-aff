@@ -660,6 +660,13 @@ test_regression_bracket_catch_cleanup = assert "regression/bracket-catch-cleanup
       (\_ → throwError (error "Nope."))
   pure $ lmap message res == Left "Nope."
 
+test_regression_kill_sync_async ∷ Aff Unit
+test_regression_kill_sync_async = assert "regression/kill-sync-async" do
+  ref ← newRef ""
+  f1 ← forkAff $ makeAff \k -> k (Left (error "Boom.")) *> mempty
+  killFiber (error "Nope.") f1
+  pure true
+
 main ∷ Effect Unit
 main = do
   test_pure
@@ -707,3 +714,4 @@ main = do
     test_regression_return_fork
     test_regression_par_apply_async_canceler
     test_regression_bracket_catch_cleanup
+    test_regression_kill_sync_async
