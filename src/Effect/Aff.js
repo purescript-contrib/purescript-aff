@@ -261,12 +261,11 @@ var Aff = function () {
     // the provided callback in `makeAff` more than once, but it may also be an
     // async effect resuming after the fiber was already cancelled.
     function run(localRunTick) {
-      var tmp, result, attempt, canceler;
+      var tmp, result, attempt;
       while (true) {
         tmp       = null;
         result    = null;
         attempt   = null;
-        canceler  = null;
 
         switch (status) {
         case STEP_BIND:
@@ -471,11 +470,12 @@ var Aff = function () {
               } else {
                 step = attempt._1.completed(util.fromRight(step))(attempt._2);
               }
+              fail = null;
               break;
 
             case FINALIZER:
               bracketCount++;
-              attempts = new Aff(CONS, new Aff(FINALIZED, step), attempts, interrupt);
+              attempts = new Aff(CONS, new Aff(FINALIZED, step, fail), attempts, interrupt);
               status   = CONTINUE;
               step     = attempt._1;
               break;
