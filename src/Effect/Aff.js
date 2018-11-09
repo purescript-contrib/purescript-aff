@@ -170,7 +170,7 @@ var Aff = function () {
       killAll: function (killError, cb) {
         return function () {
           if (count === 0) {
-            return callback();
+            return cb();
           }
 
           var killCount = 0;
