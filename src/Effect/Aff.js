@@ -169,6 +169,10 @@ var Aff = function () {
       },
       killAll: function (killError, cb) {
         return function () {
+          if (count === 0) {
+            return callback();
+          }
+
           var killCount = 0;
           var kills     = {};
 
