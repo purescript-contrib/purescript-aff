@@ -118,9 +118,11 @@ synchronous code.
 ## Dealing with Failure
 
 `Aff` has error handling baked in, so ordinarily you don't have to worry
-about it.
+about it. For control-flow exceptions, it's advised to use `ExceptT`
+instead throwing errors in the `Aff` context. The support for errors
+mainly exists to notify you when very bad things happen.
 
-When you need to deal with failure, you have a few options.
+However, when you need to deal with `Aff` errors, you have a few options.
 
  1. **Alt**
  2. **MonadError**
@@ -139,15 +141,21 @@ example = do
 
 #### 2. MonadError
 
-`Aff` has a `MonadError` instance, which comes with two functions:
-`catchError`, and `throwError`.
+`Aff` has a `MonadError` instance, which comes with three functions:
+`try`, `catchError`, and `throwError`.
 
 These are defined in
 [purescript-transformers](http://github.com/purescript/purescript-transformers).
 Here's an example of how you can use them:
 
 ```purescript
-example = do
+tryExample = do
+  result <- try $ Ajax.get "http://foo.com"
+  case result of
+    Left err -> pure ""
+    Right resp -> pure resp.body
+
+catchThrowExample = do
   resp <- Ajax.get "http://foo.com" `catchError` \_ -> pure defaultResponse
   when (resp.statusCode /= 200) do
     throwError myErr
