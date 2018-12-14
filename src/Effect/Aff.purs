@@ -27,6 +27,7 @@ module Effect.Aff
   , generalBracket
   , nonCanceler
   , effectCanceler
+  , fiberCanceler
   , module Exports
   ) where
 
@@ -205,6 +206,10 @@ nonCanceler = Canceler (const (pure unit))
 -- | A canceler from an Effect action.
 effectCanceler ∷ Effect Unit → Canceler
 effectCanceler = Canceler <<< const <<< liftEffect
+
+-- | A canceler from a Fiber.
+fiberCanceler ∷ ∀ a. Fiber a → Canceler
+fiberCanceler = Canceler <<< flip killFiber
 
 -- | Forks an `Aff` from an `Effect` context, returning the `Fiber`.
 launchAff ∷ ∀ a. Aff a → Effect (Fiber a)
