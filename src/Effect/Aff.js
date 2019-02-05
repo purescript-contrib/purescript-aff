@@ -222,6 +222,7 @@ var Aff = function () {
   var PENDING     = 4; // An async effect is running.
   var RETURN      = 5; // The current stack has returned.
   var COMPLETED   = 6; // The entire fiber has completed.
+  var WAITING     = 7; // Async result received, waiting for scheduling.
 
   function Fiber(util, supervisor, aff) {
     // Monotonically increasing tick, increased on each asynchronous turn.
@@ -326,6 +327,7 @@ var Aff = function () {
                   return;
                 }
                 runTick++;
+                status = WAITING;
                 Scheduler.enqueue(function () {
                   // It's possible to interrupt the fiber between enqueuing and
                   // resuming, so we need to check that the runTick is still
@@ -526,6 +528,7 @@ var Aff = function () {
           status = CONTINUE;
           break;
         case PENDING: return;
+        case WAITING: return;
         }
       }
     }
@@ -585,6 +588,8 @@ var Aff = function () {
             run(++runTick);
           }
           break;
+        case WAITING:
+          Scheduler.enqueue(function () { kill(error, cb)(); });
         default:
           if (interrupt === null) {
             interrupt = util.left(error);
