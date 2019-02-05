@@ -320,6 +320,7 @@ var Aff = function () {
 
           case ASYNC:
             status = PENDING;
+            step = nonCanceler;
             Scheduler.enqueue(function () {
               if (runTick !== localRunTick) {
                 return;
