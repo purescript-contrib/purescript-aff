@@ -327,18 +327,25 @@ var Aff = function () {
                   return;
                 }
                 runTick++;
-                status = WAITING;
-                Scheduler.enqueue(function () {
-                  // It's possible to interrupt the fiber between enqueuing and
-                  // resuming, so we need to check that the runTick is still
-                  // valid.
-                  if (runTick !== localRunTick + 1) {
-                    return;
-                  }
+                // Nothing left to run, so we complete immediately.
+                if (bhead === null && attempts === null) {
                   status = STEP_RESULT;
-                  step   = result;
-                  run(runTick);
-                });
+                  step = result;
+                }
+                else {
+                  status = WAITING;
+                  Scheduler.enqueue(function () {
+                    // It's possible to interrupt the fiber between enqueuing
+                    // and resuming, so we need to check that the runTick is
+                    // still valid.
+                    if (runTick !== localRunTick + 1) {
+                      return;
+                    }
+                    status = STEP_RESULT;
+                    step   = result;
+                    run(runTick);
+                  });
+                }
               };
             });
             return;
@@ -589,6 +596,7 @@ var Aff = function () {
           }
           break;
         case WAITING:
+          // TODO: this is not quite the right thing to enqueue
           Scheduler.enqueue(function () { kill(error, cb)(); });
           break;
         default:
