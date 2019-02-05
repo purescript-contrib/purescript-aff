@@ -590,6 +590,7 @@ var Aff = function () {
           break;
         case WAITING:
           Scheduler.enqueue(function () { kill(error, cb)(); });
+          break;
         default:
           if (interrupt === null) {
             interrupt = util.left(error);
