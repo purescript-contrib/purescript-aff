@@ -320,19 +320,32 @@ var Aff = function () {
 
           case ASYNC:
             status = PENDING;
+            var asyncAction = step._1;
             step = nonCanceler;
             Scheduler.enqueue(function () {
               if (runTick !== localRunTick) {
                 return;
               }
-              runTick++;
-              step = runAsync(util.left, step._1, function (result) {
+              ++runTick;
+              var resolved = false;
+              var canceler = runAsync(util.left, asyncAction, function (result) {
                 return function () {
+                  if (runTick !== localRunTick + 1) {
+                    return;
+                  }
+                  ++runTick;
+                  resolved = true;
                   status = STEP_RESULT;
                   step = result;
                   run(runTick);
                 };
               });
+              // Only update the canceler if the asynchronous action has not
+              // resolved synchronously. If it has, then the next status and
+              // step have already been set.
+              if (!resolved) {
+                step = canceler;
+              }
             });
             return;
 
