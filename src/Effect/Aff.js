@@ -222,7 +222,6 @@ var Aff = function () {
   var PENDING     = 4; // An async effect is running.
   var RETURN      = 5; // The current stack has returned.
   var COMPLETED   = 6; // The entire fiber has completed.
-  var WAITING     = 7; // Async result received, waiting for scheduling.
 
   function Fiber(util, supervisor, aff) {
     // Monotonically increasing tick, increased on each asynchronous turn.
@@ -321,32 +320,18 @@ var Aff = function () {
 
           case ASYNC:
             status = PENDING;
-            step   = runAsync(util.left, step._1, function (result) {
-              return function () {
-                if (runTick !== localRunTick) {
-                  return;
-                }
-                runTick++;
-                // Nothing left to run, so we complete immediately.
-                if (bhead === null && attempts === null) {
+            Scheduler.enqueue(function () {
+              if (runTick !== localRunTick) {
+                return;
+              }
+              runTick++;
+              step = runAsync(util.left, step._1, function (result) {
+                return function () {
                   status = STEP_RESULT;
                   step = result;
-                }
-                else {
-                  status = WAITING;
-                  Scheduler.enqueue(function () {
-                    // It's possible to interrupt the fiber between enqueuing
-                    // and resuming, so we need to check that the runTick is
-                    // still valid.
-                    if (runTick !== localRunTick + 1) {
-                      return;
-                    }
-                    status = STEP_RESULT;
-                    step   = result;
-                    run(runTick);
-                  });
-                }
-              };
+                  run(runTick);
+                };
+              });
             });
             return;
 
@@ -535,7 +520,6 @@ var Aff = function () {
           status = CONTINUE;
           break;
         case PENDING: return;
-        case WAITING: return;
         }
       }
     }
@@ -594,10 +578,6 @@ var Aff = function () {
             fail     = null;
             run(++runTick);
           }
-          break;
-        case WAITING:
-          // TODO: this is not quite the right thing to enqueue
-          Scheduler.enqueue(function () { kill(error, cb)(); });
           break;
         default:
           if (interrupt === null) {
