@@ -326,6 +326,7 @@ var Aff = function () {
               if (runTick !== localRunTick) {
                 return;
               }
+              var issync = true;
               var resolved = false;
               var canceler = runAsync(util.left, tmp, function (result) {
                 return function () {
@@ -336,16 +337,23 @@ var Aff = function () {
                   resolved = true;
                   status = STEP_RESULT;
                   step = result;
-                  // Free us from this callstack. Otherwise a memory leak may
-                  // happen on V8; not sure why.
-                  setTimeout(function () { run(runTick); }, 0);
+                  // Do not recurse on run if we are synchronous with runAsync. 
+                  if (!issync) {
+                    run(runTick);
+                  }
                 };
               });
+              issync = false;
               // Only update the canceler if the asynchronous action has not
               // resolved synchronously. If it has, then the next status and
               // step have already been set.
               if (!resolved) {
                 step = canceler;
+              }
+              // If runAsync already resolved then the next step needs to be
+              // run.
+              else {
+                run(runTick);
               }
             });
             return;
