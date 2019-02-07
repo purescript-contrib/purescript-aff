@@ -320,24 +320,25 @@ var Aff = function () {
 
           case ASYNC:
             status = PENDING;
-            var asyncAction = step._1;
+            tmp = step._1;
             step = nonCanceler;
             Scheduler.enqueue(function () {
               if (runTick !== localRunTick) {
                 return;
               }
-              ++runTick;
               var resolved = false;
-              var canceler = runAsync(util.left, asyncAction, function (result) {
+              var canceler = runAsync(util.left, tmp, function (result) {
                 return function () {
-                  if (runTick !== localRunTick + 1) {
+                  if (runTick !== localRunTick) {
                     return;
                   }
                   ++runTick;
                   resolved = true;
                   status = STEP_RESULT;
                   step = result;
-                  run(runTick);
+                  // Free us from this callstack. Otherwise a memory leak may
+                  // happen on V8; not sure why.
+                  setTimeout(function () { run(runTick); }, 0);
                 };
               });
               // Only update the canceler if the asynchronous action has not
