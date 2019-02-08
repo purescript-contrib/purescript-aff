@@ -56,6 +56,12 @@ var Aff = function () {
   var FIBER     = "Fiber";     // Actual fiber reference
   var THUNK     = "Thunk";     // Primed effect, ready to invoke
 
+  // Error used for early cancelation on Alt branches.
+  // This is initialized here (rather than in the Fiber constructor) because
+  // otherwise, in V8, this Error object indefinitely hangs on to memory that
+  // otherwise would be garbage collected.
+  var early = new Error("[ParAff] Early exit");
+
   function Aff(tag, _1, _2, _3) {
     this.tag = tag;
     this._1  = _1;
@@ -659,9 +665,6 @@ var Aff = function () {
     // Table of currently running cancelers, as a product of `Alt` behavior.
     var killId    = 0;
     var kills     = {};
-
-    // Error used for early cancelation on Alt branches.
-    var early     = new Error("[ParAff] Early exit");
 
     // Error used to kill the entire tree.
     var interrupt = null;
