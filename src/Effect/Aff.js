@@ -411,14 +411,14 @@ var Aff = function () {
             attempts = attempts._2;
 
             switch (attempt.tag) {
-            // We cannot recover from an interrupt. Otherwise we should
+            // We cannot recover from an unmasked interrupt. Otherwise we should
             // continue stepping, or run the exception handler if an exception
             // was raised.
             case CATCH:
               // We should compare the interrupt status as well because we
               // only want it to apply if there has been an interrupt since
               // enqueuing the catch.
-              if (interrupt && interrupt !== tmp) {
+              if (interrupt && interrupt !== tmp && bracketCount === 0) {
                 status = RETURN;
               } else if (fail) {
                 status = CONTINUE;
@@ -427,11 +427,11 @@ var Aff = function () {
               }
               break;
 
-            // We cannot resume from an interrupt or exception.
+            // We cannot resume from an unmasked interrupt or exception.
             case RESUME:
               // As with Catch, we only want to ignore in the case of an
               // interrupt since enqueing the item.
-              if (interrupt && interrupt !== tmp || fail) {
+              if (interrupt && interrupt !== tmp && bracketCount === 0 || fail) {
                 status = RETURN;
               } else {
                 bhead  = attempt._1;
@@ -464,12 +464,13 @@ var Aff = function () {
             // Enqueue the appropriate handler. We increase the bracket count
             // because it should not be cancelled.
             case RELEASE:
-              bracketCount++;
               attempts = new Aff(CONS, new Aff(FINALIZED, step, fail), attempts, interrupt);
               status   = CONTINUE;
               // It has only been killed if the interrupt status has changed
-              // since we enqueued the item.
-              if (interrupt && interrupt !== tmp) {
+              // since we enqueued the item, and the bracket count is 0. If the
+              // bracket count is non-zero then we are in a masked state so it's
+              // impossible to be killed.
+              if (interrupt && interrupt !== tmp && bracketCount === 0) {
                 step = attempt._1.killed(util.fromLeft(interrupt))(attempt._2);
               } else if (fail) {
                 step = attempt._1.failed(util.fromLeft(fail))(attempt._2);
@@ -477,6 +478,7 @@ var Aff = function () {
                 step = attempt._1.completed(util.fromRight(step))(attempt._2);
               }
               fail = null;
+              bracketCount++;
               break;
 
             case FINALIZER:
