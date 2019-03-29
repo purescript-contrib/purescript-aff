@@ -722,6 +722,14 @@ test_regression_bracket_kill_mask = assert "regression/kill-bracket-mask" do
   killFiber (error "nope") fiber
   readRef ref <#> eq "ab"
 
+test_regression_kill_empty_supervisor ∷ Aff Unit
+test_regression_kill_empty_supervisor = assert "regression/kill-empty-supervisor" do
+  f1 ← forkAff $ supervise $ delay $ Milliseconds 10.0
+  let
+    a = parallel $ killFiber (error "Nope.") f1 $> true
+    b = parallel $ delay (Milliseconds 20.0) $> false
+  sequential (a <|> b)
+
 main ∷ Effect Unit
 main = do
   test_pure
@@ -772,3 +780,4 @@ main = do
     test_regression_bracket_catch_cleanup
     test_regression_kill_sync_async
     test_regression_bracket_kill_mask
+    test_regression_kill_empty_supervisor
