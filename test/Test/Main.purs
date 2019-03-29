@@ -344,6 +344,39 @@ test_kill_bracket_nested = assert "kill/bracket/nested" do
     , "foo/bar/run/release/bar/release"
     ]
 
+test_kill_general_bracket_nested ∷ Aff Unit
+test_kill_general_bracket_nested = assert "kill/bracket/general/nested" do
+  ref <- newRef []
+  let
+    action s = do
+      _ ← modifyRef ref (_ <> [ s ])
+      pure unit
+
+    bracketAction s acq =
+      generalBracket acq
+        { killed: \_ _ → action (s <> "/killed")
+        , failed: \_ _ → action (s <> "/failed")
+        , completed: \_ _ → action (s <> "/completed")
+        }
+        (\_ → do
+          delay (Milliseconds 10.0)
+          action (s <> "/run"))
+  fiber ← forkAff do
+    bracketAction "outer" do
+      action "outer/acquire"
+      bracketAction "inner" do
+        action "inner/acquire"
+        delay (Milliseconds 10.0)
+  delay (Milliseconds 5.0)
+  killFiber (error "nope") fiber
+  readRef ref <#> eq
+    [ "outer/acquire"
+    , "inner/acquire"
+    , "inner/run"
+    , "inner/completed"
+    , "outer/killed"
+    ]
+
 test_kill_supervise ∷ Aff Unit
 test_kill_supervise = assert "kill/supervise" do
   ref ← newRef ""
@@ -667,6 +700,28 @@ test_regression_kill_sync_async = assert "regression/kill-sync-async" do
   killFiber (error "Nope.") f1
   pure true
 
+test_regression_bracket_kill_mask ∷ Aff Unit
+test_regression_bracket_kill_mask = assert "regression/kill-bracket-mask" do
+  ref ← newRef ""
+  let
+    action s = do
+      _ <- modifyRef ref (_ <> s)
+      pure unit
+  fiber ← forkAff do
+    bracket
+      do
+        action "a"
+        bracket
+          (pure unit)
+          (const (pure unit))
+          (\_ -> delay (Milliseconds 10.0))
+        action "b"
+      (const (pure unit))
+      (\_ -> delay (Milliseconds 10.0))
+  delay (Milliseconds 5.0)
+  killFiber (error "nope") fiber
+  readRef ref <#> eq "ab"
+
 test_regression_kill_empty_supervisor ∷ Aff Unit
 test_regression_kill_empty_supervisor = assert "regression/kill-empty-supervisor" do
   f1 ← forkAff $ supervise $ delay $ Milliseconds 10.0
@@ -700,6 +755,7 @@ main = do
     test_kill_canceler
     test_kill_bracket
     test_kill_bracket_nested
+    test_kill_general_bracket_nested
     test_kill_supervise
     test_kill_finalizer_catch
     test_kill_finalizer_bracket
@@ -723,4 +779,5 @@ main = do
     test_regression_par_apply_async_canceler
     test_regression_bracket_catch_cleanup
     test_regression_kill_sync_async
+    test_regression_bracket_kill_mask
     test_regression_kill_empty_supervisor
