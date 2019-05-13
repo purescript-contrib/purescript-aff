@@ -51,8 +51,8 @@ import Data.Time.Duration (Milliseconds(..))
 import Data.Time.Duration (Milliseconds(..)) as Exports
 import Effect (Effect)
 import Effect.Class (class MonadEffect, liftEffect)
-import Effect.Exception (Error)
-import Effect.Exception (Error, message) as Exports
+import Effect.Exception (Error, error)
+import Effect.Exception (Error, error, message) as Exports
 import Effect.Unsafe (unsafePerformEffect)
 import Partial.Unsafe (unsafeCrashWith)
 import Unsafe.Coerce (unsafeCoerce)
@@ -87,7 +87,7 @@ instance altAff ∷ Alt Aff where
   alt a1 a2 = catchError a1 (const a2)
 
 alwaysFailsError ∷ Error
-alwaysFailsError = stacklessError "Always fails"
+alwaysFailsError = error "Always fails"
 
 instance plusAff ∷ Plus Aff where
   empty = throwError alwaysFailsError
@@ -310,7 +310,7 @@ type Supervised a =
   }
 
 parentOutlivedError ∷ Error
-parentOutlivedError = stacklessError "[Aff] Child fiber outlived parent"
+parentOutlivedError = error "[Aff] Child fiber outlived parent"
 
 -- | Creates a new supervision context for some `Aff`, guaranteeing fiber
 -- | cleanup when the parent completes. Any pending fibers forked within
