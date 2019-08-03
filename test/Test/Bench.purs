@@ -8,7 +8,7 @@ import Effect.Aff as Aff
 import Effect.Unsafe (unsafePerformEffect)
 import Effect.Console as Console
 
-loop1 ∷ Int → Aff.Aff Int
+loop1 ∷ ∀ e. Int → Aff.Aff e Int
 loop1 = tailRecM go
   where
   go n
@@ -26,7 +26,7 @@ loop1 = tailRecM go
           pure n
         pure $ Loop (n - 1)
 
-loop2 ∷ Int → Aff.Aff Int
+loop2 ∷ ∀ e. Int → Aff.Aff e Int
 loop2 = go
   where
   go n
@@ -44,7 +44,7 @@ loop2 = go
           pure n
         loop2 (n - 1)
 
-fib1 ∷ Int → Aff.Aff Int
+fib1 ∷ ∀ e. Int → Aff.Aff e Int
 fib1 n = if n <= 1 then pure n else do
   a ← fib1 (n - 1)
   b ← fib1 (n - 2)

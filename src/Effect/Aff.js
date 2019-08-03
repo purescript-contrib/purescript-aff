@@ -11,11 +11,13 @@ var Aff = function () {
   An awkward approximation. We elide evidence we would otherwise need in PS for
   efficiency sake.
 
-  data Aff eff a
+  data Aff e a
     = Pure a
-    | Throw Error
-    | Catch (Aff eff a) (Error -> Aff eff a)
-    | Sync (Eff eff a)
+    | Throw e
+    | Catch (Aff e a) (e -> Aff e a)
+    | Sync (Effect a)
+    | SyncEither (Effect (Either e a))
+    | SyncUnsafe (Effect a)
     | Async ((Either Error a -> Eff eff Unit) -> Eff eff (Canceler eff))
     | forall b. Bind (Aff eff b) (b -> Aff eff a)
     | forall b. Bracket (Aff eff b) (BracketConditions eff b) (b -> Aff eff a)
@@ -27,6 +29,8 @@ var Aff = function () {
   var THROW   = "Throw";
   var CATCH   = "Catch";
   var SYNC    = "Sync";
+  var SYNC_EITHER = "SyncEither"
+  var SYNC_UNSAFE = "SyncUnsafe"
   var ASYNC   = "Async";
   var BIND    = "Bind";
   var BRACKET = "Bracket";
@@ -56,22 +60,19 @@ var Aff = function () {
   var FIBER     = "Fiber";     // Actual fiber reference
   var THUNK     = "Thunk";     // Primed effect, ready to invoke
 
-  // Error used for early cancelation on Alt branches.
-  // This is initialized here (rather than in the Fiber constructor) because
-  // otherwise, in V8, this Error object indefinitely hangs on to memory that
-  // otherwise would be garbage collected.
   var early = new Error("[ParAff] Early exit");
 
-  function Aff(tag, _1, _2, _3) {
+  function Aff(tag, _1, _2, _3, extra) {
     this.tag = tag;
     this._1  = _1;
     this._2  = _2;
     this._3  = _3;
+    this.extra = extra;
   }
 
   function AffCtr(tag) {
-    var fn = function (_1, _2, _3) {
-      return new Aff(tag, _1, _2, _3);
+    var fn = function (_1, _2, _3, extra) {
+      return new Aff(tag, _1, _2, _3, extra);
     };
     fn.tag = tag;
     return fn;
@@ -91,20 +92,21 @@ var Aff = function () {
     }
   }
 
-  function runSync(left, right, eff) {
-    try {
-      return right(eff());
-    } catch (error) {
-      return left(error);
-    }
-  }
-
   function runAsync(left, eff, k) {
     try {
       return eff(k)();
     } catch (error) {
       k(left(error))();
       return nonCanceler;
+    }
+  }
+
+  function errorFromVal(x) {
+    if (x instanceof Error) {
+      return x;
+    }
+    else {
+      return new Error(x+'');
     }
   }
 
@@ -319,9 +321,47 @@ var Aff = function () {
             }
             break;
 
+          // If the Effect throws, die.
+          // Otherwise, return the result.
           case SYNC:
-            status = STEP_RESULT;
-            step   = runSync(util.left, util.right, step._1);
+            try {
+              status = STEP_RESULT;
+              step = util.right(step._1());
+            } catch (error) {
+              interrupt = util.left(errorFromVal(error));
+              if (bracketCount === 0) {
+                status = RETURN;
+                step = null;
+                fail = null;
+              }
+            }
+            break;
+
+          // If the Effect throws, die.
+          // Otherwise, map Lefts to errors and Rights to returns.
+          case SYNC_EITHER:
+            try {
+              status = STEP_RESULT;
+              step = step._1();
+            } catch (error) {
+              interrupt = util.left(errorFromVal(error));
+              if (bracketCount === 0) {
+                status = RETURN;
+                step = null;
+                fail = null;
+              }
+            }
+            break;
+          
+          // If the Effect throws, send to the error channel.
+          // Otherwise, return the result.
+          case SYNC_UNSAFE:
+              status = STEP_RESULT;
+            try {
+              step = util.right(step._1());
+            } catch (error) {
+              step = util.left(error);
+            }
             break;
 
           case ASYNC:
@@ -828,10 +868,14 @@ var Aff = function () {
           if (lhs === EMPTY && util.isLeft(rhs) || rhs === EMPTY && util.isLeft(lhs)) {
             return;
           }
-          // If both sides resolve with an error, we should continue with the
-          // first error
+          // If both sides resolve with an error, continue with the errors
+          // appended in order.
           if (lhs !== EMPTY && util.isLeft(lhs) && rhs !== EMPTY && util.isLeft(rhs)) {
-            fail    = step === lhs ? rhs : lhs;
+            fail    = util.left(
+                        step === lhs
+                        ? head.extra(util.fromLeft(rhs))(util.fromLeft(lhs))
+                        : head.extra(util.fromLeft(lhs))(util.fromLeft(rhs))
+                      );
             step    = null;
             head._3 = fail;
           } else {
@@ -918,7 +962,7 @@ var Aff = function () {
             if (head) {
               tail = new Aff(CONS, head, tail);
             }
-            head = new Aff(ALT, EMPTY, step._2, EMPTY);
+            head = new Aff(ALT, EMPTY, step._2, EMPTY, step.extra);
             step = step._1;
             break;
           default:
@@ -1031,6 +1075,8 @@ var Aff = function () {
   Aff.Throw       = AffCtr(THROW);
   Aff.Catch       = AffCtr(CATCH);
   Aff.Sync        = AffCtr(SYNC);
+  Aff.SyncEither  = AffCtr(SYNC_EITHER);
+  Aff.SyncUnsafe  = AffCtr(SYNC_UNSAFE);
   Aff.Async       = AffCtr(ASYNC);
   Aff.Bind        = AffCtr(BIND);
   Aff.Bracket     = AffCtr(BRACKET);
@@ -1083,6 +1129,10 @@ exports._fork = function (immediate) {
 
 exports._liftEffect = Aff.Sync;
 
+exports._liftEffectEither = Aff.SyncEither;
+
+exports._liftEffectUnsafe = Aff.SyncUnsafe;
+
 exports._parAffMap = function (f) {
   return function (aff) {
     return Aff.ParMap(f, aff);
@@ -1095,9 +1145,11 @@ exports._parAffApply = function (aff1) {
   };
 };
 
-exports._parAffAlt = function (aff1) {
-  return function (aff2) {
-    return Aff.ParAlt(aff1, aff2);
+exports._parAffAlt = function (append) {
+  return function (aff1) {
+    return function (aff2) {
+      return Aff.ParAlt(aff1, aff2, null, append);
+    };
   };
 };
 

@@ -6,19 +6,22 @@ import Control.Alt ((<|>))
 import Control.Lazy (fix)
 import Control.Monad.Error.Class (throwError, catchError)
 import Control.Parallel (parallel, sequential, parTraverse_)
+import Control.Plus (empty)
 import Data.Array as Array
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..), either, isLeft, isRight)
 import Data.Foldable (sum)
 import Data.Maybe (Maybe(..))
+import Data.Newtype (unwrap)
+import Data.Semigroup.First (First(..))
 import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse)
 import Effect (Effect)
-import Effect.Aff (Aff, Canceler(..), runAff, runAff_, launchAff, makeAff, try, bracket, generalBracket, delay, forkAff, suspendAff, joinFiber, killFiber, never, supervise, Error, error, message)
+import Effect.Aff (Aff, Canceler(..), attempt, bracket, delay, forkAff, generalBracket, joinFiber, killFiber, launchAff, liftEffect', makeAff, never, runAff, runAff_, supervise, suspendAff, try, unsafeLiftEffect)
 import Effect.Aff.Compat as AC
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Console as Console
-import Effect.Exception (throwException)
+import Effect.Exception (Error, error, message, throwException)
 import Effect.Ref (Ref)
 import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
@@ -36,44 +39,50 @@ writeRef r = liftEffect <<< flip Ref.write r
 modifyRef ∷ ∀ m a. MonadEffect m ⇒ Ref a → (a → a) → m a
 modifyRef r = liftEffect <<< flip Ref.modify r
 
-assertEff ∷ String → Either Error Boolean → Effect Unit
+assertEff ∷ ∀ e. Show e ⇒ String → Either e Boolean → Effect Unit
 assertEff s = case _ of
   Left err → do
     Console.log ("[Error] " <> s)
-    throwException err
+    throwException (error (show err))
   Right r → do
     assert' ("Assertion failure " <> s) r
     Console.log ("[OK] " <> s)
 
-runAssert ∷ String → Aff Boolean → Effect Unit
+runAssert ∷ ∀ e. Show e ⇒ String → Aff e Boolean → Effect Unit
 runAssert s = runAff_ (assertEff s)
 
-runAssertEq ∷ ∀ a. Eq a ⇒ String → a → Aff a → Effect Unit
+runAssert' ∷ String → Aff (First Error) Boolean → Effect Unit
+runAssert' = runAssert
+
+runAssertEq ∷ ∀ e a. Show e ⇒ Eq a ⇒ String → a → Aff e a → Effect Unit
 runAssertEq s a = runAff_ (assertEff s <<< map (eq a))
 
-assertEq ∷ ∀ a. Eq a ⇒ String → a → Aff a → Aff Unit
+runAssertEq' ∷ ∀ a. Eq a ⇒ String → a → Aff (First Error) a → Effect Unit
+runAssertEq' = runAssertEq
+
+assertEq ∷ ∀ e a. Show e ⇒ Eq a ⇒ String → a → Aff e a → Aff e Unit
 assertEq s a aff = liftEffect <<< assertEff s <<< map (eq a) =<< try aff
 
-assert ∷ String → Aff Boolean → Aff Unit
+assert ∷ ∀ e. Show e ⇒ String → Aff e Boolean → Aff e Unit
 assert s aff = liftEffect <<< assertEff s =<< try aff
 
-withTimeout ∷ ∀ a. Milliseconds → Aff a → Aff a
+withTimeout ∷ ∀ a. Milliseconds → Aff (First Error) a → Aff (First Error) a
 withTimeout ms aff =
   either throwError pure =<< sequential do
-    parallel (try aff) <|> parallel (delay ms $> Left (error "Timed out"))
+    parallel (try aff) <|> parallel (delay ms $> Left (First (error "Timed out")))
 
 test_pure ∷ Effect Unit
-test_pure = runAssertEq "pure" 42 (pure 42)
+test_pure = runAssertEq' "pure" 42 (pure 42)
 
 test_bind ∷ Effect Unit
-test_bind = runAssertEq "bind" 44 do
+test_bind = runAssertEq' "bind" 44 do
   n1 ← pure 42
   n2 ← pure (n1 + 1)
   n3 ← pure (n2 + 1)
   pure n3
 
 test_try ∷ Effect Unit
-test_try = runAssert "try" do
+test_try = runAssert' "try" do
   n ← try (pure 42)
   case n of
     Right 42 → pure true
@@ -85,18 +94,70 @@ test_throw = runAssert "try/throw" do
   pure (isLeft n)
 
 test_liftEffect ∷ Effect Unit
-test_liftEffect = runAssertEq "liftEffect" 42 do
+test_liftEffect = runAssertEq' "liftEffect" 42 do
   ref ← newRef 0
   liftEffect do
     writeRef ref 42
     readRef ref
 
-test_delay ∷ Aff Unit
+test_liftEffect_throw ∷ Effect Unit
+test_liftEffect_throw = runAssertEq' "liftEffect/throw" "exception" do
+  ref ← newRef ""
+  fbr ← (forkAff <<< supervise) do
+    generalBracket (pure unit)
+      { killed: \err _ → writeRef ref (message err)
+      , failed: \_ _ → writeRef ref "Nope."
+      , completed: \_ _ → writeRef ref "Nope."
+      }
+      (\_ → liftEffect (throwException (error "exception")))
+  delay (Milliseconds 10.0)
+  readRef ref
+
+test_liftEffect'_Right ∷ Effect Unit
+test_liftEffect'_Right = runAssertEq' "liftEffect'/Right" 1 do
+  liftEffect' (pure (Right 1))
+
+test_liftEffect'_Left ∷ Effect Unit
+test_liftEffect'_Left = runAssertEq "liftEffect'/Left" (Left 1) do
+  (try (liftEffect' (pure (Left 1))) ∷ Aff Int (Either Int Unit))
+--
+
+test_liftEffect'_throw ∷ Effect Unit
+test_liftEffect'_throw = runAssertEq' "liftEffect'/throw" "exception" do
+  ref ← newRef ""
+  fbr ← (forkAff <<< supervise) do
+    generalBracket (pure unit)
+      { killed: \err _ → writeRef ref (message err)
+      , failed: \_ _ → writeRef ref "Nope."
+      , completed: \_ _ → writeRef ref "Nope."
+      }
+      (\_ → liftEffect' (throwException (error "exception")))
+  delay (Milliseconds 10.0)
+  readRef ref
+
+test_unsafeLiftEffect_pure ∷ Effect Unit
+test_unsafeLiftEffect_pure = runAssertEq "unsafeLiftEffect/pure" 1 do
+  (unsafeLiftEffect (pure 1) ∷ Aff Unit Int)
+
+test_unsafeLiftEffect_throw ∷ Effect Unit
+test_unsafeLiftEffect_throw = runAssertEq' "unsafeLiftEffect/throw" "exception" do
+  ref ← newRef ""
+  fbr ← (forkAff <<< supervise) do
+    generalBracket (pure unit)
+      { killed: \_ _ → writeRef ref "Nope."
+      , failed: \err _ → writeRef ref err
+      , completed: \_ _ → writeRef ref "Nope."
+      }
+      (\_ → unsafeLiftEffect (throwAnything "exception"))
+  delay (Milliseconds 10.0)
+  readRef ref
+
+test_delay ∷ ∀ e. Show e ⇒ Aff e Unit
 test_delay = assert "delay" do
   delay (Milliseconds 1000.0)
   pure true
 
-test_fork ∷ Aff Unit
+test_fork ∷ Aff (First Error) Unit
 test_fork = assert "fork" do
   ref ← newRef ""
   fiber ← forkAff do
@@ -107,7 +168,7 @@ test_fork = assert "fork" do
   _ ← modifyRef ref (_ <> "parent")
   eq "gochildparent" <$> readRef ref
 
-test_join ∷ Aff Unit
+test_join ∷ Aff (First Error) Unit
 test_join = assert "join" do
   ref ← newRef ""
   fiber ← forkAff do
@@ -117,19 +178,19 @@ test_join = assert "join" do
   _ ← modifyRef ref (_ <> "parent")
   eq "parentchild" <$> joinFiber fiber
 
-test_join_throw ∷ Aff Unit
+test_join_throw ∷ Aff (First Error) Unit
 test_join_throw = assert "join/throw" do
   fiber ← forkAff do
     delay (Milliseconds 10.0)
-    throwError (error "Nope.")
+    throwError (First (error "Nope."))
   isLeft <$> try (joinFiber fiber)
 
-test_join_throw_sync ∷ Aff Unit
+test_join_throw_sync ∷ Aff (First Error) Unit
 test_join_throw_sync = assert "join/throw/sync" do
-  fiber ← forkAff (throwError (error "Nope."))
+  fiber ← forkAff (throwError (First (error "Nope.")))
   isLeft <$> try (joinFiber fiber)
 
-test_multi_join ∷ Aff Unit
+test_multi_join ∷ Aff (First Error) Unit
 test_multi_join = assert "join/multi" do
   ref ← newRef 1
   f1 ← forkAff do
@@ -149,7 +210,7 @@ test_multi_join = assert "join/multi" do
   n2 ← readRef ref
   pure (sum n1 == 50 && n2 == 3)
 
-test_suspend ∷ Aff Unit
+test_suspend ∷ Aff (First Error) Unit
 test_suspend = assert "suspend" do
   ref ← newRef ""
   fiber ← suspendAff do
@@ -161,7 +222,7 @@ test_suspend = assert "suspend" do
   _ ← joinFiber fiber
   eq "goparentchild" <$> readRef ref
 
-test_makeAff ∷ Aff Unit
+test_makeAff ∷ Aff (First Error) Unit
 test_makeAff = assert "makeAff" do
   ref1 ← newRef Nothing
   ref2 ← newRef 0
@@ -179,7 +240,7 @@ test_makeAff = assert "makeAff" do
       eq 42 <$> readRef ref2
     Nothing → pure false
 
-test_bracket ∷ Aff Unit
+test_bracket ∷ ∀ e. Show e ⇒ Aff e Unit
 test_bracket = assert "bracket" do
   ref ← newRef []
   let
@@ -200,7 +261,7 @@ test_bracket = assert "bracket" do
     , "foo/release"
     ]
 
-test_bracket_nested ∷ Aff Unit
+test_bracket_nested ∷ ∀ e. Show e ⇒ Aff e Unit
 test_bracket_nested = assert "bracket/nested" do
   ref ← newRef []
   let
@@ -229,7 +290,7 @@ test_bracket_nested = assert "bracket/nested" do
     , "foo/bar/run/release/bar/release"
     ]
 
-test_general_bracket ∷ Aff Unit
+test_general_bracket ∷ Aff (First Error) Unit
 test_general_bracket = assert "bracket/general" do
   ref ← newRef ""
   let
@@ -240,7 +301,7 @@ test_general_bracket = assert "bracket/general" do
     bracketAction s =
       generalBracket (action s)
         { killed: \error s' → void $ action (s' <> "/kill/" <> message error)
-        , failed: \error s' → void $ action (s' <> "/throw/" <> message error)
+        , failed: \(First error) s' → void $ action (s' <> "/throw/" <> message error)
         , completed: \r s' → void $ action (s' <> "/release/" <> r)
         }
 
@@ -249,7 +310,7 @@ test_general_bracket = assert "bracket/general" do
   killFiber (error "z") f1
   r1 ← try $ joinFiber f1
 
-  f2 ← forkAff $ bracketAction "bar" (const (throwError $ error "b"))
+  f2 ← forkAff $ bracketAction "bar" (const (throwError $ First (error "b")))
   r2 ← try $ joinFiber f2
 
   f3 ← forkAff $ bracketAction "baz" (const (action "c"))
@@ -258,7 +319,7 @@ test_general_bracket = assert "bracket/general" do
   r4 ← readRef ref
   pure (isLeft r1 && isLeft r2 && isRight r3 && r4 == "foofoo/kill/zbarbar/throw/bbazcbaz/release/c")
 
-test_supervise ∷ Aff Unit
+test_supervise ∷ Aff (First Error) Unit
 test_supervise = assert "supervise" do
   ref ← newRef ""
   r1 ← supervise do
@@ -277,13 +338,13 @@ test_supervise = assert "supervise" do
   r2 ← readRef ref
   pure (r1 == "done" && r2 == "acquiredonerelease")
 
-test_kill ∷ Aff Unit
+test_kill ∷ Aff (First Error) Unit
 test_kill = assert "kill" do
   fiber ← forkAff never
   killFiber (error "Nope") fiber
   isLeft <$> try (joinFiber fiber)
 
-test_kill_canceler ∷ Aff Unit
+test_kill_canceler ∷ Aff (First Error) Unit
 test_kill_canceler = assert "kill/canceler" do
   ref ← newRef ""
   fiber ← forkAff do
@@ -295,9 +356,9 @@ test_kill_canceler = assert "kill/canceler" do
   killFiber (error "Nope") fiber
   res ← try (joinFiber fiber)
   n ← readRef ref
-  pure (n == "cancel" && (lmap message res) == Left "Nope")
+  pure (n == "cancel" && (lmap (message <<< unwrap) res) == Left "Nope")
 
-test_kill_bracket ∷ Aff Unit
+test_kill_bracket ∷ Aff (First Error) Unit
 test_kill_bracket = assert "kill/bracket" do
   ref ← newRef ""
   let
@@ -314,7 +375,7 @@ test_kill_bracket = assert "kill/bracket" do
   _ ← try (joinFiber fiber)
   eq "ab" <$> readRef ref
 
-test_kill_bracket_nested ∷ Aff Unit
+test_kill_bracket_nested ∷ Aff (First Error) Unit
 test_kill_bracket_nested = assert "kill/bracket/nested" do
   ref ← newRef []
   let
@@ -344,7 +405,7 @@ test_kill_bracket_nested = assert "kill/bracket/nested" do
     , "foo/bar/run/release/bar/release"
     ]
 
-test_kill_supervise ∷ Aff Unit
+test_kill_supervise ∷ Aff (First Error) Unit
 test_kill_supervise = assert "kill/supervise" do
   ref ← newRef ""
   let
@@ -367,17 +428,17 @@ test_kill_supervise = assert "kill/supervise" do
   delay (Milliseconds 20.0)
   eq "acquirefooacquirebarkillfookillbar" <$> readRef ref
 
-test_kill_finalizer_catch ∷ Aff Unit
+test_kill_finalizer_catch ∷ Aff (First Error) Unit
 test_kill_finalizer_catch = assert "kill/finalizer/catch" do
   ref ← newRef ""
   fiber ← forkAff $ bracket
     (delay (Milliseconds 10.0))
-    (\_ → throwError (error "Finalizer") `catchError` \_ → writeRef ref "caught")
+    (\_ → throwError (First (error "Finalizer")) `catchError` \_ → writeRef ref "caught")
     (\_ → pure unit)
   killFiber (error "Nope") fiber
   eq "caught" <$> readRef ref
 
-test_kill_finalizer_bracket ∷ Aff Unit
+test_kill_finalizer_bracket ∷ Aff (First Error) Unit
 test_kill_finalizer_bracket = assert "kill/finalizer/bracket" do
   ref ← newRef ""
   fiber ← forkAff $ bracket
@@ -392,7 +453,7 @@ test_kill_finalizer_bracket = assert "kill/finalizer/bracket" do
   killFiber (error "Nope") fiber
   eq "completed" <$> readRef ref
 
-test_parallel ∷ Aff Unit
+test_parallel ∷ Aff (First Error) Unit
 test_parallel = assert "parallel" do
   ref ← newRef ""
   let
@@ -409,7 +470,7 @@ test_parallel = assert "parallel" do
   r2 ← joinFiber f1
   pure (r1 == "foobar" && r2.a == "foo" && r2.b == "bar")
 
-test_parallel_throw ∷ Aff Unit
+test_parallel_throw ∷ Aff (First Error) Unit
 test_parallel_throw = assert "parallel/throw" $ withTimeout (Milliseconds 100.0) do
   ref ← newRef ""
   let
@@ -419,12 +480,12 @@ test_parallel_throw = assert "parallel/throw" $ withTimeout (Milliseconds 100.0)
       pure s
   r1 ← try $ sequential $
     { a: _, b: _ }
-      <$> parallel (action 10.0 "foo" *> throwError (error "Nope"))
+      <$> parallel (action 10.0 "foo" *> throwError (First (error "Nope")))
       <*> parallel never
   r2 ← readRef ref
   pure (isLeft r1 && r2 == "foo")
 
-test_kill_parallel ∷ Aff Unit
+test_kill_parallel ∷ Aff (First Error) Unit
 test_kill_parallel = assert "kill/parallel" do
   ref ← newRef ""
   let
@@ -445,7 +506,7 @@ test_kill_parallel = assert "kill/parallel" do
   _ ← try $ joinFiber f2
   eq "killedfookilledbardone" <$> readRef ref
 
-test_parallel_alt ∷ Aff Unit
+test_parallel_alt ∷ Aff (First Error) Unit
 test_parallel_alt = assert "parallel/alt" do
   ref ← newRef ""
   let
@@ -460,15 +521,15 @@ test_parallel_alt = assert "parallel/alt" do
   r2 ← joinFiber f1
   pure (r1 == "bar" && r2 == "bar")
 
-test_parallel_alt_throw ∷ Aff Unit
+test_parallel_alt_throw ∷ Aff (First Error) Unit
 test_parallel_alt_throw = assert "parallel/alt/throw" do
   r1 ← sequential $
-    parallel (delay (Milliseconds 10.0) *> throwError (error "Nope."))
+    parallel (delay (Milliseconds 10.0) *> throwError (First (error "Nope.")))
     <|> parallel (delay (Milliseconds 11.0) $> "foo")
     <|> parallel (delay (Milliseconds 12.0) $> "bar")
   pure (r1 == "foo")
 
-test_parallel_alt_sync ∷ Aff Unit
+test_parallel_alt_sync ∷ Aff (First Error) Unit
 test_parallel_alt_sync = assert "parallel/alt/sync" do
   ref ← newRef ""
   let
@@ -484,7 +545,7 @@ test_parallel_alt_sync = assert "parallel/alt/sync" do
   r2 ← readRef ref
   pure (r1 == "foo" && r2 == "fookilledfoo")
 
-test_parallel_mixed ∷ Aff Unit
+test_parallel_mixed ∷ Aff (First Error) Unit
 test_parallel_mixed = assert "parallel/mixed" do
   ref ← newRef ""
   let
@@ -505,7 +566,7 @@ test_parallel_mixed = assert "parallel/mixed" do
   r4 ← readRef ref
   pure (r1 == "a" && r2 == "b" && r3 == "de" && r4 == "abde")
 
-test_kill_parallel_alt ∷ Aff Unit
+test_kill_parallel_alt ∷ Aff (First Error) Unit
 test_kill_parallel_alt = assert "kill/parallel/alt" do
   ref ← newRef ""
   let
@@ -526,7 +587,7 @@ test_kill_parallel_alt = assert "kill/parallel/alt" do
   _ ← try $ joinFiber f2
   eq "killedfookilledbardone" <$> readRef ref
 
-test_kill_parallel_alt_finalizer ∷ Aff Unit
+test_kill_parallel_alt_finalizer ∷ Aff (First Error) Unit
 test_kill_parallel_alt_finalizer = assert "kill/parallel/alt/finalizer" do
   ref ← newRef ""
   f1 ← forkAff $ sequential $
@@ -545,7 +606,25 @@ test_kill_parallel_alt_finalizer = assert "kill/parallel/alt/finalizer" do
   _ ← try $ joinFiber f2
   eq "killeddone" <$> readRef ref
 
-test_fiber_map ∷ Aff Unit
+test_parallel_alt_semigroup ∷ Aff (First Error) Unit
+test_parallel_alt_semigroup = assertEq "parallel/alt/semigroup"
+  (Left [1,2] ∷ Either (Array Int) Unit) do
+    attempt <<< sequential $
+      -- Delay to test ordering.
+          parallel (delay (Milliseconds 1.0) *> throwError [1])
+      <|> parallel (throwError [2])
+
+test_parallel_alt_monoid ∷ Aff (First Error) Unit
+test_parallel_alt_monoid = assertEq "parallel/alt/monoid"
+  (Left [1,2] ∷ Either (Array Int) Unit) do
+    attempt <<< sequential $
+      -- Delay to test ordering.
+          parallel (throwError [1])
+      <|> empty
+      <|> parallel (delay (Milliseconds 1.0) *> throwError [2])
+      <|> empty
+
+test_fiber_map ∷ Aff (First Error) Unit
 test_fiber_map = assert "fiber/map" do
   ref ← newRef 0
   let
@@ -562,7 +641,7 @@ test_fiber_map = assert "fiber/map" do
   n ← readRef ref
   pure (a == 11 && b == 11 && n == 1)
 
-test_fiber_apply ∷ Aff Unit
+test_fiber_apply ∷ Aff (First Error) Unit
 test_fiber_apply = assert "fiber/apply" do
   ref ← newRef 0
   let
@@ -582,7 +661,7 @@ test_fiber_apply = assert "fiber/apply" do
   n ← readRef ref
   pure (a == 22 && b == 22 && n == 1)
 
-test_efffn ∷ Aff Unit
+test_efffn ∷ Aff (First Error) Unit
 test_efffn = assert "efffn" do
   ref ← newRef ""
   let
@@ -599,19 +678,19 @@ test_efffn = assert "efffn" do
   delay (Milliseconds 20.0)
   eq "done" <$> readRef ref
 
-test_parallel_stack ∷ Aff Unit
+test_parallel_stack ∷ Aff (First Error) Unit
 test_parallel_stack = assert "parallel/stack" do
   ref ← newRef 0
   parTraverse_ (modifyRef ref <<< add) (Array.replicate 100000 1)
   eq 100000 <$> readRef ref
 
-test_scheduler_size ∷ Aff Unit
+test_scheduler_size ∷ Aff (First Error) Unit
 test_scheduler_size = assert "scheduler" do
   ref ← newRef 0
   _ ← traverse joinFiber =<< traverse forkAff (Array.replicate 100000 (modifyRef ref (add 1)))
   eq 100000 <$> readRef ref
 
-test_lazy ∷ Aff Unit
+test_lazy ∷ Aff (First Error) Unit
 test_lazy = assert "Lazy Aff" do
   ref ← newRef 0
   fix \loop -> do
@@ -624,14 +703,14 @@ test_lazy = assert "Lazy Aff" do
         pure unit
   eq 10 <$> readRef ref
 
-test_regression_return_fork ∷ Aff Unit
+test_regression_return_fork ∷ Aff (First Error) Unit
 test_regression_return_fork = assert "regression/return-fork" do
   bracket
     (forkAff (pure unit))
     (const (pure unit))
     (const (pure true))
 
-test_regression_par_apply_async_canceler ∷ Aff Unit
+test_regression_par_apply_async_canceler ∷ Aff (First Error) Unit
 test_regression_par_apply_async_canceler = assert "regression/par-apply-async-canceler" do
   ref ← newRef ""
   let
@@ -643,29 +722,22 @@ test_regression_par_apply_async_canceler = assert "regression/par-apply-async-ca
     action2 = do
       delay (Milliseconds 5.0)
       void $ modifyRef ref (_ <> "throw")
-      throwError (error "Nope.")
+      throwError (First (error "Nope."))
 
   catchError
     (sequential (parallel action1 *> parallel action2))
-    \err -> do
+    \(First err) -> do
       val <- readRef ref
       pure (val == "throwdone" && message err == "Nope.")
 
-test_regression_bracket_catch_cleanup ∷ Aff Unit
+test_regression_bracket_catch_cleanup ∷ Aff (First Error) Unit
 test_regression_bracket_catch_cleanup = assert "regression/bracket-catch-cleanup" do
-  res :: Either Error Unit ←
+  res :: Either (First Error) Unit ←
     try $ bracket
       (pure unit)
       (\_ → catchError (pure unit) (const (pure unit)))
-      (\_ → throwError (error "Nope."))
-  pure $ lmap message res == Left "Nope."
-
-test_regression_kill_sync_async ∷ Aff Unit
-test_regression_kill_sync_async = assert "regression/kill-sync-async" do
-  ref ← newRef ""
-  f1 ← forkAff $ makeAff \k -> k (Left (error "Boom.")) *> mempty
-  killFiber (error "Nope.") f1
-  pure true
+      (\_ → throwError (First (error "Nope.")))
+  pure $ lmap (message <<< unwrap) res == Left "Nope."
 
 main ∷ Effect Unit
 main = do
@@ -674,6 +746,12 @@ main = do
   test_try
   test_throw
   test_liftEffect
+  test_liftEffect_throw
+  test_liftEffect'_Right
+  test_liftEffect'_Left
+  test_liftEffect'_throw
+  test_unsafeLiftEffect_pure
+  test_unsafeLiftEffect_throw
 
   void $ launchAff do
     test_delay
@@ -704,6 +782,8 @@ main = do
     test_parallel_mixed
     test_kill_parallel_alt
     test_kill_parallel_alt_finalizer
+    test_parallel_alt_semigroup
+    test_parallel_alt_monoid
     test_lazy
     test_efffn
     test_fiber_map
@@ -714,4 +794,5 @@ main = do
     test_regression_return_fork
     test_regression_par_apply_async_canceler
     test_regression_bracket_catch_cleanup
-    test_regression_kill_sync_async
+
+foreign import throwAnything ∷ ∀ a b. a → Effect b
