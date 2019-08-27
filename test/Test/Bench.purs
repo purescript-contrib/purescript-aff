@@ -4,7 +4,7 @@ import Prelude
 import Control.Monad.Rec.Class (Step(..), tailRecM)
 import Performance.Minibench (bench)
 import Effect (Effect)
-import Effect.Aff as Aff
+import Effect.Aff.General as Aff
 import Effect.Unsafe (unsafePerformEffect)
 import Effect.Console as Console
 

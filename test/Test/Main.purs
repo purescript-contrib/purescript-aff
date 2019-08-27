@@ -17,8 +17,8 @@ import Data.Semigroup.First (First(..))
 import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse)
 import Effect (Effect)
-import Effect.Aff (Aff, Canceler(..), attempt, bracket, delay, forkAff, generalBracket, joinFiber, killFiber, launchAff, liftEffect', makeAff, never, runAff, runAff_, supervise, suspendAff, try, unsafeLiftEffect)
-import Effect.Aff.Compat as AC
+import Effect.Aff.General (Aff, Canceler(..), attempt, bracket, delay, forkAff, generalBracket, joinFiber, killFiber, launchAff, liftEffect', makeAff, never, runAff, runAff_, supervise, suspendAff, try, unsafeLiftEffect)
+import Effect.Aff.General.Compat as AC
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Console as Console
 import Effect.Exception (Error, error, message, throwException)

@@ -1,44 +1,44 @@
 module Effect.Aff.Class where
 
-import Prelude
-import Control.Monad.Cont.Trans (ContT)
-import Control.Monad.Except.Trans (ExceptT)
+import Control.Monad.Cont (ContT, lift)
+import Control.Monad.Except (ExceptT)
 import Control.Monad.List.Trans (ListT)
 import Control.Monad.Maybe.Trans (MaybeT)
-import Control.Monad.Reader.Trans (ReaderT)
-import Control.Monad.RWS.Trans (RWST)
-import Control.Monad.State.Trans (StateT)
-import Control.Monad.Trans.Class (lift)
-import Control.Monad.Writer.Trans (WriterT)
-import Effect.Aff (Aff)
+import Control.Monad.RWS (RWST)
+import Control.Monad.Reader (ReaderT)
+import Control.Monad.State (StateT)
+import Control.Monad.Writer (WriterT)
+import Data.Interval.Duration.Iso (Error)
+import Effect.Aff.General (Aff)
 import Effect.Class (class MonadEffect)
+import Prelude (class Monoid, type (~>), identity, (<<<))
 
-class MonadEffect m ⇐ MonadAff e m | m → e where
-  liftAff ∷ Aff e ~> m
+class MonadEffect m ⇐ MonadAff m where
+  liftAff ∷ Aff Error ~> m
 
-instance monadAffAff ∷ MonadAff e (Aff e) where
+instance monadAffAff ∷ MonadAff (Aff Error) where
   liftAff = identity
 
-instance monadAffContT ∷ MonadAff e m ⇒ MonadAff e (ContT r m) where
+instance monadAffContT ∷ MonadAff m ⇒ MonadAff (ContT r m) where
   liftAff = lift <<< liftAff
 
-instance monadAffExceptT ∷ MonadAff e m ⇒ MonadAff e (ExceptT e m) where
+instance monadAffExceptT ∷ MonadAff m ⇒ MonadAff (ExceptT Error m) where
   liftAff = lift <<< liftAff
 
-instance monadAffListT ∷ MonadAff e m ⇒ MonadAff e (ListT m) where
+instance monadAffListT ∷ MonadAff m ⇒ MonadAff (ListT m) where
   liftAff = lift <<< liftAff
 
-instance monadAffMaybe ∷ MonadAff e m ⇒ MonadAff e (MaybeT m) where
+instance monadAffMaybe ∷ MonadAff m ⇒ MonadAff (MaybeT m) where
   liftAff = lift <<< liftAff
 
-instance monadAffReader ∷ MonadAff e m ⇒ MonadAff e (ReaderT r m) where
+instance monadAffReader ∷ MonadAff m ⇒ MonadAff (ReaderT r m) where
   liftAff = lift <<< liftAff
 
-instance monadAffRWS ∷ (MonadAff e m, Monoid w) ⇒ MonadAff e (RWST r w s m) where
+instance monadAffRWS ∷ (MonadAff m, Monoid w) ⇒ MonadAff (RWST r w s m) where
   liftAff = lift <<< liftAff
 
-instance monadAffState ∷ MonadAff e m ⇒ MonadAff e (StateT s m) where
+instance monadAffState ∷ MonadAff m ⇒ MonadAff (StateT s m) where
   liftAff = lift <<< liftAff
 
-instance monadAffWriter ∷ (MonadAff e m, Monoid w) ⇒ MonadAff e (WriterT w m) where
+instance monadAffWriter ∷ (MonadAff m, Monoid w) ⇒ MonadAff (WriterT w m) where
   liftAff = lift <<< liftAff
