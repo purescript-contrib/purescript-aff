@@ -5,6 +5,7 @@ import Prelude
 import Control.Alt ((<|>))
 import Control.Lazy (fix)
 import Control.Monad.Error.Class (throwError, catchError)
+import Control.Monad.Rec.Class (forever)
 import Control.Parallel (parallel, sequential, parTraverse_)
 import Control.Plus (empty)
 import Data.Array as Array
@@ -17,7 +18,7 @@ import Data.Semigroup.First (First(..))
 import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse)
 import Effect (Effect)
-import Effect.Aff.General (Aff, Canceler(..), attempt, bracket, delay, forkAff, generalBracket, joinFiber, killFiber, launchAff, liftEffect', makeAff, never, runAff, runAff_, supervise, suspendAff, try, unsafeLiftEffect)
+import Effect.Aff.General (Aff, Canceler(..), FiberStatus(..), attempt, bracket, delay, forkAff, generalBracket, joinFiber, killFiber, launchAff, liftEffect', makeAff, never, runAff, runAff_, status, supervise, suspendAff, try, unsafeLiftEffect)
 import Effect.Aff.General.Compat as AC
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Console as Console
@@ -25,7 +26,7 @@ import Effect.Exception (Error, error, message, throwException)
 import Effect.Ref (Ref)
 import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
-import Test.Assert (assert')
+import Test.Assert (assert', assertEqual)
 
 newRef ∷ ∀ m a. MonadEffect m ⇒ a → m (Ref a)
 newRef = liftEffect <<< Ref.new
@@ -739,6 +740,59 @@ test_regression_bracket_catch_cleanup = assert "regression/bracket-catch-cleanup
       (\_ → throwError (First (error "Nope.")))
   pure $ lmap (message <<< unwrap) res == Left "Nope."
 
+test_fiber_status_suspended ∷ Aff (First Error) Unit
+test_fiber_status_suspended = assert "fiber/status/suspended" do
+  t ← suspendAff (pure unit)
+  liftEffect ado
+    t_status ← status t
+    in case t_status of
+      Suspended → true
+      _         → false
+
+test_fiber_status_completed ∷ Aff (First Error) Unit
+test_fiber_status_completed = assert "fiber/status/completed" do
+  t ← forkAff (pure "done")
+  _ ← joinFiber t
+  liftEffect ado
+    t_status ← status t
+    in case t_status of
+      Completed (Right r) → r == "done"
+      _                   → false
+
+test_fiber_status_running ∷ Aff (First Error) Unit
+test_fiber_status_running = assert "fiber/status/running" do
+  t ← forkAff (delay (Milliseconds 1000.0))
+  liftEffect ado
+    t_status ← status t
+    in case t_status of
+      Running → true
+      _       → false
+
+test_fiber_status_killed ∷ Aff (First Error) Unit
+test_fiber_status_killed = assert "fiber/status/killed" do
+  t ← forkAff (forever (delay (Milliseconds 1000.0)))
+  killFiber (error "die") t
+  liftEffect ado
+    t_status ← status t
+    in case t_status of
+      Killed e → message e == "die"
+      _        → false
+
+test_fiber_status_dying ∷ Aff (First Error) Unit
+test_fiber_status_dying = assert "fiber/status/dying" do
+  t ← forkAff ( bracket
+                (pure unit)
+                (\_ → delay (Milliseconds 1000.0))
+                (\_ → pure unit)
+              )
+  _ ← forkAff (killFiber (error "die") t)
+  delay (Milliseconds 20.0)
+  liftEffect ado
+    t_status ← status t
+    in case t_status of
+      Dying e → message e == "die"
+      _       → false
+
 main ∷ Effect Unit
 main = do
   test_pure
@@ -794,5 +848,10 @@ main = do
     test_regression_return_fork
     test_regression_par_apply_async_canceler
     test_regression_bracket_catch_cleanup
+    test_fiber_status_suspended
+    test_fiber_status_completed
+    test_fiber_status_running
+    test_fiber_status_killed
+    test_fiber_status_dying
 
 foreign import throwAnything ∷ ∀ a b. a → Effect b

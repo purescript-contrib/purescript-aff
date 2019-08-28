@@ -585,10 +585,13 @@ var Aff = function () {
             }, 0);
           }
           return;
+
         case SUSPENDED:
           status = CONTINUE;
           break;
+
         case PENDING: return;
+
         }
       }
     }
@@ -691,6 +694,21 @@ var Aff = function () {
             });
           } else {
             run(runTick);
+          }
+        }
+      },
+      status: function () {
+        if (interrupt === null) {
+          switch (status) {
+            case SUSPENDED: return util.statusSuspended;
+            case COMPLETED: return util.statusCompleted(step);
+            default:        return util.statusRunning;
+          }
+        }
+        else {
+          switch (status) {
+            case COMPLETED: return util.statusKilled(util.fromLeft(interrupt));
+            default:        return util.statusDying(util.fromLeft(interrupt));
           }
         }
       }

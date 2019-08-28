@@ -1,6 +1,7 @@
 module Effect.Aff.General
   ( Aff
   , Fiber
+  , FiberStatus(..)
   , ParAff(..)
   , Canceler(..)
   , makeAff
@@ -30,6 +31,7 @@ module Effect.Aff.General
   , nonCanceler
   , effectCanceler
   , fiberCanceler
+  , status
   , module Exports
   ) where
 
@@ -161,6 +163,7 @@ newtype Fiber e a = Fiber
   , join ∷ (Either e a → Effect Unit) → Effect (Effect Unit)
   , onComplete ∷ OnComplete e a → Effect (Effect Unit)
   , isSuspended ∷ Effect Boolean
+  , status ∷ Effect (FiberStatus e a)
   }
 
 instance functorFiber ∷ Functor (Fiber e) where
@@ -191,6 +194,16 @@ liftEffect' = _liftEffectEither
 -- | Assumes that any thrown error is of type e.
 unsafeLiftEffect ∷ ∀ e a. Effect a → Aff e a
 unsafeLiftEffect = _liftEffectUnsafe
+
+data FiberStatus e a
+  = Suspended
+  | Completed (Either e a)
+  | Running
+  | Killed Error
+  | Dying Error
+
+status ∷ ∀ e a. Fiber e a → Effect (FiberStatus e a)
+status (Fiber t) = t.status
 
 -- | A cancellation effect for actions run via `makeAff`. If a `Fiber` is
 -- | killed, and an async action is pending, the canceler will be called to
@@ -389,6 +402,11 @@ newtype FFIUtil = FFIUtil
   , fromRight ∷ ∀ a b. Either a b → b
   , left ∷ ∀ a b. a → Either a b
   , right ∷ ∀ a b. b → Either a b
+  , statusSuspended ∷ ∀ e a. FiberStatus e a
+  , statusCompleted ∷ ∀ e a. Either e a → FiberStatus e a
+  , statusRunning ∷ ∀ e a. FiberStatus e a
+  , statusKilled ∷ ∀ e a. Error → FiberStatus e a
+  , statusDying ∷ ∀ e a. Error → FiberStatus e a
   }
 
 ffiUtil ∷ FFIUtil
@@ -398,6 +416,11 @@ ffiUtil = FFIUtil
   , fromRight: unsafeFromRight
   , left: Left
   , right: Right
+  , statusSuspended: Suspended
+  , statusCompleted: Completed
+  , statusRunning: Running
+  , statusKilled: Killed
+  , statusDying: Dying
   }
   where
   isLeft ∷ ∀ a b. Either a b → Boolean
