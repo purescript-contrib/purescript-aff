@@ -37,17 +37,17 @@ where
 import Control.Monad.Error.Class (try, throwError, catchError) as Exports
 import Control.Parallel.Class (sequential, parallel) as Exports
 import Data.Either (Either)
-import Data.Time.Duration (Milliseconds)
 import Data.Time.Duration (Milliseconds(..)) as Exports
+import Data.Time.Duration (Milliseconds)
 import Effect (Effect)
 import Effect.Aff.General as G
 import Effect.Exception (Error)
 import Effect.Exception (Error, error, message) as Exports
-import Prelude (type (~>), Unit)
+import Prelude (type (~>), Unit, (<<<))
 
 type Aff = G.Aff Error
 
-type Canceler = G.Canceler Error
+type Canceler = G.Canceler
 
 type BracketConditions a b = G.BracketConditions Error a b
 
@@ -148,7 +148,7 @@ apathize = G.apathize
 -- | Runs the first effect after the second, regardless of whether it completed
 -- | successfully or the fiber was cancelled.
 finally ∷ ∀ a. Aff Unit → Aff a → Aff a
-finally = G.finally
+finally = G.finally <<< G.apathize
 
 -- | Runs an effect such that it cannot be killed.
 invincible ∷ ∀ a. Aff a → Aff a
@@ -165,7 +165,7 @@ cancelWith = G.cancelWith
 -- | acquisition nor disposal may be cancelled and are guaranteed to run until
 -- | they complete.
 bracket ∷ ∀ a b. Aff a → (a → Aff Unit) → (a → Aff b) → Aff b
-bracket = G.bracket
+bracket acquire release = G.bracket acquire (\a → G.catch (release a) G.panic)
 
 -- | Creates a new supervision context for some `Aff`, guaranteeing fiber
 -- | cleanup when the parent completes. Any pending fibers forked within

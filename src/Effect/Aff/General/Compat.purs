@@ -11,15 +11,15 @@ module Effect.Aff.General.Compat
 import Prelude
 
 import Data.Either (Either(..))
-import Effect.Aff.General (Aff, Canceler(..), makeAff, nonCanceler)
+import Effect.Aff.General (Aff, Canceler(..), catch, makeAff, nonCanceler, panic)
 import Effect.Exception (Error)
 import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, mkEffectFn1, mkEffectFn2, mkEffectFn3, runEffectFn1, runEffectFn2, runEffectFn3)
 
 type EffectFnCb a = EffectFn1 a Unit
 
-newtype EffectFnAff e a = EffectFnAff (EffectFn2 (EffectFnCb e) (EffectFnCb a) (EffectFnCanceler e))
+newtype EffectFnAff e a = EffectFnAff (EffectFn2 (EffectFnCb e) (EffectFnCb a) EffectFnCanceler)
 
-newtype EffectFnCanceler e = EffectFnCanceler (EffectFn3 Error (EffectFnCb e) (EffectFnCb Unit) Unit)
+newtype EffectFnCanceler = EffectFnCanceler (EffectFn3 Error (EffectFnCb Error) (EffectFnCb Unit) Unit)
 
 -- | Lift a FFI definition into an `Aff`. `EffectFnAff` makes use of `EffectFn` so
 -- | `Effect` thunks are unnecessary. A definition might follow this example:
@@ -49,6 +49,10 @@ newtype EffectFnCanceler e = EffectFnCanceler (EffectFn3 Error (EffectFnCb e) (E
 fromEffectFnAff ∷ ∀ e. EffectFnAff e ~> Aff e
 fromEffectFnAff (EffectFnAff eff) = makeAff \k → do
   EffectFnCanceler canceler ← runEffectFn2 eff (mkEffectFn1 (k <<< Left)) (mkEffectFn1 (k <<< Right))
-  pure $ Canceler \e → makeAff \k2 → do
-    runEffectFn3 canceler e (mkEffectFn1 (k2 <<< Left)) (mkEffectFn1 (k2 <<< Right))
-    pure nonCanceler
+  pure $ Canceler \e →
+    catch
+    ( makeAff \k2 → ado
+         runEffectFn3 canceler e (mkEffectFn1 (k2 <<< Left)) (mkEffectFn1 (k2 <<< Right))
+      in nonCanceler
+    )
+    panic

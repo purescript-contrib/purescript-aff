@@ -18,7 +18,7 @@ import Data.Semigroup.First (First(..))
 import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse)
 import Effect (Effect)
-import Effect.Aff.General (Aff, Canceler(..), FiberStatus(..), attempt, bracket, delay, forkAff, generalBracket, joinFiber, killFiber, launchAff, liftEffect', makeAff, never, runAff, runAff_, status, supervise, suspendAff, try, unsafeLiftEffect)
+import Effect.Aff.General (Aff, Canceler(..), FiberStatus(..), absurdL, attempt, bracket, catch, delay, forkAff, generalBracket, joinFiber, killFiber, launchAff, liftEffect', makeAff, never, panic, runAff, runAff_, status, supervise, suspendAff, try, unsafeLiftEffect)
 import Effect.Aff.General.Compat as AC
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Console as Console
@@ -26,7 +26,7 @@ import Effect.Exception (Error, error, message, throwException)
 import Effect.Ref (Ref)
 import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
-import Test.Assert (assert', assertEqual)
+import Test.Assert (assert')
 
 newRef ∷ ∀ m a. MonadEffect m ⇒ a → m (Ref a)
 newRef = liftEffect <<< Ref.new
@@ -241,7 +241,7 @@ test_makeAff = assert "makeAff" do
       eq 42 <$> readRef ref2
     Nothing → pure false
 
-test_bracket ∷ ∀ e. Show e ⇒ Aff e Unit
+test_bracket ∷ Aff Void Unit
 test_bracket = assert "bracket" do
   ref ← newRef []
   let
@@ -254,7 +254,7 @@ test_bracket = assert "bracket" do
     readRef ref
   _ ← bracket
     (action "foo")
-    (\s → void $ action (s <> "/release"))
+    (\s → action (s <> "/release") # void)
     (\s → action (s <> "/run"))
   joinFiber fiber <#> eq
     [ "foo"
@@ -262,7 +262,7 @@ test_bracket = assert "bracket" do
     , "foo/release"
     ]
 
-test_bracket_nested ∷ ∀ e. Show e ⇒ Aff e Unit
+test_bracket_nested ∷ Aff Void Unit
 test_bracket_nested = assert "bracket/nested" do
   ref ← newRef []
   let
@@ -300,13 +300,13 @@ test_general_bracket = assert "bracket/general" do
       _ ← modifyRef ref (_ <> s)
       pure s
     bracketAction s =
-      generalBracket (action s)
+      generalBracket (action s # absurdL)
         { killed: \error s' → void $ action (s' <> "/kill/" <> message error)
         , failed: \(First error) s' → void $ action (s' <> "/throw/" <> message error)
         , completed: \r s' → void $ action (s' <> "/release/" <> r)
         }
 
-  f1 ← forkAff $ bracketAction "foo" (const (action "a"))
+  f1 ← forkAff $ bracketAction "foo" (const (action "a" # absurdL))
   delay (Milliseconds 5.0)
   killFiber (error "z") f1
   r1 ← try $ joinFiber f1
@@ -314,7 +314,7 @@ test_general_bracket = assert "bracket/general" do
   f2 ← forkAff $ bracketAction "bar" (const (throwError $ First (error "b")))
   r2 ← try $ joinFiber f2
 
-  f3 ← forkAff $ bracketAction "baz" (const (action "c"))
+  f3 ← forkAff $ bracketAction "baz" (const (action "c" # absurdL))
   r3 ← try $ joinFiber f3
 
   r4 ← readRef ref
@@ -368,15 +368,15 @@ test_kill_bracket = assert "kill/bracket" do
       void $ modifyRef ref (_ <> n)
   fiber ←
     forkAff $ bracket
-      (action "a")
+      (action "a" # absurdL)
       (\_ → action "b")
-      (\_ → action "c")
+      (\_ → action "c" # absurdL)
   delay (Milliseconds 5.0)
   killFiber (error "Nope") fiber
   _ ← try (joinFiber fiber)
   eq "ab" <$> readRef ref
 
-test_kill_bracket_nested ∷ Aff (First Error) Unit
+test_kill_bracket_nested ∷ Aff Void Unit
 test_kill_bracket_nested = assert "kill/bracket/nested" do
   ref ← newRef []
   let
@@ -434,7 +434,7 @@ test_kill_finalizer_catch = assert "kill/finalizer/catch" do
   ref ← newRef ""
   fiber ← forkAff $ bracket
     (delay (Milliseconds 10.0))
-    (\_ → throwError (First (error "Finalizer")) `catchError` \_ → writeRef ref "caught")
+    (\_ → throwError (First (error "Finalizer")) `catch` \_ → writeRef ref "caught")
     (\_ → pure unit)
   killFiber (error "Nope") fiber
   eq "caught" <$> readRef ref
@@ -793,6 +793,17 @@ test_fiber_status_dying = assert "fiber/status/dying" do
       Dying e → message e == "die"
       _       → false
 
+-- The panic will be thrown globally which will cause the test to fail.
+test_panic ∷ Aff Void Unit
+test_panic = assert "panic" do
+  t ← launchAff (panic (error "panic!")) # liftEffect
+  delay (Milliseconds 20.0)
+  liftEffect ado
+    t_status ← status t
+    in case t_status of
+      Killed e → message e == "panic!"
+      _        → false
+
 main ∷ Effect Unit
 main = do
   test_pure
@@ -816,14 +827,14 @@ main = do
     test_multi_join
     test_suspend
     test_makeAff
-    test_bracket
-    test_bracket_nested
+    test_bracket # absurdL
+    test_bracket_nested # absurdL
     test_general_bracket
     test_supervise
     test_kill
     test_kill_canceler
     test_kill_bracket
-    test_kill_bracket_nested
+    test_kill_bracket_nested # absurdL
     test_kill_supervise
     test_kill_finalizer_catch
     test_kill_finalizer_bracket
@@ -853,5 +864,7 @@ main = do
     test_fiber_status_running
     test_fiber_status_killed
     test_fiber_status_dying
+    -- Turn on to see if panics are working.
+    -- test_panic # absurdL
 
 foreign import throwAnything ∷ ∀ a b. a → Effect b

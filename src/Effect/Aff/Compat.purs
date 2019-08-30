@@ -15,7 +15,7 @@ import Prelude (type (~>))
 
 type EffectFnAff = G.EffectFnAff Error
 
-type EffectFnCanceler = G.EffectFnCanceler Error
+type EffectFnCanceler = G.EffectFnCanceler
 
 fromEffectFnAff ∷ EffectFnAff ~> Aff
 fromEffectFnAff = G.fromEffectFnAff

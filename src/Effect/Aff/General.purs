@@ -18,6 +18,7 @@ module Effect.Aff.General
   , apathize
   , delay
   , never
+  , catch
   , finally
   , invincible
   , killFiber
@@ -26,12 +27,17 @@ module Effect.Aff.General
   , unsafeLiftEffect
   , cancelWith
   , bracket
+  , panic
   , BracketConditions
   , generalBracket
   , nonCanceler
   , effectCanceler
   , fiberCanceler
   , status
+  , lmapFlipped
+  , (#!)
+  , absurdL
+  , absurdR
   , module Exports
   ) where
 
@@ -48,6 +54,7 @@ import Control.Parallel (parSequence_, parallel)
 import Control.Parallel.Class (class Parallel)
 import Control.Parallel.Class (sequential, parallel) as Exports
 import Control.Plus (class Plus, empty)
+import Data.Bifunctor (class Bifunctor, lmap)
 import Data.Either (Either(..))
 import Data.Function.Uncurried as Fn
 import Data.Newtype (class Newtype)
@@ -69,6 +76,9 @@ foreign import data Aff ∷ Type → Type → Type
 
 instance functorAff ∷ Functor (Aff e) where
   map = _map
+
+instance bifunctorAff ∷ Bifunctor Aff where
+  bimap f g m = catch (map g m) (throwError <<< f)
 
 instance applyAff ∷ Apply (Aff e) where
   apply = ap
@@ -159,7 +169,7 @@ type OnComplete e a =
 -- | memoized, so their results are only computed once.
 newtype Fiber e a = Fiber
   { run ∷ Effect Unit
-  , kill ∷ Fn.Fn2 Error (Either e Unit → Effect Unit) (Effect (Effect Unit))
+  , kill ∷ ∀ e. Fn.Fn2 Error (Either e Unit → Effect Unit) (Effect (Effect Unit))
   , join ∷ (Either e a → Effect Unit) → Effect (Effect Unit)
   , onComplete ∷ OnComplete e a → Effect (Effect Unit)
   , isSuspended ∷ Effect Boolean
@@ -177,7 +187,7 @@ instance applicativeFiber ∷ Applicative (Fiber e) where
 
 -- | Invokes pending cancelers in a fiber and runs cleanup effects. Blocks
 -- | until the fiber has fully exited.
-killFiber ∷ ∀ e a. Error → Fiber e a → Aff e Unit
+killFiber ∷ ∀ e1 e2 a. Error → Fiber e1 a → Aff e2 Unit
 killFiber e (Fiber t) = _liftEffect t.isSuspended >>= if _
   then _liftEffect $ void $ Fn.runFn2 t.kill e (const (pure unit))
   else makeAff \k → effectCanceler <$> Fn.runFn2 t.kill e k
@@ -208,28 +218,28 @@ status (Fiber t) = t.status
 -- | A cancellation effect for actions run via `makeAff`. If a `Fiber` is
 -- | killed, and an async action is pending, the canceler will be called to
 -- | clean it up.
-newtype Canceler e = Canceler (Error → Aff e Unit)
+newtype Canceler = Canceler (Error → Aff Void Unit)
 
-derive instance newtypeCanceler ∷ Newtype (Canceler e) _
+derive instance newtypeCanceler ∷ Newtype Canceler _
 
-instance semigroupCanceler ∷ Semigroup (Canceler e) where
+instance semigroupCanceler ∷ Semigroup Canceler where
   append (Canceler c1) (Canceler c2) =
     Canceler \err → parSequence_ [ c1 err, c2 err ]
 
 -- | A no-op `Canceler` can be constructed with `mempty`.
-instance monoidCanceler ∷ Monoid (Canceler e) where
+instance monoidCanceler ∷ Monoid Canceler where
   mempty = nonCanceler
 
 -- | A canceler which does not cancel anything.
-nonCanceler ∷ ∀ e. Canceler e
+nonCanceler ∷ Canceler
 nonCanceler = Canceler (const (pure unit))
 
 -- | A canceler from an Effect action.
-effectCanceler ∷ ∀ e. Effect Unit → Canceler e
+effectCanceler ∷ Effect Unit → Canceler
 effectCanceler = Canceler <<< const <<< liftEffect
 
 -- | A canceler from a Fiber.
-fiberCanceler ∷ ∀ e a. Fiber e a → Canceler e
+fiberCanceler ∷ ∀ e a. Fiber e a → Canceler
 fiberCanceler = Canceler <<< flip killFiber
 
 -- | Forks an `Aff` from an `Effect` context, returning the `Fiber`.
@@ -295,7 +305,7 @@ apathize = attempt >>> map (const unit)
 
 -- | Runs the first effect after the second, regardless of whether it completed
 -- | successfully or the fiber was cancelled.
-finally ∷ ∀ e a. Aff e Unit → Aff e a → Aff e a
+finally ∷ ∀ e a. Aff Void Unit → Aff e a → Aff e a
 finally fin a = bracket (pure unit) (const fin) (const a)
 
 -- | Runs an effect such that it cannot be killed.
@@ -304,7 +314,7 @@ invincible a = bracket a (const (pure unit)) pure
 
 -- | Attaches a custom `Canceler` to an action. If the computation is canceled,
 -- | then the custom `Canceler` will be run afterwards.
-cancelWith ∷ ∀ e a. Aff e a → Canceler e → Aff e a
+cancelWith ∷ ∀ e a. Aff e a → Canceler → Aff e a
 cancelWith aff (Canceler cancel) =
   generalBracket (pure unit)
     { killed: \e _ → cancel e
@@ -318,13 +328,22 @@ cancelWith aff (Canceler cancel) =
 -- | use of the resource. Disposal is always run last, regardless. Neither
 -- | acquisition nor disposal may be cancelled and are guaranteed to run until
 -- | they complete.
-bracket ∷ ∀ e a b. Aff e a → (a → Aff e Unit) → (a → Aff e b) → Aff e b
+bracket ∷ ∀ e a b. Aff e a → (a → Aff Void Unit) → (a → Aff e b) → Aff e b
 bracket acquire completed =
   generalBracket acquire
     { killed: const completed
     , failed: const completed
     , completed: const completed
     }
+
+panic ∷ ∀ e a. Error → Aff e a
+panic = _panic
+
+absurdL ∷ ∀ f a b. Bifunctor f ⇒ f Void b → f a b
+absurdL = unsafeCoerce
+
+absurdR ∷ ∀ f a b. Bifunctor f ⇒ f a Void → f a b
+absurdR = unsafeCoerce
 
 type Supervised e a =
   { fiber ∷ Fiber e a
@@ -347,7 +366,7 @@ supervise aff =
   killError =
     error "[Aff] Child fiber outlived parent"
 
-  killAll ∷ Error → Supervised e a → Aff e Unit
+  killAll ∷ ∀ e2. Error → Supervised e a → Aff e2 Unit
   killAll err sup = makeAff \k →
     Fn.runFn3 _killAll err sup.supervisor (k (pure unit))
 
@@ -373,13 +392,14 @@ foreign import _parAffApply ∷ ∀ e a b. ParAff e (a → b) → ParAff e a →
 foreign import _parAffAlt ∷ ∀ e a. (e → e → e) → ParAff e a → ParAff e a → ParAff e a
 foreign import _makeFiber ∷ ∀ e a. Fn.Fn2 FFIUtil (Aff e a) (Effect (Fiber e a))
 foreign import _makeSupervisedFiber ∷ ∀ e a. Fn.Fn2 FFIUtil (Aff e a) (Effect (Supervised e a))
-foreign import _killAll ∷ ∀ e. Fn.Fn3 Error Supervisor (Effect Unit) (Effect (Canceler e))
+foreign import _killAll ∷ Fn.Fn3 Error Supervisor (Effect Unit) (Effect Canceler)
 foreign import _sequential ∷ ∀ e. ParAff e ~> Aff e
+foreign import _panic ∷ ∀ e a. Error → Aff e a
 
 type BracketConditions e a b =
-  { killed ∷ Error → a → Aff e Unit
-  , failed ∷ e → a → Aff e Unit
-  , completed ∷ b → a → Aff e Unit
+  { killed ∷ Error → a → Aff Void Unit
+  , failed ∷ e → a → Aff Void Unit
+  , completed ∷ b → a → Aff Void Unit
   }
 
 -- | A general purpose bracket which lets you observe the status of the
@@ -391,7 +411,12 @@ foreign import generalBracket ∷ ∀ e a b. Aff e a → BracketConditions e a b
 -- | `Canceler` effect should be returned to cancel the pending action. The
 -- | supplied callback may be invoked only once. Subsequent invocation are
 -- | ignored.
-foreign import makeAff ∷ ∀ e a. ((Either e a → Effect Unit) → Effect (Canceler e)) → Aff e a
+foreign import makeAff ∷ ∀ e a. ((Either e a → Effect Unit) → Effect Canceler) → Aff e a
+
+lmapFlipped ∷ ∀ f a1 b a2. Bifunctor f ⇒ f a1 b → (a1 → a2) → f a2 b
+lmapFlipped = flip lmap
+
+infixl 1 lmapFlipped as #!
 
 makeFiber ∷ ∀ e a. Aff e a → Effect (Fiber e a)
 makeFiber aff = Fn.runFn2 _makeFiber ffiUtil aff

@@ -23,6 +23,7 @@ var Aff = function () {
     | forall b. Bracket (Aff eff b) (BracketConditions eff b) (b -> Aff eff a)
     | forall b. Fork Boolean (Aff eff b) ?(Fiber eff b -> a)
     | Sequential (ParAff aff a)
+    | Panic Error
 
   */
   var PURE    = "Pure";
@@ -36,6 +37,7 @@ var Aff = function () {
   var BRACKET = "Bracket";
   var FORK    = "Fork";
   var SEQ     = "Sequential";
+  var PANIC   = "Panic";
 
   /*
 
@@ -89,15 +91,6 @@ var Aff = function () {
       setTimeout(function () {
         throw error;
       }, 0);
-    }
-  }
-
-  function runAsync(left, eff, k) {
-    try {
-      return eff(k)();
-    } catch (error) {
-      k(left(error))();
-      return nonCanceler;
     }
   }
 
@@ -373,33 +366,46 @@ var Aff = function () {
                 return;
               }
               var skipRun = true;
-              var canceler = runAsync(util.left, tmp, function (result) {
-                return function () {
-                  if (runTick !== localRunTick) {
-                    return;
-                  }
-                  ++runTick;
+              var canceler;
+              try {
+                canceler = tmp(function (result) {
+                  return function () {
+                    if (runTick !== localRunTick) {
+                      return;
+                    }
+                    ++runTick;
+                    status = STEP_RESULT;
+                    step = result;
+                    // Do not recurse on run if we are synchronous with runAsync. 
+                    if (skipRun) {
+                      skipRun = false;
+                    } else {
+                      run(runTick);
+                    }
+                  };  
+                })();
+                // Only update the canceler if the asynchronous action has not
+                // resolved synchronously. If it has, then the next status and
+                // step have already been set.
+                if (skipRun) {
+                  step = canceler;
+                  skipRun = false;
+                }
+                // If runAsync already resolved then the next step needs to be
+                // run.
+                else {
+                  run(runTick);
+                }
+              } catch (error) {
+                interrupt = util.left(errorFromVal(error));
+                if (bracketCount === 0) {
+                  status = RETURN;
+                  step = null;
+                  fail = null;
+                }
+                else {
                   status = STEP_RESULT;
-                  step = result;
-                  // Do not recurse on run if we are synchronous with runAsync. 
-                  if (skipRun) {
-                    skipRun = false;
-                  } else {
-                    run(runTick);
-                  }
-                };
-              });
-              // Only update the canceler if the asynchronous action has not
-              // resolved synchronously. If it has, then the next status and
-              // step have already been set.
-              if (skipRun) {
-                step = canceler;
-                skipRun = false;
-              }
-              // If runAsync already resolved then the next step needs to be
-              // run.
-              else {
-                run(runTick);
+                }
               }
             });
             return;
@@ -455,6 +461,18 @@ var Aff = function () {
             status = CONTINUE;
             step   = sequential(util, supervisor, step._1);
             break;
+
+          case PANIC:
+              interrupt = util.left(step._1);
+              if (bracketCount === 0) {
+                status = RETURN;
+                step = null;
+                fail = null;
+              }
+              else {
+                status = STEP_RESULT;
+              }
+              break;
           }
           break;
 
@@ -1030,7 +1048,11 @@ var Aff = function () {
       root = step;
 
       for (fid = 0; fid < fiberId; fid++) {
-        fibers[fid].run();
+        tmp = fibers[fid];
+        // If a Fiber resolves synchronously then all other Fibers are already
+        // deleted.
+        if (typeof tmp === 'undefined') break;
+        tmp.run();
       }
     }
 
@@ -1100,6 +1122,7 @@ var Aff = function () {
   Aff.Bracket     = AffCtr(BRACKET);
   Aff.Fork        = AffCtr(FORK);
   Aff.Seq         = AffCtr(SEQ);
+  Aff.Panic       = AffCtr(PANIC);
   Aff.ParMap      = AffCtr(MAP);
   Aff.ParApply    = AffCtr(APPLY);
   Aff.ParAlt      = AffCtr(ALT);
@@ -1233,3 +1256,5 @@ exports._delay = function () {
 }();
 
 exports._sequential = Aff.Seq;
+
+exports._panic = Aff.Panic;
