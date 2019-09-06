@@ -39,9 +39,13 @@ module Effect.Aff.General
   , absurdL
   , absurdR
   , wrapL
+  , wrapL'
   , unwrapL
+  , unwrapL'
   , wrapR
+  , wrapR'
   , unwrapR
+  , unwrapR'
   , module Exports
   ) where
 
@@ -352,14 +356,26 @@ absurdR = unsafeCoerce -- rmap absurd
 wrapL ∷ ∀ f a b c. Bifunctor f ⇒ Newtype a b ⇒ f b c → f a c
 wrapL = unsafeCoerce -- lmap wrap
 
+wrapL' ∷ ∀ proxy f a b c. Bifunctor f ⇒ Newtype a b ⇒ proxy a → f b c → f a c
+wrapL' _ = unsafeCoerce -- lmap wrap
+
 unwrapL ∷ ∀ f a b c. Bifunctor f ⇒ Newtype a b ⇒ f a c → f b c
 unwrapL = unsafeCoerce -- lmap unwrap
+
+unwrapL' ∷ ∀ proxy f a b c. Bifunctor f ⇒ Newtype a b ⇒ proxy a → f a c → f b c
+unwrapL' _ = unsafeCoerce -- lmap unwrap
 
 wrapR ∷ ∀ f a b c. Bifunctor f ⇒ Newtype a b ⇒ f c b → f c a
 wrapR = unsafeCoerce -- rmap wrap
 
 unwrapR ∷ ∀ f a b c. Bifunctor f ⇒ Newtype a b ⇒ f c a → f c b
 unwrapR = unsafeCoerce -- rmap unwrap
+
+wrapR' ∷ ∀ proxy f a b c. Bifunctor f ⇒ Newtype a b ⇒ proxy a → f c b → f c a
+wrapR' _ = unsafeCoerce -- rmap wrap
+
+unwrapR' ∷ ∀ proxy f a b c. Bifunctor f ⇒ Newtype a b ⇒ proxy a → f c a → f c b
+unwrapR' _ = unsafeCoerce -- rmap unwrap
 
 type Supervised e a =
   { fiber ∷ Fiber e a
