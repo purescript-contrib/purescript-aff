@@ -38,6 +38,10 @@ module Effect.Aff.General
   , (#!)
   , absurdL
   , absurdR
+  , wrapL
+  , unwrapL
+  , wrapR
+  , unwrapR
   , module Exports
   ) where
 
@@ -340,10 +344,22 @@ panic ∷ ∀ e a. Error → Aff e a
 panic = _panic
 
 absurdL ∷ ∀ f a b. Bifunctor f ⇒ f Void b → f a b
-absurdL = unsafeCoerce
+absurdL = unsafeCoerce -- lmap absurd
 
 absurdR ∷ ∀ f a b. Bifunctor f ⇒ f a Void → f a b
-absurdR = unsafeCoerce
+absurdR = unsafeCoerce -- rmap absurd
+
+wrapL ∷ ∀ f a b c. Bifunctor f ⇒ Newtype a b ⇒ f b c → f a c
+wrapL = unsafeCoerce -- lmap wrap
+
+unwrapL ∷ ∀ f a b c. Bifunctor f ⇒ Newtype a b ⇒ f a c → f b c
+unwrapL = unsafeCoerce -- lmap unwrap
+
+wrapR ∷ ∀ f a b c. Bifunctor f ⇒ Newtype a b ⇒ f c b → f c a
+wrapR = unsafeCoerce -- rmap wrap
+
+unwrapR ∷ ∀ f a b c. Bifunctor f ⇒ Newtype a b ⇒ f c a → f c b
+unwrapR = unsafeCoerce -- rmap unwrap
 
 type Supervised e a =
   { fiber ∷ Fiber e a
