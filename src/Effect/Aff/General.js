@@ -16,7 +16,7 @@ var Aff = function () {
     | Throw e
     | Catch (Aff e a) (e -> Aff e a)
     | Sync (Effect a)
-    | SyncEither (Effect (Either e a))
+    | SyncResult (Effect (Either e a))
     | SyncUnsafe (Effect a)
     | Async ((Either Error a -> Eff eff Unit) -> Eff eff (Canceler eff))
     | forall b. Bind (Aff eff b) (b -> Aff eff a)
@@ -30,7 +30,7 @@ var Aff = function () {
   var THROW   = "Throw";
   var CATCH   = "Catch";
   var SYNC    = "Sync";
-  var SYNC_EITHER = "SyncEither"
+  var SYNC_RESULT = "SyncResult"
   var SYNC_UNSAFE = "SyncUnsafe"
   var ASYNC   = "Async";
   var BIND    = "Bind";
@@ -178,9 +178,10 @@ var Aff = function () {
               return function () {
                 delete kills[fid];
                 killCount--;
-                if (util.isLeft(result) && util.fromLeft(result)) {
+                if (!util.isSucceeded(result)) {
                   setTimeout(function () {
-                    throw util.fromLeft(result);
+                    throw util.isFailed(result) ? util.fromFailed(result)
+                                                : util.fromInterrupted(result);
                   }, 0);
                 }
                 if (killCount === 0) {
@@ -281,7 +282,7 @@ var Aff = function () {
           break;
 
         case STEP_RESULT:
-          if (util.isLeft(step)) {
+          if (util.isFailed(step)) {
             status = RETURN;
             fail   = step;
             step   = null;
@@ -289,7 +290,7 @@ var Aff = function () {
             status = RETURN;
           } else {
             status = STEP_BIND;
-            step   = util.fromRight(step);
+            step   = util.fromSucceeded(step);
           }
           break;
 
@@ -307,7 +308,7 @@ var Aff = function () {
           case PURE:
             if (bhead === null) {
               status = RETURN;
-              step   = util.right(step._1);
+              step   = util.succeeded(step._1);
             } else {
               status = STEP_BIND;
               step   = step._1;
@@ -319,9 +320,9 @@ var Aff = function () {
           case SYNC:
             try {
               status = STEP_RESULT;
-              step = util.right(step._1());
+              step = util.succeeded(step._1());
             } catch (error) {
-              interrupt = util.left(errorFromVal(error));
+              interrupt = util.interrupted(errorFromVal(error));
               if (bracketCount === 0) {
                 status = RETURN;
                 step = null;
@@ -332,12 +333,12 @@ var Aff = function () {
 
           // If the Effect throws, die.
           // Otherwise, map Lefts to errors and Rights to returns.
-          case SYNC_EITHER:
+          case SYNC_RESULT:
             try {
               status = STEP_RESULT;
               step = step._1();
             } catch (error) {
-              interrupt = util.left(errorFromVal(error));
+              interrupt = util.interrupted(errorFromVal(error));
               if (bracketCount === 0) {
                 status = RETURN;
                 step = null;
@@ -351,9 +352,9 @@ var Aff = function () {
           case SYNC_UNSAFE:
               status = STEP_RESULT;
             try {
-              step = util.right(step._1());
+              step = util.succeeded(step._1());
             } catch (error) {
-              step = util.left(error);
+              step = util.failed(error);
             }
             break;
 
@@ -397,7 +398,7 @@ var Aff = function () {
                   run(runTick);
                 }
               } catch (error) {
-                interrupt = util.left(errorFromVal(error));
+                interrupt = util.interrupted(errorFromVal(error));
                 if (bracketCount === 0) {
                   status = RETURN;
                   step = null;
@@ -412,7 +413,7 @@ var Aff = function () {
 
           case THROW:
             status = RETURN;
-            fail   = util.left(step._1);
+            fail   = util.failed(step._1);
             step   = null;
             break;
 
@@ -454,7 +455,7 @@ var Aff = function () {
             if (step._1) {
               tmp.run();
             }
-            step = util.right(tmp);
+            step = util.succeeded(tmp);
             break;
 
           case SEQ:
@@ -463,7 +464,7 @@ var Aff = function () {
             break;
 
           case PANIC:
-              interrupt = util.left(step._1);
+              interrupt = util.interrupted(step._1);
               if (bracketCount === 0) {
                 status = RETURN;
                 step = null;
@@ -503,7 +504,7 @@ var Aff = function () {
                 status = RETURN;
               } else if (fail) {
                 status = CONTINUE;
-                step   = attempt._2(util.fromLeft(fail));
+                step   = attempt._2(util.fromFailed(fail));
                 fail   = null;
               }
               break;
@@ -518,7 +519,7 @@ var Aff = function () {
                 bhead  = attempt._1;
                 btail  = attempt._2;
                 status = STEP_BIND;
-                step   = util.fromRight(step);
+                step   = util.fromSucceeded(step);
               }
               break;
 
@@ -529,7 +530,7 @@ var Aff = function () {
             case BRACKET:
               bracketCount--;
               if (fail === null) {
-                result   = util.fromRight(step);
+                result   = util.fromSucceeded(step);
                 // We need to enqueue the Release with the same interrupt
                 // status as the Bracket that is initiating it.
                 attempts = new Aff(CONS, new Aff(RELEASE, attempt._2, result), attempts, tmp);
@@ -551,11 +552,11 @@ var Aff = function () {
               // It has only been killed if the interrupt status has changed
               // since we enqueued the item.
               if (interrupt && interrupt !== tmp) {
-                step = attempt._1.killed(util.fromLeft(interrupt))(attempt._2);
+                step = attempt._1.killed(util.fromInterrupted(interrupt))(attempt._2);
               } else if (fail) {
-                step = attempt._1.failed(util.fromLeft(fail))(attempt._2);
+                step = attempt._1.failed(util.fromFailed(fail))(attempt._2);
               } else {
-                step = attempt._1.completed(util.fromRight(step))(attempt._2);
+                step = attempt._1.completed(util.fromSucceeded(step))(attempt._2);
               }
               fail = null;
               break;
@@ -589,16 +590,17 @@ var Aff = function () {
           // running finalizers. This should always rethrow in a fresh stack.
           if (interrupt && fail) {
             setTimeout(function () {
-              throw util.fromLeft(fail);
+              throw util.fromFailed(fail);
             }, 0);
           // If we have an unhandled exception, and no other fiber has joined
           // then we need to throw the exception in a fresh stack.
-          } else if (util.isLeft(step) && rethrow) {
+          } else if (!util.isSucceeded(step) && rethrow) {
             setTimeout(function () {
               // Guard on reathrow because a completely synchronous fiber can
               // still have an observer which was added after-the-fact.
               if (rethrow) {
-                throw util.fromLeft(step);
+                throw util.isFailed(step) ? util.fromFailed(step)
+                                          : util.fromInterrupted(step);
               }
             }, 0);
           }
@@ -637,27 +639,27 @@ var Aff = function () {
     function kill(error, cb) {
       return function () {
         if (status === COMPLETED) {
-          cb(util.right(void 0))();
+          cb(util.succeeded(void 0))();
           return function () {};
         }
 
         var canceler = onComplete({
           rethrow: false,
           handler: function (/* unused */) {
-            return cb(util.right(void 0));
+            return cb(util.succeeded(void 0));
           }
         })();
 
         switch (status) {
         case SUSPENDED:
-          interrupt = util.left(error);
+          interrupt = util.interrupted(error);
           status    = COMPLETED;
           step      = interrupt;
           run(runTick);
           break;
         case PENDING:
           if (interrupt === null) {
-            interrupt = util.left(error);
+            interrupt = util.interrupted(error);
           }
           if (bracketCount === 0) {
             if (status === PENDING) {
@@ -671,7 +673,7 @@ var Aff = function () {
           break;
         default:
           if (interrupt === null) {
-            interrupt = util.left(error);
+            interrupt = util.interrupted(error);
           }
           if (bracketCount === 0) {
             status = RETURN;
@@ -716,21 +718,19 @@ var Aff = function () {
         }
       },
       status: function () {
-        if (interrupt === null) {
-          switch (status) {
-            case SUSPENDED: return util.statusSuspended;
-            case COMPLETED: return util.statusCompleted(step);
-            default:        return util.statusRunning;
-          }
-        }
-        else {
-          switch (status) {
-            case COMPLETED: return util.statusKilled(util.fromLeft(interrupt));
-            default:        return util.statusDying(util.fromLeft(interrupt));
-          }
+        switch (status) {
+          case SUSPENDED: return util.statusSuspended;
+          case COMPLETED: return util.statusCompleted(step);
+          default:
+            if (interrupt === null) {
+              return util.statusRunning;
+            }
+            else {
+              return util.statusDying(util.fromInterrupted(interrupt));
+            }
         }
       }
-    };
+    }
   }
 
   function runPar(util, supervisor, par, cb) {
@@ -802,7 +802,7 @@ var Aff = function () {
       }
 
       if (count === 0) {
-        cb(util.right(void 0))();
+        cb(util.succeeded(void 0))();
       } else {
         // Run the cancelation effects. We alias `count` because it's mutable.
         kid = 0;
@@ -820,10 +820,11 @@ var Aff = function () {
     function join(result, head, tail) {
       var fail, step, lhs, rhs, tmp, kid;
 
-      if (util.isLeft(result)) {
+      if (util.isFailed(result)) {
         fail = result;
         step = null;
-      } else {
+      }
+      else {
         step = result;
         fail = null;
       }
@@ -856,7 +857,7 @@ var Aff = function () {
         switch (head.tag) {
         case MAP:
           if (fail === null) {
-            head._3 = util.right(head._1(util.fromRight(step)));
+            head._3 = util.succeeded(head._1(util.fromSucceeded(step)));
             step    = head._3;
           } else {
             head._3 = fail;
@@ -893,7 +894,7 @@ var Aff = function () {
             // We can only proceed if both sides have resolved.
             return;
           } else {
-            step    = util.right(util.fromRight(lhs)(util.fromRight(rhs)));
+            step    = util.succeeded(util.fromSucceeded(lhs)(util.fromSucceeded(rhs)));
             head._3 = step;
           }
           break;
@@ -901,16 +902,16 @@ var Aff = function () {
           lhs = head._1._3;
           rhs = head._2._3;
           // We can only proceed if both have resolved or we have a success
-          if (lhs === EMPTY && util.isLeft(rhs) || rhs === EMPTY && util.isLeft(lhs)) {
+          if (lhs === EMPTY && !util.isSucceeded(rhs) || rhs === EMPTY && !util.isSucceeded(lhs)) {
             return;
           }
           // If both sides resolve with an error, continue with the errors
           // appended in order.
-          if (lhs !== EMPTY && util.isLeft(lhs) && rhs !== EMPTY && util.isLeft(rhs)) {
-            fail    = util.left(
+          if (lhs !== EMPTY && util.isFailed(lhs) && rhs !== EMPTY && util.isFailed(rhs)) {
+            fail    = util.failed(
                         step === lhs
-                        ? head.extra(util.fromLeft(rhs))(util.fromLeft(lhs))
-                        : head.extra(util.fromLeft(lhs))(util.fromLeft(rhs))
+                        ? head.extra(util.fromFailed(rhs))(util.fromFailed(lhs))
+                        : head.extra(util.fromFailed(lhs))(util.fromFailed(rhs))
                       );
             step    = null;
             head._3 = fail;
@@ -1061,7 +1062,7 @@ var Aff = function () {
     // all pending branches including those that were in the process of being
     // canceled.
     function cancel(error, cb) {
-      interrupt = util.left(error);
+      interrupt = util.interrupted(error);
       var innerKills;
       for (var kid in kills) {
         if (kills.hasOwnProperty(kid)) {
@@ -1115,7 +1116,7 @@ var Aff = function () {
   Aff.Throw       = AffCtr(THROW);
   Aff.Catch       = AffCtr(CATCH);
   Aff.Sync        = AffCtr(SYNC);
-  Aff.SyncEither  = AffCtr(SYNC_EITHER);
+  Aff.SyncResult  = AffCtr(SYNC_RESULT);
   Aff.SyncUnsafe  = AffCtr(SYNC_UNSAFE);
   Aff.Async       = AffCtr(ASYNC);
   Aff.Bind        = AffCtr(BIND);
@@ -1170,7 +1171,7 @@ exports._fork = function (immediate) {
 
 exports._liftEffect = Aff.Sync;
 
-exports._liftEffectEither = Aff.SyncEither;
+exports._liftEffectResult = Aff.SyncResult;
 
 exports._liftEffectUnsafe = Aff.SyncUnsafe;
 

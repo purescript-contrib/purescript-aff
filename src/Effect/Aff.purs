@@ -34,16 +34,17 @@ module Effect.Aff
   )
 where
 
+import Control.Monad.Error.Class (throwError)
 import Control.Monad.Error.Class (try, throwError, catchError) as Exports
 import Control.Parallel.Class (sequential, parallel) as Exports
-import Data.Either (Either)
+import Data.Either (Either, either)
 import Data.Time.Duration (Milliseconds(..)) as Exports
 import Data.Time.Duration (Milliseconds)
 import Effect (Effect)
 import Effect.Aff.General as G
 import Effect.Exception (Error)
 import Effect.Exception (Error, error, message) as Exports
-import Prelude (type (~>), Unit, (<<<))
+import Prelude (type (~>), Unit, map, pure, (<<<), (>=>))
 
 type Aff = G.Aff Error
 
@@ -59,7 +60,7 @@ generalBracket ∷ ∀ a b. Aff a → BracketConditions a b → (a → Aff b) �
 generalBracket = G.generalBracket
 
 makeAff ∷ ∀ a. ((Either Error a → Effect Unit) → Effect Canceler) → Aff a
-makeAff = G.makeAff
+makeAff f = G.makeAff (\g → f (g <<< either G.Failed G.Succeeded))
 
 -- | Invokes pending cancelers in a fiber and runs cleanup effects. Blocks
 -- | until the fiber has fully exited.
@@ -69,11 +70,14 @@ killFiber = G.killFiber
 -- | Blocks until the fiber completes, yielding the result. If the fiber
 -- | throws an exception, it is rethrown in the current fiber.
 joinFiber ∷ Fiber ~> Aff
-joinFiber = G.joinFiber
+joinFiber = G.tryJoinFiber >=> case _ of
+  G.Interrupted e → throwError e
+  G.Failed e      → throwError e
+  G.Succeeded a   → pure a
 
 -- | Allows safely throwing to the error channel.
 liftEffect' ∷ ∀ a. Effect (Either Error a) → Aff a
-liftEffect' = G.liftEffect'
+liftEffect' = G.liftEffect' <<< map (either G.Failed G.Succeeded)
 
 -- | Assumes that any thrown error is of type e.
 unsafeLiftEffect ∷ ∀ a. Effect a → Aff a

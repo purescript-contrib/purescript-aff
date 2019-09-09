@@ -10,7 +10,7 @@ import Control.Parallel (parallel, sequential, parTraverse_)
 import Control.Plus (empty)
 import Data.Array as Array
 import Data.Bifunctor (lmap)
-import Data.Either (Either(..), either, isLeft, isRight)
+import Data.Either (Either(..), either, isLeft)
 import Data.Foldable (sum)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (unwrap)
@@ -18,10 +18,10 @@ import Data.Semigroup.First (First(..))
 import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse)
 import Effect (Effect)
-import Effect.Aff.General (Aff, Canceler(..), FiberStatus(..), absurdL, attempt, bracket, catch, delay, forkAff, generalBracket, joinFiber, killFiber, launchAff, liftEffect', makeAff, never, panic, runAff, runAff_, status, supervise, suspendAff, try, unsafeLiftEffect)
+import Effect.Aff.General (Aff, AffResult(..), Canceler(..), Fiber, FiberStatus(..), absurdL, attempt, bracket, catch, delay, forkAff, generalBracket, invincible, isFailed, isInterrupted, isSucceeded, joinFiber, killFiber, launchAff, liftEffect', makeAff, never, panic, runAff, runAff_, status, supervise, suspendAff, try, tryJoinFiber, unsafeLiftEffect)
 import Effect.Aff.General.Compat as AC
 import Effect.Class (class MonadEffect, liftEffect)
-import Effect.Console as Console
+import Effect.Class.Console as Console
 import Effect.Exception (Error, error, message, throwException)
 import Effect.Ref (Ref)
 import Effect.Ref as Ref
@@ -116,11 +116,11 @@ test_liftEffect_throw = runAssertEq' "liftEffect/throw" "exception" do
 
 test_liftEffect'_Right ∷ Effect Unit
 test_liftEffect'_Right = runAssertEq' "liftEffect'/Right" 1 do
-  liftEffect' (pure (Right 1))
+  liftEffect' (pure (Succeeded 1))
 
 test_liftEffect'_Left ∷ Effect Unit
 test_liftEffect'_Left = runAssertEq "liftEffect'/Left" (Left 1) do
-  (try (liftEffect' (pure (Left 1))) ∷ Aff Int (Either Int Unit))
+  (try (liftEffect' (pure (Failed 1))) ∷ Aff Int (Either Int Unit))
 --
 
 test_liftEffect'_throw ∷ Effect Unit
@@ -153,7 +153,7 @@ test_unsafeLiftEffect_throw = runAssertEq' "unsafeLiftEffect/throw" "exception" 
   delay (Milliseconds 10.0)
   readRef ref
 
-test_delay ∷ ∀ e. Show e ⇒ Aff e Unit
+test_delay ∷ Aff (First Error) Unit
 test_delay = assert "delay" do
   delay (Milliseconds 1000.0)
   pure true
@@ -236,7 +236,7 @@ test_makeAff = assert "makeAff" do
   cb ← readRef ref1
   case cb of
     Just k → do
-      liftEffect $ k (Right 42)
+      liftEffect $ k (Succeeded 42)
       _ ← joinFiber fiber
       eq 42 <$> readRef ref2
     Nothing → pure false
@@ -309,16 +309,21 @@ test_general_bracket = assert "bracket/general" do
   f1 ← forkAff $ bracketAction "foo" (const (action "a" # absurdL))
   delay (Milliseconds 5.0)
   killFiber (error "z") f1
-  r1 ← try $ joinFiber f1
+  r1 ← tryJoinFiber f1
 
   f2 ← forkAff $ bracketAction "bar" (const (throwError $ First (error "b")))
-  r2 ← try $ joinFiber f2
+  r2 ← tryJoinFiber f2
 
   f3 ← forkAff $ bracketAction "baz" (const (action "c" # absurdL))
-  r3 ← try $ joinFiber f3
+  r3 ← tryJoinFiber f3
 
   r4 ← readRef ref
-  pure (isLeft r1 && isLeft r2 && isRight r3 && r4 == "foofoo/kill/zbarbar/throw/bbazcbaz/release/c")
+  
+  pure $
+       isInterrupted r1
+    && isFailed r2
+    && isSucceeded r3
+    && r4 == "foofoo/kill/zbarbar/throw/bbazcbaz/release/c"
 
 test_supervise ∷ Aff (First Error) Unit
 test_supervise = assert "supervise" do
@@ -343,7 +348,7 @@ test_kill ∷ Aff (First Error) Unit
 test_kill = assert "kill" do
   fiber ← forkAff never
   killFiber (error "Nope") fiber
-  isLeft <$> try (joinFiber fiber)
+  isInterrupted <$> tryJoinFiber fiber
 
 test_kill_canceler ∷ Aff (First Error) Unit
 test_kill_canceler = assert "kill/canceler" do
@@ -355,9 +360,11 @@ test_kill_canceler = assert "kill/canceler" do
     writeRef ref "done"
   delay (Milliseconds 10.0)
   killFiber (error "Nope") fiber
-  res ← try (joinFiber fiber)
+  res ← tryJoinFiber fiber
   n ← readRef ref
-  pure (n == "cancel" && (lmap (message <<< unwrap) res) == Left "Nope")
+  pure $ n == "cancel" && case res of
+    Interrupted e → message e == "Nope"
+    _             → false
 
 test_kill_bracket ∷ Aff (First Error) Unit
 test_kill_bracket = assert "kill/bracket" do
@@ -373,7 +380,7 @@ test_kill_bracket = assert "kill/bracket" do
       (\_ → action "c" # absurdL)
   delay (Milliseconds 5.0)
   killFiber (error "Nope") fiber
-  _ ← try (joinFiber fiber)
+  _ ← tryJoinFiber fiber
   eq "ab" <$> readRef ref
 
 test_kill_bracket_nested ∷ Aff Void Unit
@@ -396,7 +403,7 @@ test_kill_bracket_nested = assert "kill/bracket/nested" do
       (\s → bracketAction (s <> "/run"))
   delay (Milliseconds 5.0)
   killFiber (error "Nope") fiber
-  _ ← try (joinFiber fiber)
+  _ ← tryJoinFiber fiber
   readRef ref <#> eq
     [ "foo/bar"
     , "foo/bar/run"
@@ -503,8 +510,8 @@ test_kill_parallel = assert "kill/parallel" do
     delay (Milliseconds 5.0)
     killFiber (error "Nope") f1
     modifyRef ref (_ <> "done")
-  _ ← try $ joinFiber f1
-  _ ← try $ joinFiber f2
+  _ ← tryJoinFiber f1
+  _ ← tryJoinFiber f2
   eq "killedfookilledbardone" <$> readRef ref
 
 test_parallel_alt ∷ Aff (First Error) Unit
@@ -578,20 +585,20 @@ test_kill_parallel_alt = assert "kill/parallel/alt" do
         (\_ → do
           delay (Milliseconds n)
           void $ modifyRef ref (_ <> s))
-  f1 ← forkAff $ sequential $
+  f1 ∷ Fiber (First Error) Unit ← forkAff $ sequential $
     parallel (action 10.0 "foo") <|> parallel (action 20.0 "bar")
   f2 ← forkAff do
     delay (Milliseconds 5.0)
     killFiber (error "Nope") f1
     modifyRef ref (_ <> "done")
-  _ ← try $ joinFiber f1
-  _ ← try $ joinFiber f2
+  _ ← tryJoinFiber f1
+  _ ← tryJoinFiber f2
   eq "killedfookilledbardone" <$> readRef ref
 
 test_kill_parallel_alt_finalizer ∷ Aff (First Error) Unit
 test_kill_parallel_alt_finalizer = assert "kill/parallel/alt/finalizer" do
   ref ← newRef ""
-  f1 ← forkAff $ sequential $
+  f1 ∷ Fiber (First Error) Unit ← forkAff $ sequential $
     parallel (delay (Milliseconds 10.0)) <|> parallel do
       bracket
         (pure unit)
@@ -603,8 +610,8 @@ test_kill_parallel_alt_finalizer = assert "kill/parallel/alt/finalizer" do
     delay (Milliseconds 15.0)
     killFiber (error "Nope") f1
     modifyRef ref (_ <> "done")
-  _ ← try $ joinFiber f1
-  _ ← try $ joinFiber f2
+  _ ← tryJoinFiber f1
+  _ ← tryJoinFiber f2
   eq "killeddone" <$> readRef ref
 
 test_parallel_alt_semigroup ∷ Aff (First Error) Unit
@@ -666,7 +673,7 @@ test_efffn ∷ Aff (First Error) Unit
 test_efffn = assert "efffn" do
   ref ← newRef ""
   let
-    effectDelay ms = AC.fromEffectFnAff $ AC.EffectFnAff $ AC.mkEffectFn2 \ke kc → do
+    effectDelay ms = AC.fromEffectFnAff $ AC.EffectFnAff $ AC.mkEffectFn3 \ke kc _ → do
       fiber ← runAff (either (AC.runEffectFn1 ke) (AC.runEffectFn1 kc)) (delay ms)
       pure $ AC.EffectFnCanceler $ AC.mkEffectFn3 \e cke ckc → do
         runAff_ (either (AC.runEffectFn1 cke) (AC.runEffectFn1 ckc)) (killFiber e fiber)
@@ -756,8 +763,8 @@ test_fiber_status_completed = assert "fiber/status/completed" do
   liftEffect ado
     t_status ← status t
     in case t_status of
-      Completed (Right r) → r == "done"
-      _                   → false
+      Completed (Succeeded r) → r == "done"
+      _                       → false
 
 test_fiber_status_running ∷ Aff (First Error) Unit
 test_fiber_status_running = assert "fiber/status/running" do
@@ -775,16 +782,12 @@ test_fiber_status_killed = assert "fiber/status/killed" do
   liftEffect ado
     t_status ← status t
     in case t_status of
-      Killed e → message e == "die"
-      _        → false
+      Completed (Interrupted e) → message e == "die"
+      _                         → false
 
 test_fiber_status_dying ∷ Aff (First Error) Unit
 test_fiber_status_dying = assert "fiber/status/dying" do
-  t ← forkAff ( bracket
-                (pure unit)
-                (\_ → delay (Milliseconds 1000.0))
-                (\_ → pure unit)
-              )
+  t ← forkAff (invincible (delay (Milliseconds 1000.0)))
   _ ← forkAff (killFiber (error "die") t)
   delay (Milliseconds 20.0)
   liftEffect ado
@@ -793,16 +796,15 @@ test_fiber_status_dying = assert "fiber/status/dying" do
       Dying e → message e == "die"
       _       → false
 
--- The panic will be thrown globally which will cause the test to fail.
 test_panic ∷ Aff Void Unit
 test_panic = assert "panic" do
-  t ← launchAff (panic (error "panic!")) # liftEffect
-  delay (Milliseconds 20.0)
+  t ← forkAff (panic (error "panic!"))
+  _ ← tryJoinFiber t -- Observe the panic so it is not thrown globally.
   liftEffect ado
     t_status ← status t
     in case t_status of
-      Killed e → message e == "panic!"
-      _        → false
+      Completed (Interrupted e) → message e == "panic!"
+      _                         → false
 
 main ∷ Effect Unit
 main = do
@@ -844,7 +846,7 @@ main = do
     test_parallel_alt
     test_parallel_alt_throw
     test_parallel_alt_sync
-    test_parallel_mixed
+    test_parallel_mixed -- 'Error: unsafeFromSucceeded: Interrupted' sometimes with this test
     test_kill_parallel_alt
     test_kill_parallel_alt_finalizer
     test_parallel_alt_semigroup
@@ -857,14 +859,13 @@ main = do
     -- test_scheduler_size
     test_parallel_stack
     test_regression_return_fork
-    test_regression_par_apply_async_canceler
+    test_regression_par_apply_async_canceler -- 'Error: unsafeFromSucceeded: Interrupted' reliably caused by this test
     test_regression_bracket_catch_cleanup
     test_fiber_status_suspended
     test_fiber_status_completed
     test_fiber_status_running
     test_fiber_status_killed
     test_fiber_status_dying
-    -- Turn on to see if panics are working.
-    -- test_panic # absurdL
+    test_panic # absurdL
 
 foreign import throwAnything ∷ ∀ a b. a → Effect b

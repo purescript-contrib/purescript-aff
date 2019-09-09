@@ -10,14 +10,13 @@ module Effect.Aff.General.Compat
 
 import Prelude
 
-import Data.Either (Either(..))
-import Effect.Aff.General (Aff, Canceler(..), catch, makeAff, nonCanceler, panic)
+import Effect.Aff.General (Aff, AffResult(..), Canceler(..), catch, makeAff, nonCanceler, panic)
 import Effect.Exception (Error)
 import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, mkEffectFn1, mkEffectFn2, mkEffectFn3, runEffectFn1, runEffectFn2, runEffectFn3)
 
 type EffectFnCb a = EffectFn1 a Unit
 
-newtype EffectFnAff e a = EffectFnAff (EffectFn2 (EffectFnCb e) (EffectFnCb a) EffectFnCanceler)
+newtype EffectFnAff e a = EffectFnAff (EffectFn3 (EffectFnCb e) (EffectFnCb a) (EffectFnCb Error) EffectFnCanceler)
 
 newtype EffectFnCanceler = EffectFnCanceler (EffectFn3 Error (EffectFnCb Error) (EffectFnCb Unit) Unit)
 
@@ -26,7 +25,7 @@ newtype EffectFnCanceler = EffectFnCanceler (EffectFn3 Error (EffectFnCb Error) 
 -- |
 -- | ```javascript
 -- | exports._myAff = function (onError, onSuccess) {
--- |   var cancel = doSomethingAsync(function (err, res) {
+-- |   var cancel = doSomethingAsync(function (err, res, panic) {
 -- |     if (err) {
 -- |       onError(err);
 -- |     } else {
@@ -48,11 +47,15 @@ newtype EffectFnCanceler = EffectFnCanceler (EffectFn3 Error (EffectFnCb Error) 
 -- | ````
 fromEffectFnAff ∷ ∀ e. EffectFnAff e ~> Aff e
 fromEffectFnAff (EffectFnAff eff) = makeAff \k → do
-  EffectFnCanceler canceler ← runEffectFn2 eff (mkEffectFn1 (k <<< Left)) (mkEffectFn1 (k <<< Right))
+  EffectFnCanceler canceler ←
+    runEffectFn3 eff (mkEffectFn1 (k <<< Failed))
+                     (mkEffectFn1 (k <<< Succeeded))
+                     (mkEffectFn1 (k <<< Interrupted))
   pure $ Canceler \e →
     catch
     ( makeAff \k2 → ado
-         runEffectFn3 canceler e (mkEffectFn1 (k2 <<< Left)) (mkEffectFn1 (k2 <<< Right))
+         runEffectFn3 canceler e (mkEffectFn1 (k2 <<< Interrupted))
+                                 (mkEffectFn1 (k2 <<< Succeeded))
       in nonCanceler
     )
     panic

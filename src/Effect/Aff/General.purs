@@ -4,6 +4,10 @@ module Effect.Aff.General
   , FiberStatus(..)
   , ParAff(..)
   , Canceler(..)
+  , AffResult(..)
+  , isInterrupted
+  , isFailed
+  , isSucceeded
   , makeAff
   , launchAff
   , launchAff_
@@ -23,6 +27,7 @@ module Effect.Aff.General
   , invincible
   , killFiber
   , joinFiber
+  , tryJoinFiber
   , liftEffect'
   , unsafeLiftEffect
   , cancelWith
@@ -62,7 +67,7 @@ import Control.Parallel (parSequence_, parallel)
 import Control.Parallel.Class (class Parallel)
 import Control.Parallel.Class (sequential, parallel) as Exports
 import Control.Plus (class Plus, empty)
-import Data.Bifunctor (class Bifunctor, lmap)
+import Data.Bifunctor (class Bifunctor, bimap, lmap)
 import Data.Either (Either(..))
 import Data.Function.Uncurried as Fn
 import Data.Newtype (class Newtype)
@@ -168,17 +173,49 @@ instance parallelAff ∷ Parallel (ParAff e) (Aff e) where
   parallel = (unsafeCoerce ∷ ∀ a. Aff e a → ParAff e a)
   sequential = _sequential
 
+data AffResult e a
+  = Succeeded a
+  | Failed e
+  | Interrupted Error
+
+derive instance functorAffResult ∷ Functor (AffResult e)
+
+instance showAffResult ∷ (Show a, Show e) ⇒ Show (AffResult e a) where
+  show (Succeeded a) = "(Succeeded " <> show a <> ")"
+  show (Failed e) = "(Failed " <> show e <> ")"
+  show (Interrupted a) = "(Interrupted " <> show a <> ")"
+
+instance bifunctorAffResult ∷ Bifunctor AffResult where
+  bimap _ g (Succeeded a)  = Succeeded (g a)
+  bimap f _ (Failed e)     = Failed (f e)
+  bimap _ _ (Interrupted e) = Interrupted e
+
+isInterrupted ∷ ∀ e a. AffResult e a → Boolean
+isInterrupted = case _ of
+  Interrupted _ → true
+  _             → false
+
+isFailed ∷ ∀ e a. AffResult e a → Boolean
+isFailed = case _ of
+  Failed _ → true
+  _        → false
+
+isSucceeded ∷ ∀ e a. AffResult e a → Boolean
+isSucceeded = case _ of
+  Succeeded _ → true
+  _           → false
+
 type OnComplete e a =
   { rethrow ∷ Boolean
-  , handler ∷ (Either e a → Effect Unit) → Effect Unit
+  , handler ∷ (AffResult e a → Effect Unit) → Effect Unit
   }
 
 -- | Represents a forked computation by way of `forkAff`. `Fiber`s are
 -- | memoized, so their results are only computed once.
 newtype Fiber e a = Fiber
   { run ∷ Effect Unit
-  , kill ∷ ∀ e. Fn.Fn2 Error (Either e Unit → Effect Unit) (Effect (Effect Unit))
-  , join ∷ (Either e a → Effect Unit) → Effect (Effect Unit)
+  , kill ∷ ∀ e. Fn.Fn2 Error (AffResult e Unit → Effect Unit) (Effect (Effect Unit))
+  , join ∷ (AffResult e a → Effect Unit) → Effect (Effect Unit)
   , onComplete ∷ OnComplete e a → Effect (Effect Unit)
   , isSuspended ∷ Effect Boolean
   , status ∷ Effect (FiberStatus e a)
@@ -203,11 +240,17 @@ killFiber e (Fiber t) = _liftEffect t.isSuspended >>= if _
 -- | Blocks until the fiber completes, yielding the result. If the fiber
 -- | throws an exception, it is rethrown in the current fiber.
 joinFiber ∷ ∀ e. Fiber e ~> Aff e
-joinFiber (Fiber t) = makeAff \k → effectCanceler <$> t.join k
+joinFiber = tryJoinFiber >=> case _ of
+  Interrupted e → panic e
+  Failed e      → throwError e
+  Succeeded a   → pure a
+
+tryJoinFiber ∷ ∀ e1 e2 a. Fiber e1 a → Aff e2 (AffResult e1 a)
+tryJoinFiber (Fiber t) = makeAff \k → effectCanceler <$> t.join (k <<< Succeeded)
 
 -- | Allows safely throwing to the error channel.
-liftEffect' ∷ ∀ e a. Effect (Either e a) → Aff e a
-liftEffect' = _liftEffectEither
+liftEffect' ∷ ∀ e a. Effect (AffResult e a) → Aff e a
+liftEffect' = _liftEffectResult
 
 -- | Assumes that any thrown error is of type e.
 unsafeLiftEffect ∷ ∀ e a. Effect a → Aff e a
@@ -215,10 +258,23 @@ unsafeLiftEffect = _liftEffectUnsafe
 
 data FiberStatus e a
   = Suspended
-  | Completed (Either e a)
+  | Completed (AffResult e a)
   | Running
-  | Killed Error
   | Dying Error
+
+derive instance functorFiberStatus ∷ Functor (FiberStatus e)
+
+instance bifunctorFiberStatus ∷ Bifunctor FiberStatus where
+  bimap f g (Completed x) = Completed (bimap f g x)
+  bimap _ _ Suspended = Suspended
+  bimap _ _ Running = Running
+  bimap _ _ (Dying e) = Dying e
+
+instance showFiberStatus ∷ (Show e, Show a) ⇒ Show (FiberStatus e a) where
+  show Suspended = "Suspended"
+  show (Completed x) = "(Completed " <> show x <> ")"
+  show Running = "Running"
+  show (Dying e) = "(Dying " <> show e <> ")"
 
 status ∷ ∀ e a. Fiber e a → Effect (FiberStatus e a)
 status (Fiber t) = t.status
@@ -292,7 +348,7 @@ suspendAff = _fork false
 
 -- | Pauses the running fiber.
 delay ∷ ∀ e. Milliseconds → Aff e Unit
-delay (Milliseconds n) = Fn.runFn2 _delay Right n
+delay (Milliseconds n) = Fn.runFn2 _delay Succeeded n
 
 -- | An async computation which does not resolve.
 never ∷ ∀ e a. Aff e a
@@ -400,7 +456,7 @@ supervise aff =
 
   killAll ∷ ∀ e2. Error → Supervised e a → Aff e2 Unit
   killAll err sup = makeAff \k →
-    Fn.runFn3 _killAll err sup.supervisor (k (pure unit))
+    Fn.runFn3 _killAll err sup.supervisor (k (Succeeded unit))
 
   acquire ∷ Effect (Supervised e a)
   acquire = do
@@ -415,9 +471,9 @@ foreign import _catchError ∷ ∀ e1 e2 a. Aff e1 a → (e1 → Aff e2 a) → A
 foreign import _fork ∷ ∀ e1 e2 a. Boolean → Aff e1 a → Aff e2 (Fiber e1 a)
 foreign import _map ∷ ∀ e a b. (a → b) → Aff e a → Aff e b
 foreign import _bind ∷ ∀ e a b. Aff e a → (a → Aff e b) → Aff e b
-foreign import _delay ∷ ∀ e a. Fn.Fn2 (Unit → Either a Unit) Number (Aff e Unit)
+foreign import _delay ∷ ∀ e a. Fn.Fn2 (Unit → AffResult a Unit) Number (Aff e Unit)
 foreign import _liftEffect ∷ ∀ e a. Effect a → Aff e a
-foreign import _liftEffectEither ∷ ∀ e a. Effect (Either e a) → Aff e a
+foreign import _liftEffectResult ∷ ∀ e a. Effect (AffResult e a) → Aff e a
 foreign import _liftEffectUnsafe ∷ ∀ e a. Effect a → Aff e a
 foreign import _parAffMap ∷ ∀ e a b. (a → b) → ParAff e a → ParAff e b
 foreign import _parAffApply ∷ ∀ e a b. ParAff e (a → b) → ParAff e a → ParAff e b
@@ -443,7 +499,7 @@ foreign import generalBracket ∷ ∀ e a b. Aff e a → BracketConditions e a b
 -- | `Canceler` effect should be returned to cancel the pending action. The
 -- | supplied callback may be invoked only once. Subsequent invocation are
 -- | ignored.
-foreign import makeAff ∷ ∀ e a. ((Either e a → Effect Unit) → Effect Canceler) → Aff e a
+foreign import makeAff ∷ ∀ e a. ((AffResult e a → Effect Unit) → Effect Canceler) → Aff e a
 
 lmapFlipped ∷ ∀ f a1 b a2. Bifunctor f ⇒ f a1 b → (a1 → a2) → f a2 b
 lmapFlipped = flip lmap
@@ -454,43 +510,52 @@ makeFiber ∷ ∀ e a. Aff e a → Effect (Fiber e a)
 makeFiber aff = Fn.runFn2 _makeFiber ffiUtil aff
 
 newtype FFIUtil = FFIUtil
-  { isLeft ∷ ∀ a b. Either a b → Boolean
-  , fromLeft ∷ ∀ a b. Either a b → a
-  , fromRight ∷ ∀ a b. Either a b → b
-  , left ∷ ∀ a b. a → Either a b
-  , right ∷ ∀ a b. b → Either a b
+  { isInterrupted ∷ ∀ e a. AffResult e a → Boolean
+  , isFailed ∷ ∀ e a. AffResult e a → Boolean
+  , isSucceeded ∷ ∀ e a. AffResult e a → Boolean
+  , fromInterrupted ∷ ∀ e b. AffResult e b → Error
+  , fromFailed ∷ ∀ e a. AffResult e a → e
+  , fromSucceeded ∷ ∀ e a. AffResult e a → a
+  , succeeded ∷ ∀ e a. a → AffResult e a
+  , failed ∷ ∀ e a. e → AffResult e a
+  , interrupted ∷ ∀ e a. Error → AffResult e a
   , statusSuspended ∷ ∀ e a. FiberStatus e a
-  , statusCompleted ∷ ∀ e a. Either e a → FiberStatus e a
+  , statusCompleted ∷ ∀ e a. AffResult e a → FiberStatus e a
   , statusRunning ∷ ∀ e a. FiberStatus e a
-  , statusKilled ∷ ∀ e a. Error → FiberStatus e a
   , statusDying ∷ ∀ e a. Error → FiberStatus e a
   }
 
 ffiUtil ∷ FFIUtil
 ffiUtil = FFIUtil
-  { isLeft
-  , fromLeft: unsafeFromLeft
-  , fromRight: unsafeFromRight
-  , left: Left
-  , right: Right
+  { isInterrupted
+  , isFailed
+  , isSucceeded
+  , fromInterrupted: unsafeFromInterrupted
+  , fromFailed: unsafeFromFailed
+  , fromSucceeded: unsafeFromSucceeded
+  , succeeded: Succeeded
+  , failed: Failed
+  , interrupted: Interrupted
   , statusSuspended: Suspended
   , statusCompleted: Completed
   , statusRunning: Running
-  , statusKilled: Killed
   , statusDying: Dying
   }
   where
-  isLeft ∷ ∀ a b. Either a b → Boolean
-  isLeft = case _ of
-    Left _ -> true
-    Right _ → false
+  unsafeFromInterrupted ∷ ∀ e a. AffResult e a → Error
+  unsafeFromInterrupted = case _ of
+    Interrupted e  → e
+    Failed _       → unsafeCrashWith "unsafeFromInterrupted: Failed"
+    Succeeded _    → unsafeCrashWith "unsafeFromInterrupted: Succeeded"
 
-  unsafeFromLeft ∷ ∀ a b. Either a b → a
-  unsafeFromLeft = case _ of
-    Left a  → a
-    Right _ → unsafeCrashWith "unsafeFromLeft: Right"
-
-  unsafeFromRight ∷ ∀ a b. Either a b → b
-  unsafeFromRight = case _ of
-    Right a → a
-    Left  _ → unsafeCrashWith "unsafeFromRight: Left"
+  unsafeFromFailed ∷ ∀ e a. AffResult e a → e
+  unsafeFromFailed = case _ of
+    Failed e       → e
+    Interrupted _  → unsafeCrashWith "unsafeFromFailed: Interrupted"
+    Succeeded _    → unsafeCrashWith "unsafeFromFailed: Succeeded"
+  
+  unsafeFromSucceeded ∷ ∀ e a. AffResult e a → a
+  unsafeFromSucceeded = case _ of
+    Succeeded a    → a
+    Failed _       → unsafeCrashWith "unsafeFromSucceeded: Failed"
+    Interrupted _  → unsafeCrashWith "unsafeFromSucceeded: Interrupted"
