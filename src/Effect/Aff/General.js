@@ -282,7 +282,7 @@ var Aff = function () {
           break;
 
         case STEP_RESULT:
-          if (util.isFailed(step)) {
+          if (!util.isSucceeded(step)) {
             status = RETURN;
             fail   = step;
             step   = null;
@@ -820,7 +820,7 @@ var Aff = function () {
     function join(result, head, tail) {
       var fail, step, lhs, rhs, tmp, kid;
 
-      if (util.isFailed(result)) {
+      if (!util.isSucceeded(result)) {
         fail = result;
         step = null;
       }

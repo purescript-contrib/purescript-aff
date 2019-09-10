@@ -846,7 +846,7 @@ main = do
     test_parallel_alt
     test_parallel_alt_throw
     test_parallel_alt_sync
-    test_parallel_mixed -- 'Error: unsafeFromSucceeded: Interrupted' sometimes with this test
+    test_parallel_mixed
     test_kill_parallel_alt
     test_kill_parallel_alt_finalizer
     test_parallel_alt_semigroup
@@ -859,7 +859,7 @@ main = do
     -- test_scheduler_size
     test_parallel_stack
     test_regression_return_fork
-    test_regression_par_apply_async_canceler -- 'Error: unsafeFromSucceeded: Interrupted' reliably caused by this test
+    test_regression_par_apply_async_canceler
     test_regression_bracket_catch_cleanup
     test_fiber_status_suspended
     test_fiber_status_completed
