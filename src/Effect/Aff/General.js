@@ -161,7 +161,7 @@ var Aff = function () {
               delete fibers[fid];
             };
           }
-        });
+        })();
         fibers[fid] = fiber;
         count++;
       },
