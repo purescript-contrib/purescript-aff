@@ -257,7 +257,7 @@ delay (Milliseconds n) = Fn.runFn2 _delay Right n
 
 -- | An async computation which does not resolve.
 never ∷ ∀ a. Aff a
-never = makeAff \_ → pure mempty
+never = makeAff mempty
 
 -- | A monomorphic version of `try`. Catches thrown errors and lifts them
 -- | into an `Either`.
