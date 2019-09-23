@@ -201,7 +201,7 @@ instance monoidCanceler ∷ Monoid Canceler where
 
 -- | A canceler which does not cancel anything.
 nonCanceler ∷ Canceler
-nonCanceler = Canceler (const (pure unit))
+nonCanceler = Canceler mempty
 
 -- | A canceler from an Effect action.
 effectCanceler ∷ Effect Unit → Canceler
