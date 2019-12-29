@@ -1,6 +1,6 @@
 module Effect.Aff
   ( Aff
-  , Fiber
+  , Fiber(..)
   , ParAff(..)
   , Canceler(..)
   , makeAff
