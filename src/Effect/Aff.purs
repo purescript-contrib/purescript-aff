@@ -1,6 +1,7 @@
 module Effect.Aff
   ( Aff
   , Fiber(..)
+  , OnComplete
   , ParAff(..)
   , Canceler(..)
   , makeAff
