@@ -241,7 +241,7 @@ runAff_ k aff = void $ runAff k aff
 runSuspendedAff ∷ ∀ a. (Either Error a → Effect Unit) → Aff a → Effect (Fiber Unit)
 runSuspendedAff k aff = launchSuspendedAff $ liftEffect <<< k =<< try aff
 
--- | Forks am `Aff` from within a parent `Aff` context, returning the `Fiber`.
+-- | Forks an `Aff` from within a parent `Aff` context, returning the `Fiber`.
 forkAff ∷ ∀ a. Aff a → Aff (Fiber a)
 forkAff = _fork true
 
