@@ -7,6 +7,8 @@ An asynchronous effect monad and threading model for PureScript.
 
 # Example
 
+Note that these documentation examples are partially pseudocode and are unlikely to compile. Working examples can be found [here](https://github.com/purescript-contrib/purescript-aff/blob/master/test/Test/Main.purs).
+
 ```purescript
 main = launchAff do
   response <- Ajax.get "http://foo.bar"
