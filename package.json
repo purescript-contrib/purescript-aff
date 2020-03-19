@@ -7,11 +7,10 @@
   },
   "devDependencies": {
     "jscs": "^3.0.7",
-    "jshint": "^2.9.5",
-    "pulp": "^12.2.0",
-    "purescript-psa": "^0.6.0",
-    "purescript": "slamdata/node-purescript#0.12",
-    "rimraf": "^2.6.2"
+    "jshint": "^2.11.0",
+    "pulp": "^14.0.0",
+    "purescript-psa": "^0.7.3",
+    "rimraf": "^3.0.2"
   },
   "jscsConfig": {
     "validateIndentation": false
