@@ -63,6 +63,8 @@ import Unsafe.Coerce (unsafeCoerce)
 -- | `makeAff` or `liftEffect`.
 foreign import data Aff ∷ Type → Type
 
+type role Aff representational
+
 instance functorAff ∷ Functor Aff where
   map = _map
 
@@ -116,6 +118,8 @@ instance lazyAff ∷ Lazy (Aff a) where
 -- | Applicative for running parallel effects. Any `Aff` can be coerced to a
 -- | `ParAff` and back using the `Parallel` class.
 foreign import data ParAff ∷ Type → Type
+
+type role ParAff representational
 
 instance functorParAff ∷ Functor ParAff where
   map = _parAffMap
