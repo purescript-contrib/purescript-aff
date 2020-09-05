@@ -10,6 +10,8 @@ An asynchronous effect monad and threading model for PureScript.
 Note that these documentation examples are partially pseudocode and are unlikely to compile. Working examples can be found [here](https://github.com/purescript-contrib/purescript-aff/blob/master/test/Test/Main.purs).
 
 ```purescript
+import Effect.Class.Console (log)
+
 main = launchAff do
   response <- Ajax.get "http://foo.bar"
   log response.body
