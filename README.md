@@ -81,6 +81,9 @@ exports._ajaxGet = function (request) { // accepts a request
       req.cancel(); // cancel the request
       cancelerSuccess(); // invoke the success callback for the canceler
     };
+    // Note:
+    // - If onError/onSuccess is called, then canceler function will never be called,
+    // - If the Aff computation is canceled, called onError/onSuccess will do nothing.
   };
 };
 ```
