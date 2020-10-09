@@ -1,4 +1,4 @@
-/* globals setImmediate, clearImmediate */
+/* globals setImmediate, clearImmediate, setTimeout, clearTimeout */
 /* eslint-disable */
 "use strict";
 
