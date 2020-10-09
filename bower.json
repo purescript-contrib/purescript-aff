@@ -4,7 +4,7 @@
   "description": "Asynchronous effect monad",
   "repository": {
     "type": "git",
-    "url": "git://github.com/slamdata/purescript-aff.git"
+    "url": "https://github.com/slamdata/purescript-aff.git"
   },
   "license": "Apache-2.0",
   "ignore": [

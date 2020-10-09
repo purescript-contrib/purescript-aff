@@ -1,21 +1,13 @@
-/.*
-!/.gitignore
-!/.github
-!/.travis.yml
+.*
+!.gitignore
+!.github
+!.editorconfig
+!.eslintrc.json
 
-# Dependencies
-bower_components
-node_modules
-
-# Generated files
 output
-dce-output
 generated-docs
+bower_components
 
-# Lockfiles
+node_modules
 package-lock.json
 *.lock
-
-# Extra files
-!/.jshintrc
-!/.jscsrc
