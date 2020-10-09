@@ -14,26 +14,26 @@ Other improvements:
 
 ## [v5.1.2](https://github.com/purescript-contrib/purescript-aff/releases/tag/v5.1.2) - 2019-09-11
 
-* Try to recover when exceptions are thrown in pure code (@ford-prefect)
-* Fix memory leak in supervisors where child fibers are retained even though they have completed (@eric-corumdigital)
+- Try to recover when exceptions are thrown in pure code (@ford-prefect)
+- Fix memory leak in supervisors where child fibers are retained even though they have completed (@eric-corumdigital)
 
 ## [v5.1.1](https://github.com/purescript-contrib/purescript-aff/releases/tag/v5.1.1) - 2019-03-29
 
-* Fixes supervision when no child fibers are active (#164)
-* Fixes various bugs around resumption within a bracket mask (#171)
+- Fixes supervision when no child fibers are active (#164)
+- Fixes various bugs around resumption within a bracket mask (#171)
 
 ## [v5.1.0](https://github.com/purescript-contrib/purescript-aff/releases/tag/v5.1.0) - 2018-12-14
 
-* Adds `fiberCanceler` (@safareli)
+- Adds `fiberCanceler` (@safareli)
 
 ## [v5.0.2](https://github.com/purescript-contrib/purescript-aff/releases/tag/v5.0.2) - 2018-08-24
 
-* Don't resume from an enqueued task if interrupted (#162) 
-* Fix finalization after failure (#161)
+- Don't resume from an enqueued task if interrupted (#162)
+- Fix finalization after failure (#161)
 
 ## [v5.0.1](https://github.com/purescript-contrib/purescript-aff/releases/tag/v5.0.1) - 2018-07-12
 
-* Fixes runtime error when running an async canceler in a `ParAff` `apply` operation (#153)
+- Fixes runtime error when running an async canceler in a `ParAff` `apply` operation (#153)
 
 ## [v5.0.0](https://github.com/purescript-contrib/purescript-aff/releases/tag/v5.0.0) - 2018-05-25
 
@@ -41,34 +41,34 @@ Updated for PureScript 0.12
 
 ## [v4.1.1](https://github.com/purescript-contrib/purescript-aff/releases/tag/v4.1.1) - 2018-04-18
 
-* Fixes `bhead is not a function` FFI errors when yielding a fork at the tail of a fresh attempt context (possibly through `bracket` acquisition or `catchError`).
+- Fixes `bhead is not a function` FFI errors when yielding a fork at the tail of a fresh attempt context (possibly through `bracket` acquisition or `catchError`).
 
 ## [v4.1.0](https://github.com/purescript-contrib/purescript-aff/releases/tag/v4.1.0) - 2018-04-06
 
-* Added `Lazy` instance for `Aff` (@safareli)
+- Added `Lazy` instance for `Aff` (@safareli)
 
 ## [v4.0.2](https://github.com/purescript-contrib/purescript-aff/releases/tag/v4.0.2) - 2018-01-14
 
-* Fix regression in ParAff Applicative behavior when an exception occurs.
+- Fix regression in ParAff Applicative behavior when an exception occurs.
 
 ## [v4.0.1](https://github.com/purescript-contrib/purescript-aff/releases/tag/v4.0.1) - 2017-11-19
 
-* Fixes JavaScript runtime error in `ParAff` cancellation.
+- Fixes JavaScript runtime error in `ParAff` cancellation.
 
 ## [v4.0.0](https://github.com/purescript-contrib/purescript-aff/releases/tag/v4.0.0) - 2017-09-14
 
 This release (v4.0.0) features a revamped API for writing more expressive asynchronous programs with stronger guarantees.
 
-*   `Fiber` cooperative multi-tasking primitive for fork/join workflows.
-*   Stronger cleanup guarantees with `bracket` and `supervise`.
-*   Reformulated `AVar` semantics
-*   Rewritten core with an emphasis on performance and consistency.
+- `Fiber` cooperative multi-tasking primitive for fork/join workflows.
+- Stronger cleanup guarantees with `bracket` and `supervise`.
+- Reformulated `AVar` semantics
+- Rewritten core with an emphasis on performance and consistency.
 
 **New Features and Enhancements**
 
 **`Fiber`**
 
-Previously, `Aff`s supported `forkAff`, but it was very difficult to get values back when forked computations completed. Libraries like `purescript-aff-future` were written to overcome this limitation (though with limitations of their own). The semantics of `purescript-aff-future` have been assimilated into `Aff` through the `Fiber` type without any of the previous limitaions (like lack of cancellation). `Fiber`s make it easy to not only fork computations, but also share their results among many consumers with `joinFiber`, which will wait until the `Fiber` completes, or yield immediately if it has already resolved. If a `Fiber` threw an exception, then the exception will be rethrown in the observer. `Fiber`s additionally support cancellation (`killFiber`) and finalizers for cleanup (`bracket`). 
+Previously, `Aff`s supported `forkAff`, but it was very difficult to get values back when forked computations completed. Libraries like `purescript-aff-future` were written to overcome this limitation (though with limitations of their own). The semantics of `purescript-aff-future` have been assimilated into `Aff` through the `Fiber` type without any of the previous limitaions (like lack of cancellation). `Fiber`s make it easy to not only fork computations, but also share their results among many consumers with `joinFiber`, which will wait until the `Fiber` completes, or yield immediately if it has already resolved. If a `Fiber` threw an exception, then the exception will be rethrown in the observer. `Fiber`s additionally support cancellation (`killFiber`) and finalizers for cleanup (`bracket`).
 
 **`bracket`**
 
@@ -111,61 +111,61 @@ Previously, exceptions thrown in forked computations were completely swallowed. 
 
 **Breaking Changes**
 
-*   The low-level callback representation is no longer relevant. If you've defined `Aff` effects via the FFI, you should transition to using `Control.Monad.Aff.Compat`, which provides an `EffFn` adapter. This makes it easy to use idiomatic JavaScript callbacks when building `Aff` actions.
-*   The `AVar` API methods have changed to match Haskell's `MVar` API. `putVar` now _blocks_ until the `AVar` actually assimilates the value. Previously, `putVar` would queue the value, but yield immediately. It's possible to recover similar behavior as the old API with `forkAff (try (putVar value avar))` (though this should be considered mildly unsafe), or you can use `tryPutVar` which will attempt a synchronous put.
-*   Argument order for `AVar` and `Fiber` operations consistently put the subject last.
-*   Several unlawful instances where removed for `Aff` (`Alternative`, `MonadPlus`, and `MonadZero`).
-*   `forkAff` now returns a `Fiber` rather than a `Canceler`.
-*   `forkAll` was removed. Just use `Traversable` and `forkAff` directly.
-*   `cancel` was removed. Use `killFiber`.
-*   The signature of `makeAff` has changed to provide a _single_ callback which takes an `Either Error a` argument. `Canceler`s are also _required_. If you are sure you have no means of cancelling an action, you can use `nonCanceler` or `mempty`.
-*   `Canceler`s no longer yield `Boolean`. This was meaningless and not useful, so all cancellation effects now yield `Unit`.
-*   `ParAff` is no longer a newtype. Parallel computations should be constructed via `Control.Parallel` with `parallel` and `sequential`.
+- The low-level callback representation is no longer relevant. If you've defined `Aff` effects via the FFI, you should transition to using `Control.Monad.Aff.Compat`, which provides an `EffFn` adapter. This makes it easy to use idiomatic JavaScript callbacks when building `Aff` actions.
+- The `AVar` API methods have changed to match Haskell's `MVar` API. `putVar` now _blocks_ until the `AVar` actually assimilates the value. Previously, `putVar` would queue the value, but yield immediately. It's possible to recover similar behavior as the old API with `forkAff (try (putVar value avar))` (though this should be considered mildly unsafe), or you can use `tryPutVar` which will attempt a synchronous put.
+- Argument order for `AVar` and `Fiber` operations consistently put the subject last.
+- Several unlawful instances where removed for `Aff` (`Alternative`, `MonadPlus`, and `MonadZero`).
+- `forkAff` now returns a `Fiber` rather than a `Canceler`.
+- `forkAll` was removed. Just use `Traversable` and `forkAff` directly.
+- `cancel` was removed. Use `killFiber`.
+- The signature of `makeAff` has changed to provide a _single_ callback which takes an `Either Error a` argument. `Canceler`s are also _required_. If you are sure you have no means of cancelling an action, you can use `nonCanceler` or `mempty`.
+- `Canceler`s no longer yield `Boolean`. This was meaningless and not useful, so all cancellation effects now yield `Unit`.
+- `ParAff` is no longer a newtype. Parallel computations should be constructed via `Control.Parallel` with `parallel` and `sequential`.
 
 ## [v4.0.0-rc.6](https://github.com/purescript-contrib/purescript-aff/releases/tag/v4.0.0-rc.6) - 2017-09-12
 
-* Rename `atomically` to `invincible`.
-* Killing a suspended fiber should be synchronous.
+- Rename `atomically` to `invincible`.
+- Killing a suspended fiber should be synchronous.
 
 ## [v4.0.0-rc.5](https://github.com/purescript-contrib/purescript-aff/releases/tag/v4.0.0-rc.5) - 2017-08-31
 
-* Changed the argument order of `AVar` operations to have the AVar last.
+- Changed the argument order of `AVar` operations to have the AVar last.
 
 ## [v4.0.0-rc.4](https://github.com/purescript-contrib/purescript-aff/releases/tag/v4.0.0-rc.4) - 2017-08-26
 
-* Reexport things in `Control.Monad.Eff.Exception` relevant to the `Aff` API.
+- Reexport things in `Control.Monad.Eff.Exception` relevant to the `Aff` API.
 
 ## [v4.0.0-rc.3](https://github.com/purescript-contrib/purescript-aff/releases/tag/v4.0.0-rc.3) - 2017-08-24
 
-* `kill` always succeeds. If a finalizer throws, it will rethrow in a fresh stack.
-* Fixes the behavior of `throwError` and `generalBracket` within a finalizer.
+- `kill` always succeeds. If a finalizer throws, it will rethrow in a fresh stack.
+- Fixes the behavior of `throwError` and `generalBracket` within a finalizer.
 
 ## [v4.0.0-rc.2](https://github.com/purescript-contrib/purescript-aff/releases/tag/v4.0.0-rc.2) - 2017-08-20
 
-* Fixes `ParAff` `Alt` behavior when propagating exceptions.
+- Fixes `ParAff` `Alt` behavior when propagating exceptions.
 
 ## [v4.0.0-rc.1](https://github.com/purescript-contrib/purescript-aff/releases/tag/v4.0.0-rc.1) - 2017-08-19
 
 This pre-release for version v4.0.0 features a revamped API for writing more expressive asynchronous programs with stronger guarantees.
 
-* `Fiber` cooperative multi-tasking primitive for fork/join workflows
-* Stronger cleanup guarantees with `bracket` and `supervise`.
-* Reformulated `AVar` semantics
+- `Fiber` cooperative multi-tasking primitive for fork/join workflows
+- Stronger cleanup guarantees with `bracket` and `supervise`.
+- Reformulated `AVar` semantics
 
 **Migration Notes**
 
-* The low-level callback representation is no longer relevant. If you've defined `Aff` effects via the FFI, you should transition to using `Control.Monad.Eff.Compat`, which provides an `EffFn` adapter.
-* The `AVar` API methods have changed to match Haskell's `MVar` API. `putVar` effects now block until matched with a `takeVar`. It's possible to recover similar behavior as the old API with `forkAff (try (putVar avar value))`.
-* Several unlawful instances where removed for `Aff` (`Alternative`, `MonadPlus`, and `MonadZero`).
+- The low-level callback representation is no longer relevant. If you've defined `Aff` effects via the FFI, you should transition to using `Control.Monad.Eff.Compat`, which provides an `EffFn` adapter.
+- The `AVar` API methods have changed to match Haskell's `MVar` API. `putVar` effects now block until matched with a `takeVar`. It's possible to recover similar behavior as the old API with `forkAff (try (putVar avar value))`.
+- Several unlawful instances where removed for `Aff` (`Alternative`, `MonadPlus`, and `MonadZero`).
 
 ## [v3.1.0](https://github.com/purescript-contrib/purescript-aff/releases/tag/v3.1.0) - 2017-05-08
 
-* Added `tryTakeVar` and `tryPeekVar` (@syaiful6)
+- Added `tryTakeVar` and `tryPeekVar` (@syaiful6)
 
 ## [v3.0.0](https://github.com/purescript-contrib/purescript-aff/releases/tag/v3.0.0) - 2017-04-02
 
-* Updated to work with PureScript 0.11
-* Removed `later` and `later'` in favor of `delay`.
+- Updated to work with PureScript 0.11
+- Removed `later` and `later'` in favor of `delay`.
 
 ## [v2.0.3](https://github.com/purescript-contrib/purescript-aff/releases/tag/v2.0.3) - 2017-02-18
 
@@ -191,19 +191,15 @@ This pre-release for version v4.0.0 features a revamped API for writing more exp
 
 ## [v1.0.0](https://github.com/purescript-contrib/purescript-aff/releases/tag/v1.0.0) - 2016-06-09
 
-
+- Initial 1.0.0 release
 
 ## [v0.17.0](https://github.com/purescript-contrib/purescript-aff/releases/tag/v0.17.0) - 2016-06-05
 
-Requires PureScript 0.9.1 or later.
+- Requires PureScript 0.9.1 or later.
 
 ## [v0.16.2](https://github.com/purescript-contrib/purescript-aff/releases/tag/v0.16.2) - 2016-06-01
 
 - The `MonadRec` instance now preserves synchronous semantics instead of periodically bouncing asynchronously.
-
-## [v0.16.1](https://github.com/purescript-contrib/purescript-aff/releases/tag/v0.16.1) - 2016-03-21
-
-
 
 ## [v0.16.0](https://github.com/purescript-contrib/purescript-aff/releases/tag/v0.16.0) - 2016-03-11
 
@@ -215,17 +211,9 @@ Requires PureScript 0.9.1 or later.
 - Added `Affable` class
 - `MonadAff` now is a subclass of `Affable` and `Monad`
 
-## [v0.14.2](https://github.com/purescript-contrib/purescript-aff/releases/tag/v0.14.2) - 2016-03-08
-
-
-
 ## [v0.14.1](https://github.com/purescript-contrib/purescript-aff/releases/tag/v0.14.1) - 2016-02-22
 
 - Added `forkAll` combinator, for forking many asynchronous computations in a synchronous manner (@natefaubion)
-
-## [v0.14.0](https://github.com/purescript-contrib/purescript-aff/releases/tag/v0.14.0) - 2016-01-12
-
-
 
 ## [v0.13.1](https://github.com/purescript-contrib/purescript-aff/releases/tag/v0.13.1) - 2015-11-19
 
@@ -234,22 +222,6 @@ Requires PureScript 0.9.1 or later.
 ## [v0.13.0](https://github.com/purescript-contrib/purescript-aff/releases/tag/v0.13.0) - 2015-09-22
 
 - Bump transformers dependency
-
-## [v0.12.0](https://github.com/purescript-contrib/purescript-aff/releases/tag/v0.12.0) - 2015-08-26
-
-
-
-## [v0.11.3](https://github.com/purescript-contrib/purescript-aff/releases/tag/v0.11.3) - 2015-07-17
-
-
-
-## [v0.11.2](https://github.com/purescript-contrib/purescript-aff/releases/tag/v0.11.2) - 2015-07-17
-
-
-
-## [v0.11.1](https://github.com/purescript-contrib/purescript-aff/releases/tag/v0.11.1) - 2015-07-16
-
-
 
 ## [v0.11.0](https://github.com/purescript-contrib/purescript-aff/releases/tag/v0.11.0) - 2015-07-02
 
@@ -267,10 +239,6 @@ In addition, `Par` has been rewritten to use a new generic, exported `cancelWith
 
 This is mostly a drop-in upgrade, but if you created your own cancelers before, you'll now need to use the newtype.
 
-## [v0.9.2](https://github.com/purescript-contrib/purescript-aff/releases/tag/v0.9.2) - 2015-04-14
-
-
-
 ## [v0.7.0](https://github.com/purescript-contrib/purescript-aff/releases/tag/v0.7.0) - 2015-03-24
 
 This release includes the following enhancements:
@@ -279,4 +247,3 @@ This release includes the following enhancements:
 - Forked computations can be killed if the computation supports it.
 - The effect type of asynchronous code has been simplified; in particular, the mere act of being asynchronous is not considered an effect.
 - Documentation has been updated to account for the changes.
-
