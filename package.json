@@ -1,18 +1,11 @@
 {
   "private": true,
   "scripts": {
-    "clean": "rimraf output && rimraf .pulp-cache",
-    "build": "jshint src --verbose && jscs src && pulp build -- --censor-lib --strict",
-    "test": "pulp test"
+    "build": "eslint src && spago build --purs-args '--censor-lib --strict'",
+    "test": "spago test --no-install"
   },
   "devDependencies": {
-    "jscs": "^3.0.7",
-    "jshint": "^2.11.0",
-    "pulp": "^14.0.0",
-    "purescript-psa": "^0.7.3",
-    "rimraf": "^3.0.2"
-  },
-  "jscsConfig": {
-    "validateIndentation": false
+    "eslint": "^7.10.0",
+    "purescript-psa": "^0.8.0"
   }
 }
