@@ -1,5 +1,5 @@
-/* globals setImmediate, clearImmediate, setTimeout, clearTimeout */
-/* jshint -W083, -W098, -W003 */
+/* globals setImmediate, clearImmediate */
+/* eslint-disable */
 "use strict";
 
 var Aff = function () {

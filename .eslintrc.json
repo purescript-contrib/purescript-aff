@@ -21,7 +21,7 @@
     "no-undef": "error",
     "no-eq-null": "error",
     "radix": ["error", "always"],
-    "indent": ["error", 2, { "SwitchCase": 1 }],
+    "indent": ["error", 2, { "SwitchCase": 0 }],
     "quotes": ["error", "double"],
     "semi": ["error", "always"],
     "strict": ["error", "global"]
