@@ -5,39 +5,44 @@ Notable changes to this project are documented in this file. The format is based
 ## [Unreleased]
 
 Breaking changes (😱!!!):
+- Added support for PureScript 0.14 and dropped support for all previous versions (#196)
 
 New features:
+- Added roles declarations to allow safe coercions (#194) 
 
 Bugfixes:
+- Fixed typo in `forkAff` documentation (#184)
 
 Other improvements:
+- Added disclaimer about non-working examples in README (#188)
+- Updated to comply with Contributors library guidelines by adding new issue and pull request templates, updating documentation, and migrating to Spago for local development and CI (#195)
 
 ## [v5.1.2](https://github.com/purescript-contrib/purescript-aff/releases/tag/v5.1.2) - 2019-09-11
 
 - Try to recover when exceptions are thrown in pure code (@ford-prefect)
-- Fix memory leak in supervisors where child fibers are retained even though they have completed (@eric-corumdigital)
+- Fixed memory leak in supervisors where child fibers are retained even though they have completed (@eric-corumdigital)
 
 ## [v5.1.1](https://github.com/purescript-contrib/purescript-aff/releases/tag/v5.1.1) - 2019-03-29
 
-- Fixes supervision when no child fibers are active (#164)
-- Fixes various bugs around resumption within a bracket mask (#171)
+- Fixed supervision when no child fibers are active (#164)
+- Fixed various bugs around resumption within a bracket mask (#171)
 
 ## [v5.1.0](https://github.com/purescript-contrib/purescript-aff/releases/tag/v5.1.0) - 2018-12-14
 
-- Adds `fiberCanceler` (@safareli)
+- Added `fiberCanceler` (@safareli)
 
 ## [v5.0.2](https://github.com/purescript-contrib/purescript-aff/releases/tag/v5.0.2) - 2018-08-24
 
-- Don't resume from an enqueued task if interrupted (#162)
-- Fix finalization after failure (#161)
+- No longer resumes from an enqueued task if interrupted (#162)
+- Fixed finalization after failure (#161)
 
 ## [v5.0.1](https://github.com/purescript-contrib/purescript-aff/releases/tag/v5.0.1) - 2018-07-12
 
-- Fixes runtime error when running an async canceler in a `ParAff` `apply` operation (#153)
+- Fixed runtime error when running an async canceler in a `ParAff` `apply` operation (#153)
 
 ## [v5.0.0](https://github.com/purescript-contrib/purescript-aff/releases/tag/v5.0.0) - 2018-05-25
 
-Updated for PureScript 0.12
+- Updated for PureScript 0.12
 
 ## [v4.1.1](https://github.com/purescript-contrib/purescript-aff/releases/tag/v4.1.1) - 2018-04-18
 
@@ -49,11 +54,11 @@ Updated for PureScript 0.12
 
 ## [v4.0.2](https://github.com/purescript-contrib/purescript-aff/releases/tag/v4.0.2) - 2018-01-14
 
-- Fix regression in ParAff Applicative behavior when an exception occurs.
+- Fixed regression in ParAff Applicative behavior when an exception occurs.
 
 ## [v4.0.1](https://github.com/purescript-contrib/purescript-aff/releases/tag/v4.0.1) - 2017-11-19
 
-- Fixes JavaScript runtime error in `ParAff` cancellation.
+- Fixed JavaScript runtime error in `ParAff` cancellation.
 
 ## [v4.0.0](https://github.com/purescript-contrib/purescript-aff/releases/tag/v4.0.0) - 2017-09-14
 
@@ -221,15 +226,15 @@ This pre-release for version v4.0.0 features a revamped API for writing more exp
 
 ## [v0.13.0](https://github.com/purescript-contrib/purescript-aff/releases/tag/v0.13.0) - 2015-09-22
 
-- Bump transformers dependency
+- Bumped transformers dependency
 
 ## [v0.11.0](https://github.com/purescript-contrib/purescript-aff/releases/tag/v0.11.0) - 2015-07-02
 
-This release is intended for 0.7 of the PureScript compiler.
+- This release is intended for 0.7 of the PureScript compiler.
 
 ## [v0.10.1](https://github.com/purescript-contrib/purescript-aff/releases/tag/v0.10.1) - 2015-04-18
 
-This release fixes a number of bugs related to cancelation, and greatly improves the semantics of cancelation. Several tests have been added or made more sophisticated.
+- This release fixes a number of bugs related to cancelation, and greatly improves the semantics of cancelation. Several tests have been added or made more sophisticated.
 
 ## [v0.10.0](https://github.com/purescript-contrib/purescript-aff/releases/tag/v0.10.0) - 2015-04-14
 
