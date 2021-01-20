@@ -15,6 +15,7 @@ Bugfixes:
 
 Other improvements:
 - Added disclaimer about non-working examples in README (#188)
+- Changed default branch to `main`
 - Updated to comply with Contributors library guidelines by adding new issue and pull request templates, updating documentation, and migrating to Spago for local development and CI (#195)
 
 ## [v5.1.2](https://github.com/purescript-contrib/purescript-aff/releases/tag/v5.1.2) - 2019-09-11
