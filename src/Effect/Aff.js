@@ -238,6 +238,7 @@ var Aff = function () {
     var step      = aff;  // Successful step
     var fail      = null; // Failure step
     var interrupt = null; // Asynchronous interrupt
+    var pendingInterrupt = null; // Pending, asynchronous interrupt
 
     // Stack of continuations for the current fiber.
     var bhead = null;
@@ -461,10 +462,10 @@ var Aff = function () {
                 result   = util.fromRight(step);
                 // We need to enqueue the Release with the same interrupt
                 // status as the Bracket that is initiating it.
-                attempts = new Aff(CONS, new Aff(RELEASE, attempt._2, result), attempts, tmp);
+                attempts = new Aff(CONS, new Aff(RELEASE, attempt._2, result, pendingInterrupt), attempts, tmp);
                 // We should only coninue as long as the interrupt status has not changed or
                 // we are currently within a non-interruptable finalizer.
-                if (interrupt === tmp || bracketCount > 0) {
+                if ((!pendingInterrupt && interrupt === tmp) || bracketCount > 0) {
                   status = CONTINUE;
                   step   = attempt._3(result);
                 }
@@ -476,12 +477,13 @@ var Aff = function () {
             case RELEASE:
               attempts = new Aff(CONS, new Aff(FINALIZED, step, fail), attempts, interrupt);
               status   = CONTINUE;
+
               // It has only been killed if the interrupt status has changed
               // since we enqueued the item, and the bracket count is 0. If the
               // bracket count is non-zero then we are in a masked state so it's
               // impossible to be killed.
-              if (interrupt && interrupt !== tmp && bracketCount === 0) {
-                step = attempt._1.killed(util.fromLeft(interrupt))(attempt._2);
+              if (((interrupt && interrupt !== tmp) || attempt._3) && bracketCount === 0) {
+                step = attempt._1.killed(util.fromLeft(interrupt || pendingInterrupt))(attempt._2);
               } else if (fail) {
                 step = attempt._1.failed(util.fromLeft(fail))(attempt._2);
               } else {
@@ -500,6 +502,18 @@ var Aff = function () {
 
             case FINALIZED:
               bracketCount--;
+
+              // If we've got a pending interrupt and are no longer masked,
+              // check the stack if we are about to run the release handler of a
+              // containing bracket. If that is the case, postpone setting the
+              // interrupt until after the release handler ran.
+              if (pendingInterrupt != null && bracketCount === 0) {
+                if (attempts == null || attempts._1.tag !== RELEASE) {
+                  interrupt = pendingInterrupt;
+                  pendingInterrupt = null;
+                }
+              }
+
               status = RETURN;
               step   = attempt._1;
               fail   = attempt._2;
@@ -584,10 +598,10 @@ var Aff = function () {
           run(runTick);
           break;
         case PENDING:
-          if (interrupt === null) {
-            interrupt = util.left(error);
-          }
           if (bracketCount === 0) {
+            if (interrupt === null) {
+              interrupt = util.left(error);
+            }
             if (status === PENDING) {
               attempts = new Aff(CONS, new Aff(FINALIZER, step(error)), attempts, interrupt);
             }
@@ -595,6 +609,10 @@ var Aff = function () {
             step     = null;
             fail     = null;
             run(++runTick);
+          } else {
+            if (pendingInterrupt === null) {
+              pendingInterrupt = util.left(error);
+            }
           }
           break;
         default:

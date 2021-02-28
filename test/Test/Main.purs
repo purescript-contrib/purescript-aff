@@ -730,6 +730,26 @@ test_regression_kill_empty_supervisor = assert "regression/kill-empty-supervisor
     b = parallel $ delay (Milliseconds 20.0) $> false
   sequential (a <|> b)
 
+test_invincible_completes ∷ Aff Unit
+test_invincible_completes = assert "test/invincible-completes" do
+  ref ← newRef Nothing
+  f1 ← forkAff $
+    generalBracket
+      (pure unit)
+      { killed: \_ _ -> writeRef ref (Just "killed")
+      , failed: \_ _ -> writeRef ref (Just "failed")
+      , completed: \_ _ -> writeRef ref (Just "completed")
+      }
+      (\_ ->
+        bracket
+          (delay (Milliseconds 20.0))
+          (const (pure unit))
+          pure
+      )
+  delay (Milliseconds 10.0)
+  killFiber (error "kaboom.") f1
+  readRef ref <#> (_ == Just "completed")
+
 main ∷ Effect Unit
 main = do
   test_pure
@@ -781,3 +801,4 @@ main = do
     test_regression_kill_sync_async
     test_regression_bracket_kill_mask
     test_regression_kill_empty_supervisor
+    test_invincible_completes
