@@ -5,6 +5,7 @@ Notable changes to this project are documented in this file. The format is based
 ## [Unreleased]
 
 Breaking changes:
+  - Restrict the signature of `launchAff_` to only work on `Aff Unit` (#203)
 
 New features:
 
