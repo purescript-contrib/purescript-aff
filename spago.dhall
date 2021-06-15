@@ -10,7 +10,6 @@
   , "either"
   , "exceptions"
   , "foldable-traversable"
-  , "free"
   , "functions"
   , "maybe"
   , "minibench"
