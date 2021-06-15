@@ -28,7 +28,6 @@
   "devDependencies": {
     "purescript-assert": "^5.0.0",
     "purescript-console": "^5.0.0",
-    "purescript-free": "^6.0.0",
     "purescript-minibench": "^3.0.0",
     "purescript-partial": "^3.0.0"
   }
