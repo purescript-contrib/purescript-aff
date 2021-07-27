@@ -22,6 +22,7 @@ New features:
 
 Bugfixes:
 - Fixed typo in `forkAff` documentation (#184)
+- Updated missing dependencies in `spago.dhall` (@ptrfrncsmrph) (#205)
 
 Other improvements:
 - Added disclaimer about non-working examples in README (#188)
