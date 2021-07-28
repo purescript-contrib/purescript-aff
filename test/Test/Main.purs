@@ -99,7 +99,7 @@ test_delay = assert "delay" do
 test_fork ∷ Aff Unit
 test_fork = assert "fork" do
   ref ← newRef ""
-  fiber ← forkAff do
+  _ ← forkAff do
     delay (Milliseconds 10.0)
     modifyRef ref (_ <> "child")
   _ ← modifyRef ref (_ <> "go")
@@ -287,7 +287,7 @@ test_kill_canceler ∷ Aff Unit
 test_kill_canceler = assert "kill/canceler" do
   ref ← newRef ""
   fiber ← forkAff do
-    n ← makeAff \_ → pure $ Canceler \_ → do
+    _ ← makeAff \_ → pure $ Canceler \_ → do
       delay (Milliseconds 20.0)
       liftEffect (writeRef ref "cancel")
     writeRef ref "done"
@@ -626,7 +626,7 @@ test_efffn = assert "efffn" do
     action = do
       effectDelay (Milliseconds 10.0)
       void $ modifyRef ref (_ <> "done")
-  f1 ← forkAff action
+  _ ← forkAff action
   f2 ← forkAff action
   killFiber (error "Nope.") f2
   delay (Milliseconds 20.0)
@@ -695,7 +695,7 @@ test_regression_bracket_catch_cleanup = assert "regression/bracket-catch-cleanup
 
 test_regression_kill_sync_async ∷ Aff Unit
 test_regression_kill_sync_async = assert "regression/kill-sync-async" do
-  ref ← newRef ""
+  _ ← newRef ""
   f1 ← forkAff $ makeAff \k -> k (Left (error "Boom.")) *> mempty
   killFiber (error "Nope.") f1
   pure true

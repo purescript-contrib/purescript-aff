@@ -11,6 +11,7 @@ New features:
 Bugfixes:
 
 Other improvements:
+- Ensure all directly-imported packages are included in the `spago.dhall` file (#205 by @ptrfrncsmrph)
 
 ## [v6.0.0](https://github.com/purescript-contrib/purescript-aff/releases/tag/v6.0.0) - 2021-02-26
 

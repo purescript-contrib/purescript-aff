@@ -17,19 +17,22 @@
     "package.json"
   ],
   "dependencies": {
-    "purescript-datetime": "^5.0.0",
-    "purescript-effect": "^3.0.0",
-    "purescript-exceptions": "^5.0.0",
-    "purescript-functions": "^5.0.0",
-    "purescript-parallel": "^5.0.0",
-    "purescript-transformers": "^5.0.0",
-    "purescript-unsafe-coerce": "^5.0.0"
-  },
-  "devDependencies": {
-    "purescript-assert": "^5.0.0",
-    "purescript-console": "^5.0.0",
-    "purescript-free": "^6.0.0",
-    "purescript-minibench": "^3.0.0",
-    "purescript-partial": "^3.0.0"
+    "purescript-arrays": "^v6.0.0",
+    "purescript-bifunctors": "^v5.0.0",
+    "purescript-control": "^v5.0.0",
+    "purescript-datetime": "^v5.0.0",
+    "purescript-effect": "^v3.0.0",
+    "purescript-either": "^v5.0.0",
+    "purescript-exceptions": "^v5.0.0",
+    "purescript-foldable-traversable": "^v5.0.0",
+    "purescript-functions": "^v5.0.0",
+    "purescript-maybe": "^v5.0.0",
+    "purescript-newtype": "^v4.0.0",
+    "purescript-parallel": "^v5.0.0",
+    "purescript-prelude": "^v5.0.0",
+    "purescript-refs": "^v5.0.0",
+    "purescript-tailrec": "^v5.0.0",
+    "purescript-transformers": "^v5.0.0",
+    "purescript-unsafe-coerce": "^v5.0.0"
   }
 }
