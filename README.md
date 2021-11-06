@@ -8,6 +8,10 @@
 
 An asynchronous effect monad and threading model for PureScript.
 
+`aff` is in the same space as JavaScript Promises, but with additional support for cancellation (async exceptions) and resource management (`bracket`). It’s cooperative multi-tasking which yields on async constructors (`makeAff`).
+
+For OS-thread parallelism in Node.js, see [node-workerbees](https://github.com/natefaubion/purescript-node-workerbees).
+
 ## Installation
 
 Install `aff` with [Spago](https://github.com/purescript/spago):
