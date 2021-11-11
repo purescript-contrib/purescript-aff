@@ -179,9 +179,12 @@ instance applicativeFiber :: Applicative Fiber where
 -- | Invokes pending cancelers in a fiber and runs cleanup effects. Blocks
 -- | until the fiber has fully exited.
 killFiber :: forall a. Error -> Fiber a -> Aff Unit
-killFiber e (Fiber t) = liftEffect t.isSuspended >>=
-  if _ then liftEffect $ void $ Fn.runFn2 t.kill e (const (pure unit))
-  else makeAff \k -> effectCanceler <$> Fn.runFn2 t.kill e k
+killFiber e (Fiber t) = do
+  suspended <- liftEffect t.isSuspended
+  if suspended then
+    liftEffect $ void $ Fn.runFn2 t.kill e (const (pure unit))
+  else
+    makeAff \k -> effectCanceler <$> Fn.runFn2 t.kill e k
 
 -- | Blocks until the fiber completes, yielding the result. If the fiber
 -- | throws an exception, it is rethrown in the current fiber.
