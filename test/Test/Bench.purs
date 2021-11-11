@@ -46,7 +46,8 @@ loop2 = go
 
 fib1 :: Int -> Aff.Aff Int
 fib1 n =
-  if n <= 1 then pure n
+  if n <= 1 then
+    pure n
   else do
     a <- fib1 (n - 1)
     b <- fib1 (n - 2)
