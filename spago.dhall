@@ -17,7 +17,6 @@
   , "parallel"
   , "partial"
   , "prelude"
-  , "psci-support"
   , "refs"
   , "tailrec"
   , "transformers"
