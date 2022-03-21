@@ -34,5 +34,8 @@
     "purescript-tailrec": "master",
     "purescript-transformers": "master",
     "purescript-unsafe-coerce": "master"
+  },
+  "devDependencies": {
+    "purescript-minibench": "master"
   }
 }
