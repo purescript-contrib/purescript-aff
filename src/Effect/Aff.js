@@ -1,7 +1,5 @@
 /* globals setImmediate, clearImmediate, setTimeout, clearTimeout */
 /* eslint-disable no-unused-vars, no-prototype-builtins, no-use-before-define, no-unused-labels, no-param-reassign */
-"use strict";
-
 var Aff = function () {
   // A unique value for empty.
   var EMPTY = {};
