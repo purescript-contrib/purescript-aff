@@ -1039,8 +1039,8 @@ var Aff = function () {
   return Aff;
 }();
 
-export var _pure = Aff.Pure;
-export var _throwError = Aff.Throw;
+export const _pure = Aff.Pure;
+export const _throwError = Aff.Throw;
 
 export function _catchError(aff) {
   return function (k) {
@@ -1072,7 +1072,7 @@ export function _fork(immediate) {
   };
 }
 
-export var _liftEffect = Aff.Sync;
+export const _liftEffect = Aff.Sync;
 
 export function _parAffMap(f) {
   return function (aff) {
@@ -1092,7 +1092,7 @@ export function _parAffAlt(aff1) {
   };
 }
 
-export var makeAff = Aff.Async;
+export const makeAff = Aff.Async;
 
 export function generalBracket(acquire) {
   return function (options) {
@@ -1122,7 +1122,7 @@ export function _killAll(error, supervisor, cb) {
   return supervisor.killAll(error, cb);
 }
 
-export var _delay = function () {
+export const _delay = function () {
   function setDelay(n, k) {
     if (n === 0 && typeof setImmediate !== "undefined") {
       return setImmediate(k);
@@ -1153,4 +1153,4 @@ export var _delay = function () {
   };
 }();
 
-export var _sequential = Aff.Seq;
+export const _sequential = Aff.Seq;
