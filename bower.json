@@ -36,6 +36,7 @@
     "purescript-unsafe-coerce": "master"
   },
   "devDependencies": {
-    "purescript-minibench": "master"
+    "purescript-minibench": "master",
+    "purescript-assert": "master"
   }
 }
