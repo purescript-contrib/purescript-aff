@@ -1,7 +1,5 @@
 /* globals setImmediate, clearImmediate, setTimeout, clearTimeout */
 /* eslint-disable no-unused-vars, no-prototype-builtins, no-use-before-define, no-unused-labels, no-param-reassign */
-"use strict";
-
 var Aff = function () {
   // A unique value for empty.
   var EMPTY = {};
@@ -1039,17 +1037,16 @@ var Aff = function () {
   return Aff;
 }();
 
-exports._pure = Aff.Pure;
+export const _pure = Aff.Pure;
+export const _throwError = Aff.Throw;
 
-exports._throwError = Aff.Throw;
-
-exports._catchError = function (aff) {
+export function _catchError(aff) {
   return function (k) {
     return Aff.Catch(aff, k);
   };
-};
+}
 
-exports._map = function (f) {
+export function _map(f) {
   return function (aff) {
     if (aff.tag === Aff.Pure.tag) {
       return Aff.Pure(f(aff._1));
@@ -1059,57 +1056,57 @@ exports._map = function (f) {
       });
     }
   };
-};
+}
 
-exports._bind = function (aff) {
+export function _bind(aff) {
   return function (k) {
     return Aff.Bind(aff, k);
   };
-};
+}
 
-exports._fork = function (immediate) {
+export function _fork(immediate) {
   return function (aff) {
     return Aff.Fork(immediate, aff);
   };
-};
+}
 
-exports._liftEffect = Aff.Sync;
+export const _liftEffect = Aff.Sync;
 
-exports._parAffMap = function (f) {
+export function _parAffMap(f) {
   return function (aff) {
     return Aff.ParMap(f, aff);
   };
-};
+}
 
-exports._parAffApply = function (aff1) {
+export function _parAffApply(aff1) {
   return function (aff2) {
     return Aff.ParApply(aff1, aff2);
   };
-};
+}
 
-exports._parAffAlt = function (aff1) {
+export function _parAffAlt(aff1) {
   return function (aff2) {
     return Aff.ParAlt(aff1, aff2);
   };
-};
+}
 
-exports.makeAff = Aff.Async;
+export const makeAff = Aff.Async;
 
-exports.generalBracket = function (acquire) {
+export function generalBracket(acquire) {
   return function (options) {
     return function (k) {
       return Aff.Bracket(acquire, options, k);
     };
   };
-};
+}
 
-exports._makeFiber = function (util, aff) {
+export function _makeFiber(util, aff) {
   return function () {
     return Aff.Fiber(util, null, aff);
   };
-};
+}
 
-exports._makeSupervisedFiber = function (util, aff) {
+export function _makeSupervisedFiber(util, aff) {
   return function () {
     var supervisor = Aff.Supervisor(util);
     return {
@@ -1117,13 +1114,13 @@ exports._makeSupervisedFiber = function (util, aff) {
       supervisor: supervisor
     };
   };
-};
+}
 
-exports._killAll = function (error, supervisor, cb) {
+export function _killAll(error, supervisor, cb) {
   return supervisor.killAll(error, cb);
-};
+}
 
-exports._delay = function () {
+export const _delay = function () {
   function setDelay(n, k) {
     if (n === 0 && typeof setImmediate !== "undefined") {
       return setImmediate(k);
@@ -1154,4 +1151,4 @@ exports._delay = function () {
   };
 }();
 
-exports._sequential = Aff.Seq;
+export const _sequential = Aff.Seq;

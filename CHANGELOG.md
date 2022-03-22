@@ -5,6 +5,7 @@ Notable changes to this project are documented in this file. The format is based
 ## [Unreleased]
 
 Breaking changes:
+- Migrate FFI to ES modules (#209 by @JordanMartinez)
 
 New features:
 
