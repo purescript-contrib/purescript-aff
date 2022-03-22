@@ -45,9 +45,9 @@ newtype EffectFnCanceler = EffectFnCanceler (EffectFn3 Error (EffectFnCb Error) 
 -- | myAff :: Aff String
 -- | myAff = fromEffectFnAff _myAff
 -- | ````
-fromEffectFnAff ∷ EffectFnAff ~> Aff
-fromEffectFnAff (EffectFnAff eff) = makeAff \k → do
-  EffectFnCanceler canceler ← runEffectFn2 eff (mkEffectFn1 (k <<< Left)) (mkEffectFn1 (k <<< Right))
-  pure $ Canceler \e → makeAff \k2 → do
+fromEffectFnAff :: EffectFnAff ~> Aff
+fromEffectFnAff (EffectFnAff eff) = makeAff \k -> do
+  EffectFnCanceler canceler <- runEffectFn2 eff (mkEffectFn1 (k <<< Left)) (mkEffectFn1 (k <<< Right))
+  pure $ Canceler \e -> makeAff \k2 -> do
     runEffectFn3 canceler e (mkEffectFn1 (k2 <<< Left)) (mkEffectFn1 (k2 <<< Right))
     pure nonCanceler

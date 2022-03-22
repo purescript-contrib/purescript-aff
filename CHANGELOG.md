@@ -5,13 +5,16 @@ Notable changes to this project are documented in this file. The format is based
 ## [Unreleased]
 
 Breaking changes:
-  - Restrict the signature of `launchAff_` to only work on `Aff Unit` (#203)
+- Restrict the signature of `launchAff_` to only work on `Aff Unit` (#203 by @i-am-the-slime)
+- Migrate FFI to ES modules (#209 by @JordanMartinez)
 
 New features:
 
 Bugfixes:
 
 Other improvements:
+- Added `purs-tidy` formatter (#207 by @thomashoneyman)
+- Ensure all directly-imported packages are included in the `spago.dhall` file (#205 by @ptrfrncsmrph)
 
 ## [v6.0.0](https://github.com/purescript-contrib/purescript-aff/releases/tag/v6.0.0) - 2021-02-26
 

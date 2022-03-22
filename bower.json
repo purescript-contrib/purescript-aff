@@ -17,18 +17,26 @@
     "package.json"
   ],
   "dependencies": {
-    "purescript-datetime": "^5.0.0",
-    "purescript-effect": "^3.0.0",
-    "purescript-exceptions": "^5.0.0",
-    "purescript-functions": "^5.0.0",
-    "purescript-parallel": "^5.0.0",
-    "purescript-transformers": "^5.0.0",
-    "purescript-unsafe-coerce": "^5.0.0"
+    "purescript-arrays": "master",
+    "purescript-bifunctors": "master",
+    "purescript-control": "master",
+    "purescript-datetime": "master",
+    "purescript-effect": "master",
+    "purescript-either": "master",
+    "purescript-exceptions": "master",
+    "purescript-foldable-traversable": "master",
+    "purescript-functions": "master",
+    "purescript-maybe": "master",
+    "purescript-newtype": "master",
+    "purescript-parallel": "master",
+    "purescript-prelude": "master",
+    "purescript-refs": "master",
+    "purescript-tailrec": "master",
+    "purescript-transformers": "master",
+    "purescript-unsafe-coerce": "master"
   },
   "devDependencies": {
-    "purescript-assert": "^5.0.0",
-    "purescript-console": "^5.0.0",
-    "purescript-minibench": "^3.0.0",
-    "purescript-partial": "^3.0.0"
+    "purescript-minibench": "master",
+    "purescript-assert": "master"
   }
 }

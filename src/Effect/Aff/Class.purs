@@ -13,32 +13,32 @@ import Control.Monad.Writer.Trans (WriterT)
 import Effect.Aff (Aff)
 import Effect.Class (class MonadEffect)
 
-class MonadEffect m ⇐ MonadAff m where
-  liftAff ∷ Aff ~> m
+class MonadEffect m <= MonadAff m where
+  liftAff :: Aff ~> m
 
-instance monadAffAff ∷ MonadAff Aff where
+instance monadAffAff :: MonadAff Aff where
   liftAff = identity
 
-instance monadAffContT ∷ MonadAff m ⇒ MonadAff (ContT r m) where
+instance monadAffContT :: MonadAff m => MonadAff (ContT r m) where
   liftAff = lift <<< liftAff
 
-instance monadAffExceptT ∷ MonadAff m ⇒ MonadAff (ExceptT e m) where
+instance monadAffExceptT :: MonadAff m => MonadAff (ExceptT e m) where
   liftAff = lift <<< liftAff
 
-instance monadAffListT ∷ MonadAff m ⇒ MonadAff (ListT m) where
+instance monadAffListT :: MonadAff m => MonadAff (ListT m) where
   liftAff = lift <<< liftAff
 
-instance monadAffMaybe ∷ MonadAff m ⇒ MonadAff (MaybeT m) where
+instance monadAffMaybe :: MonadAff m => MonadAff (MaybeT m) where
   liftAff = lift <<< liftAff
 
-instance monadAffReader ∷ MonadAff m ⇒ MonadAff (ReaderT r m) where
+instance monadAffReader :: MonadAff m => MonadAff (ReaderT r m) where
   liftAff = lift <<< liftAff
 
-instance monadAffRWS ∷ (MonadAff m, Monoid w) ⇒ MonadAff (RWST r w s m) where
+instance monadAffRWS :: (MonadAff m, Monoid w) => MonadAff (RWST r w s m) where
   liftAff = lift <<< liftAff
 
-instance monadAffState ∷ MonadAff m ⇒ MonadAff (StateT s m) where
+instance monadAffState :: MonadAff m => MonadAff (StateT s m) where
   liftAff = lift <<< liftAff
 
-instance monadAffWriter ∷ (MonadAff m, Monoid w) ⇒ MonadAff (WriterT w m) where
+instance monadAffWriter :: (MonadAff m, Monoid w) => MonadAff (WriterT w m) where
   liftAff = lift <<< liftAff
