@@ -226,7 +226,7 @@ launchAff aff = do
   pure fiber
 
 -- | Forks an `Aff` from an `Effect` context, discarding the `Fiber`.
-launchAff_ :: forall a. Aff a -> Effect Unit
+launchAff_ :: Aff Unit -> Effect Unit
 launchAff_ = void <<< launchAff
 
 -- | Suspends an `Aff` from an `Effect` context, returning the `Fiber`.
