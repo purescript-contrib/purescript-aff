@@ -17,26 +17,26 @@
     "package.json"
   ],
   "dependencies": {
-    "purescript-arrays": "master",
-    "purescript-bifunctors": "master",
-    "purescript-control": "master",
-    "purescript-datetime": "master",
-    "purescript-effect": "master",
-    "purescript-either": "master",
-    "purescript-exceptions": "master",
-    "purescript-foldable-traversable": "master",
-    "purescript-functions": "master",
-    "purescript-maybe": "master",
-    "purescript-newtype": "master",
-    "purescript-parallel": "master",
-    "purescript-prelude": "master",
-    "purescript-refs": "master",
-    "purescript-tailrec": "master",
-    "purescript-transformers": "master",
-    "purescript-unsafe-coerce": "master"
+    "purescript-arrays": "^7.0.0",
+    "purescript-bifunctors": "^6.0.0",
+    "purescript-control": "^6.0.0",
+    "purescript-datetime": "^6.0.0",
+    "purescript-effect": "^4.0.0",
+    "purescript-either": "^6.0.0",
+    "purescript-exceptions": "^6.0.0",
+    "purescript-foldable-traversable": "^6.0.0",
+    "purescript-functions": "^6.0.0",
+    "purescript-maybe": "^6.0.0",
+    "purescript-newtype": "^5.0.0",
+    "purescript-parallel": "^6.0.0",
+    "purescript-prelude": "^6.0.0",
+    "purescript-refs": "^6.0.0",
+    "purescript-tailrec": "^6.0.0",
+    "purescript-transformers": "^6.0.0",
+    "purescript-unsafe-coerce": "^6.0.0"
   },
   "devDependencies": {
-    "purescript-minibench": "master",
-    "purescript-assert": "master"
+    "purescript-minibench": "^4.0.0",
+    "purescript-assert": "^6.0.0"
   }
 }
