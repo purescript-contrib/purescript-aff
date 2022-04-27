@@ -5,6 +5,16 @@ Notable changes to this project are documented in this file. The format is based
 ## [Unreleased]
 
 Breaking changes:
+
+New features:
+
+Bugfixes:
+
+Other improvements:
+
+## [v7.0.0](https://github.com/purescript-contrib/purescript-aff/releases/tag/v7.0.0) - 2022-04-27
+
+Breaking changes:
 - Restrict the signature of `launchAff_` to only work on `Aff Unit` (#203 by @i-am-the-slime)
 - Migrate FFI to ES modules (#209 by @JordanMartinez)
 
