@@ -30,13 +30,10 @@ main = launchAff_ do
 
 `Effect` is a synchronous effect monad. It is used to sequence effectful foreign (JavaScript) code — things like random number generation, reading and writing mutable values, writing to the console and throwing and catching exceptions.[<sup>1</sup>](https://stackoverflow.com/questions/37661391/what-are-eff-and-aff)
 
-`Aff` is an asynchronous effect monad. It can handle and sequence effectful asynchronous code, like AJAX requests, timeouts, and network and file IO. 
+`Aff` is an asynchronous effect monad. It can handle and sequence effectful asynchronous code, like HTTP requests, timeouts, and network and file IO. 
 It also provides a nice mechanism for handling errors.
 
-Furthermore, `Aff` can perform synchronous effects by using `liftEffect`. In other words, `Effect` is a special case of `Aff`, for the special case that we expect the effect to complete immediately. `Effect` is in the core libraries instead of `Aff` for two reasons.
-
-1. The implementation of `Effect` is much simpler than `Aff`, which makes a big difference for non-JavaScript backends.
-2. `Effect` is much faster than `Aff`, and we expect most effects to complete synchronously, so usually `Effect` will suffice.
+Furthermore, `Aff` can perform synchronous effects by using `liftEffect`. In other words, `Effect` is a special case of `Aff`, for the special case that we expect the effect to complete immediately.
 
 Many I/O-related packages in the PureScript ecosystem provide both an asynchronous callback-based `Effect` API and an `Aff` API for the same feature. When you encounter this, you should almost always prefer the `Aff` API. You will find the `Aff` API is much simpler to use correctly. 
 
