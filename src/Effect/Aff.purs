@@ -40,6 +40,8 @@ import Control.Lazy (class Lazy)
 import Control.Monad.Error.Class (class MonadError, class MonadThrow, throwError, catchError, try)
 import Control.Monad.Error.Class (try, throwError, catchError) as Exports
 import Control.Monad.Rec.Class (class MonadRec, Step(..))
+import Control.Monad.ST.Class (class MonadST, liftST)
+import Control.Monad.ST.Global (Global)
 import Control.Parallel (parSequence_, parallel)
 import Control.Parallel.Class (class Parallel)
 import Control.Parallel.Class (sequential, parallel) as Exports
@@ -114,6 +116,9 @@ instance monadEffectAff :: MonadEffect Aff where
 
 instance lazyAff :: Lazy (Aff a) where
   defer f = pure unit >>= f
+
+instance monadSTAff :: MonadST Global Aff where
+  liftST = liftST >>> liftEffect
 
 -- | Applicative for running parallel effects. Any `Aff` can be coerced to a
 -- | `ParAff` and back using the `Parallel` class.

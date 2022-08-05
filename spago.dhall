@@ -18,6 +18,7 @@
   , "partial"
   , "prelude"
   , "refs"
+  , "st"
   , "tailrec"
   , "transformers"
   , "unsafe-coerce"
