@@ -7,11 +7,16 @@ Notable changes to this project are documented in this file. The format is based
 Breaking changes:
 
 New features:
-- MonadST instance for Aff
 
 Bugfixes:
 
 Other improvements:
+
+
+## [v7.1.0](https://github.com/purescript-contrib/purescript-aff/releases/tag/v7.1.0) - 2022-08-06
+
+New features:
+- MonadST instance for Aff (#213 by @Mateiadrielrafael)
 
 ## [v7.0.0](https://github.com/purescript-contrib/purescript-aff/releases/tag/v7.0.0) - 2022-04-27
 
