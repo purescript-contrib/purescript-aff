@@ -28,7 +28,7 @@
     "purescript-functions": "^6.0.0",
     "purescript-maybe": "^6.0.0",
     "purescript-newtype": "^5.0.0",
-    "purescript-parallel": "^6.0.0",
+    "purescript-parallel": "^7.0.0",
     "purescript-prelude": "^6.0.0",
     "purescript-refs": "^6.0.0",
     "purescript-tailrec": "^6.0.0",
