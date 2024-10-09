@@ -24,7 +24,7 @@ newtype EffectFnCanceler = EffectFnCanceler (EffectFn3 Error (EffectFnCb Error) 
 -- | `Effect` thunks are unnecessary. A definition might follow this example:
 -- |
 -- | ```javascript
--- | exports._myAff = function (onError, onSuccess) {
+-- | exports function _myAff(onError, onSuccess) {
 -- |   var cancel = doSomethingAsync(function (err, res) {
 -- |     if (err) {
 -- |       onError(err);
