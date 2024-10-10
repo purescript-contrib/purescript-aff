@@ -1,0 +1,38 @@
+package:
+  name: aff
+  publish:
+    license: Apache-2.0
+    version: 8.0.0
+    location:
+      githubOwner: purescript-contrib
+      githubRepo: purescript-aff
+  dependencies:
+    - control
+    - datetime
+    - effect
+    - either
+    - exceptions
+    - functions
+    - newtype
+    - parallel
+    - partial
+    - prelude
+    - st
+    - tailrec
+    - transformers
+    - unsafe-coerce
+  test:
+    main: Test.Main
+    dependencies:
+      - arrays
+      - assert
+      - bifunctors
+      - console
+      - foldable-traversable
+      - maybe
+      - minibench
+      - refs
+workspace:
+  extraPackages: {}
+  packageSet:
+    registry: 60.4.0
