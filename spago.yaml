@@ -1,0 +1,35 @@
+package:
+  name: aff
+  publish:
+    license: MIT
+    version: 9.0.0
+    location:
+      githubOwner: purescript-contrib
+      githubRepo: purescript-aff
+  dependencies:
+    - control: ">=6.0.0 <7.0.0"
+    - datetime: ">=6.1.0 <7.0.0"
+    - effect: ">=4.0.0 <5.0.0"
+    - either: ">=6.1.0 <7.0.0"
+    - exceptions: ">=6.1.0 <7.0.0"
+    - functions: ">=6.0.0 <7.0.0"
+    - newtype: ">=5.0.0 <6.0.0"
+    - parallel: ">=7.0.0 <8.0.0"
+    - partial: ">=4.0.0 <5.0.0"
+    - prelude: ">=6.0.1 <7.0.0"
+    - st: ">=6.2.0 <7.0.0"
+    - tailrec: ">=6.1.0 <7.0.0"
+    - transformers: ">=6.1.0 <7.0.0"
+    - unsafe-coerce: ">=6.0.0 <7.0.0"
+  test:
+    main: Test.Main
+    dependencies:
+      - arrays
+      - assert
+      - bifunctors
+      - console
+      - foldable-traversable
+      - maybe
+      - minibench
+      - refs
+workspace: {}
