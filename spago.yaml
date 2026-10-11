@@ -1,0 +1,37 @@
+package:
+  name: aff
+  dependencies:
+    - control: ">=6.0.0 <7.0.0"
+    - datetime: ">=6.0.0 <7.0.0"
+    - effect: ">=4.0.0 <5.0.0"
+    - either: ">=6.0.0 <7.0.0"
+    - exceptions: ">=6.0.0 <7.0.0"
+    - functions: ">=6.0.0 <7.0.0"
+    - newtype: ">=5.0.0 <6.0.0"
+    - parallel: ">=6.0.0 <8.0.0"
+    - partial: ">=4.0.0 <5.0.0"
+    - prelude: ">=6.0.0 <7.0.0"
+    - st: ">=6.0.0 <7.0.0"
+    - tailrec: ">=6.0.0 <7.0.0"
+    - transformers: ">=6.0.0 <7.0.0"
+    - unsafe-coerce: ">=6.0.0 <7.0.0"
+  test:
+    main: Test.Main
+    dependencies:
+      - arrays: ">=7.0.0 <8.0.0"
+      - assert: ">=6.0.0 <7.0.0"
+      - bifunctors: ">=6.0.0 <7.0.0"
+      - console: ">=6.0.0 <7.0.0"
+      - foldable-traversable: ">=6.0.0 <7.0.0"
+      - maybe: ">=6.0.0 <7.0.0"
+      - minibench: ">=4.0.0 <5.0.0"
+      - refs: ">=6.0.0 <7.0.0"
+  publish:
+    version: 8.0.1
+    license: Apache-2.0
+    location:
+      githubOwner: purescript-contrib
+      githubRepo: purescript-aff
+workspace:
+  packageSet:
+    registry: 81.4.0
