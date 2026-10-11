@@ -11,6 +11,11 @@ New features:
 Bugfixes:
 
 Other improvements:
+
+
+## [v8.0.1](https://github.com/purescript-contrib/purescript-aff/releases/tag/v8.0.1) - 2026-10-10
+
+Other improvements:
 - Migrate to registry-backed Spago and update repository tooling and CI actions.
 
 
